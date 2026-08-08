@@ -2,7 +2,7 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
-**v0.2.7** ships: **Wishlist rows are clickable again** (selection + scroll fix), hardened Wildcard detection, Rapid **Continue unstick**, filter-proof Desired sync, an opt-in **keep going after a Desired hit** assist, roll logbook, and guarded assists — all assists default **off**.
+**v0.2.8** ships: **Wishlist panel renders stored rows again** (deferred build + layout refresh), sparse SavedVariables support, CA Alt+right-click adds refresh immediately, and Save/Load profile chat feedback — plus the 0.2.7 click/scroll/Wildcard fixes.
 
 ## In-game
 

@@ -3,6 +3,29 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.2.8 (2026-08-08) -- Wishlist panel shows stored rows again
+
+#### Fixed
+- **Wishlist tab could stay blank while chat confirmed adds.** The panel was
+  built while its parent tab was still hidden, which on 3.3.5a can leave the
+  layout at 0×0 until the window is shown. The panel now builds on first open,
+  re-anchors when `/asuite` becomes visible, and refreshes after every
+  Character Advancement Alt + right-click add — even when the window is closed.
+- **Sparse SavedVariables wishlists read as empty.** If `AscensionSuiteDB.wishlist`
+  round-tripped with gaps so `#wishlist` was 0, Count/Search reported nothing
+  while rows still existed. Count and Search now walk every stored row.
+- **FauxScrollFrame chrome could cover the list.** Track/middle/scroll-child
+  pieces from the template are hidden and mouse-disabled; only the scrollbar
+  strip drives offset math.
+- **Chat could claim a wishlist add before the store accepted it.** Toggle now
+  checks the Track result and only prints success when the row is actually saved.
+- **Describe resolves names/icons from advancement internal ids**, not only spell
+  ids, so Wildcard book marks name correctly once CA data is loaded.
+
+#### Added
+- Save / Load profile buttons now confirm in chat (row count, or the failure reason).
+- `tests/test_wishlist_render.lua` — sparse store + CA add + panel render path.
+
 ### 0.2.7 (2026-08-08) -- Wishlist rows click and select again
 
 #### Fixed

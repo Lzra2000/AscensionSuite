@@ -27,6 +27,8 @@ local PLACEHOLDER_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local TOUCH_SECONDS = 4
 
 local panel
+local panelParent
+local panelWidth
 local searchBox
 local addBox
 local listFrame
@@ -36,6 +38,7 @@ local clearButton
 local countLabel
 local statusLabel
 local emptyLabel
+local hint
 local touchTicker
 local rows = {}
 local filtered = {}
@@ -559,15 +562,50 @@ end
 -- Construction
 ------------------------------------------------------------------------
 
-function WishlistPanel.Create(parent, width)
-    if panel then
-        return panel
+-- Ascension's FauxScrollFrameTemplate also spawns track/middle chrome and a
+-- scroll child that can sit above manually positioned row buttons. The list only
+-- needs the scrollbar strip for offset math, so strip the overlay pieces.
+local function NeutralizeScrollChrome(scroll)
+    if type(scroll) ~= "table" then
+        return
     end
 
+    if scroll.EnableMouse then
+        scroll:EnableMouse(false)
+    end
+
+    local name = scroll.GetName and scroll:GetName()
+    if type(name) ~= "string" or name == "" then
+        return
+    end
+
+    local extras = {
+        "ScrollChildFrame",
+        "Track",
+        "Top",
+        "Bottom",
+        "Middle",
+    }
+    for index = 1, #extras do
+        local piece = _G[name .. extras[index]]
+        if type(piece) == "table" then
+            if piece.Hide then
+                piece:Hide()
+            end
+            if piece.EnableMouse then
+                piece:EnableMouse(false)
+            end
+        end
+    end
+end
+
+local function BuildPanel(parent, width)
     local contentWidth = width or 640
 
     panel = CreateFrame("Frame", FRAME_NAME, parent)
     panel:SetAllPoints()
+    panelParent = parent
+    panelWidth = contentWidth
 
     local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 0, 0)
@@ -632,6 +670,7 @@ function WishlistPanel.Create(parent, width)
     scrollFrame:SetPoint("TOPRIGHT", listFrame, "TOPRIGHT", -LIST_INSET, -LIST_INSET)
     scrollFrame:SetPoint("BOTTOMRIGHT", listFrame, "BOTTOMRIGHT", -LIST_INSET, LIST_INSET)
     scrollFrame:SetWidth(SCROLLBAR_WIDTH)
+    NeutralizeScrollChrome(scrollFrame)
     -- The updater is wrapped rather than passed straight through: FrameXML calls
     -- it as updateFunction(self), and Refresh's first argument is the status note.
     scrollFrame:SetScript("OnVerticalScroll", function(self, offset)
@@ -723,7 +762,7 @@ function WishlistPanel.Create(parent, width)
     statusLabel:SetWidth(contentWidth - 164)
     statusLabel:SetJustifyH("LEFT")
 
-    local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("TOPLEFT", pushButton, "BOTTOMLEFT", 0, -14)
     hint:SetWidth(contentWidth)
     hint:SetJustifyH("LEFT")
@@ -749,6 +788,54 @@ function WishlistPanel.Create(parent, width)
 
     WishlistPanel.Refresh()
     return panel
+end
+
+function WishlistPanel.EnsureBuilt(parent, width)
+    if panel then
+        return panel
+    end
+    if type(parent) ~= "table" then
+        return nil
+    end
+    return BuildPanel(parent, width)
+end
+
+function WishlistPanel.Create(parent, width)
+    return WishlistPanel.EnsureBuilt(parent, width)
+end
+
+-- Re-anchor after the /asuite window becomes visible. Rows built while the tab
+-- content was hidden can layout at 0x0 on 3.3.5a until the parent chain shows.
+function WishlistPanel.InvalidateLayout()
+    if not panel or not panelParent then
+        return
+    end
+
+    panel:ClearAllPoints()
+    panel:SetAllPoints(panelParent)
+
+    if panelWidth and listFrame then
+        listFrame:SetWidth(panelWidth)
+        local rowWidth = panelWidth - LIST_INSET - SCROLLBAR_WIDTH
+        for index = 1, VISIBLE_ROWS do
+            local row = rows[index]
+            if row then
+                row:SetWidth(rowWidth)
+            end
+        end
+        if emptyLabel and emptyLabel.SetWidth then
+            emptyLabel:SetWidth(rowWidth - 24)
+        end
+        if searchBox and searchBox.SetWidth then
+            searchBox:SetWidth(panelWidth - 170)
+        end
+        if statusLabel and statusLabel.SetWidth then
+            statusLabel:SetWidth(panelWidth - 164)
+        end
+        if hint and hint.SetWidth then
+            hint:SetWidth(panelWidth)
+        end
+    end
 end
 
 function WishlistPanel.GetFrame()
