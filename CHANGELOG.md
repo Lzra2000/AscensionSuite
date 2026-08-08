@@ -3,6 +3,17 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.2.4 (2026-08-08) -- First-click removal, and the install steps back in the README
+
+#### Fixed
+- **Alt + right-click removes on the first click** for a spell that reached the
+  wishlist without an advancement pair -- a row added by typing its spell id
+  while the Character Advancement book was not loaded. Membership is now matched
+  on the spell id as well as the `(entryId, entryType)` pair, so that row is the
+  one removed rather than being upserted and needing a second click.
+- README: the **Install (release zip)** steps and the licence notice were lost in
+  the 0.2.3 rewrite. Both are back.
+
 ### 0.2.3 (2026-08-08) -- A real Wishlist panel, editable outside Wildcard
 
 The wishlist stops being a side effect of Ascension's Desired set and becomes a

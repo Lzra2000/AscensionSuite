@@ -233,14 +233,26 @@ function Wishlist.RemoveItem(item)
     return false
 end
 
-function Wishlist.RemoveEntry(entryId, entryType)
+-- Which row an advancement entry belongs to. The spell id is checked as well as
+-- the (id, type) pair because a row the player added by typing a spell id has no
+-- pair until something resolves it -- without this, Alt + right-clicking a spell
+-- already on the list would read as an add and take two clicks to remove.
+local function FindEntryIndex(items, entryId, entryType, spellId)
+    local index = FindByPair(items, entryId, entryType)
+    if index then
+        return index
+    end
+    return FindBySpell(items, NormalizeId(spellId))
+end
+
+function Wishlist.RemoveEntry(entryId, entryType, spellId)
     local id = NormalizeId(entryId)
     if not id or type(entryType) ~= "string" then
         return false
     end
 
     local items = Wishlist.GetItems()
-    local index = FindByPair(items, id, entryType)
+    local index = FindEntryIndex(items, id, entryType, spellId)
     if not index then
         return false
     end
@@ -289,8 +301,8 @@ function Wishlist.Contains(spellOrEntryId)
     return false
 end
 
-function Wishlist.HasEntry(entryId, entryType)
-    return FindByPair(Wishlist.GetItems(), NormalizeId(entryId), entryType) ~= nil
+function Wishlist.HasEntry(entryId, entryType, spellId)
+    return FindEntryIndex(Wishlist.GetItems(), NormalizeId(entryId), entryType, spellId) ~= nil
 end
 
 function Wishlist.Clear()
