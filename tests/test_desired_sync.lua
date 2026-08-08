@@ -100,10 +100,15 @@ end
 -- Advancement data
 ------------------------------------------------------------------------
 
+-- 2004 is a deliberate id-space collision: an entry whose internal ID is also
+-- another entry's spell ID. Resolving it the wrong way round silently tracks the
+-- wrong spell.
 local ENTRIES = {
     [2001] = { ID = 2001, Type = "Ability", Spells = { 133 }, Name = "Fireball" },
     [2002] = { ID = 2002, Type = "Talent", Spells = { 116 }, Name = "Ice Block" },
     [2003] = { ID = 2003, Type = "Ability", Spells = { 118 }, Name = "Polymorph" },
+    [2004] = { ID = 2004, Type = "Ability", Spells = { 5143 }, Name = "Arcane Missiles" },
+    [2005] = { ID = 2005, Type = "Ability", Spells = { 2004 }, Name = "Decoy" },
 }
 
 local BY_SPELL = {}
@@ -263,6 +268,22 @@ WildCardRapidRollingFrame:RemoveDesiredEntry(2002, "Talent")
 assert(rapidRemoves == 1, "the native handler still runs")
 assert(not Wishlist.IsTracked(2002, "Talent"), "RemoveDesiredEntry prunes the registry")
 assert(Wishlist.CountDesired() == 1, "an unmarked entry stops counting")
+
+-- The hook hands over an advancement internal ID, so the spell behind it has to
+-- be looked up in that id space.
+WildCardRapidRollingFrame:SaveDesiredEntry(2004, "Ability")
+local tracked = Wishlist.GetEntries()
+local collided
+for index = 1, #tracked do
+    if tracked[index].id == 2004 then
+        collided = tracked[index]
+    end
+end
+assert(collided, "the colliding entry is tracked")
+assert(collided.spellId == 5143,
+    "internal ID 2004 must resolve as an entry id, not as spell 2004 (got "
+        .. tostring(collided.spellId) .. ")")
+WildCardRapidRollingFrame:RemoveDesiredEntry(2004, "Ability")
 
 ------------------------------------------------------------------------
 -- Marking from the Character Advancement book
