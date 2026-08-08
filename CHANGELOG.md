@@ -3,6 +3,23 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.2.6 (2026-08-08) -- WotLK checkboxes actually turn assists on
+
+#### Fixed
+- **Assist toggles were a lie on 3.3.5a.** `CheckButton:GetChecked()` returns `1`
+  (or nil), not `true`. The Assists tab compared with `== true`, so every click
+  wrote `false` into SavedVariables while the box stayed visually checked —
+  Auto-Roll looked on, Start stayed dead, and the status line said
+  `assist switched off`. Checkboxes now treat `1` and `true` as on.
+- Stale **`assist_off`** no longer sticks after you tick Auto-Roll back on.
+- Logbook empty copy no longer says "enable capture" when Capture is already on.
+- Assists tab hints **Push to Desired** when the wishlist has rows but Desired is
+  still 0 (the "25 on wishlist, 0 Desired" case).
+
+#### Added
+- `AutoRoller.ClearLastError`, `MainWindow.CheckButtonIsOn`.
+- `tests/test_checkbox_wotlk.lua`.
+
 ### 0.2.5 (2026-08-08) -- Sync stops missing marks, Auto-Roll stops asking
 
 A polish pass over the three places the Suite quietly did less than it looked
