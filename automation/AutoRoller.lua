@@ -137,9 +137,19 @@ local function Tick(delta)
     end
 
     local phase = CurrentPhase()
-    if phase ~= nil and phase == lastPhase then
+    -- Also stall when the advance is blocked with no usable Phase (die stuck on
+    -- "?" / pendingReveal): that is the gray-Continue hang. Phase progress still
+    -- resets the clock so a healthy in-flight reveal is not recovered early.
+    local blocked = false
+    if api.IsRapidRollingAdvanceBlocked then
+        blocked = api.IsRapidRollingAdvanceBlocked() == true
+    end
+    if (phase ~= nil and phase == lastPhase) or (blocked and phase == lastPhase) then
         stalledFor = stalledFor + (delta or TICK_SECONDS)
         if stalledFor >= STALL_SECONDS then
+            if api.RecoverStuckRapidSession then
+                api.RecoverStuckRapidSession()
+            end
             AutoRoller.Stop("stalled")
             return
         end

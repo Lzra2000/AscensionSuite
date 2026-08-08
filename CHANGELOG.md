@@ -3,6 +3,31 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.2.2 (2026-08-08) -- Unstick gray Continue on Rapid Rolling
+
+Hotfix for the hang where Rapid Rolling shows **Continue** grayed out with the
+die on "?" and Scrolls Used visible — usually after Instant Dice Skip during a
+rapid session.
+
+#### Fixed
+- **Animation skip** no longer `Finish()`es the icon reel while
+  `WildCardDice.isRapidRolling`. That early finish could leave `pendingReveal`
+  set without ever reaching `AwaitingContinue`, so Ascension kept Continue
+  disabled. Leveling dice still skip the reel; rapid sessions only get the
+  flipbook speed-up.
+- **`AdvanceRapidRoll`** mirrors Ascension's own Roll early-out: if the session
+  is in-flight or the die is active without Continue/terminal, it returns
+  `roll_in_flight` instead of calling `Roll()` and reporting success on a silent
+  no-op (which made Auto-Roll look busy while the UI was dead).
+- Auto-Roll **stall recovery** calls `RecoverStuckRapidSession` (cancel + clear
+  `pendingReveal` + hide die + refresh Roll button) before stopping.
+- Overlay **Unstick** button for the same recovery when you hit the hang by hand.
+
+#### Added
+- `AscensionAPI.IsRapidRollingDiceActive`, `IsRapidRollingAdvanceBlocked`,
+  `RecoverStuckRapidSession`.
+- `tests/test_continue_stuck.lua`.
+
 ### 0.2.1 (2026-08-08) -- Build the wishlist where you already mark Desired
 
 Marking Desired in Ascension's own windows now builds the Suite wishlist, which

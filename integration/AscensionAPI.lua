@@ -896,6 +896,87 @@ local function DiceIsShown()
     return dice and dice.IsShown and dice:IsShown()
 end
 
+-- Mirrors WildCardRapidRollingMixin:IsRapidRollingDiceActive. A shown die with
+-- pendingReveal (or any non-idle Core state) counts as active even when Phase is
+-- Idle — that is the stuck-Continue case the assist must not treat as progress.
+function API.IsRapidRollingDiceActive(state)
+    state = state or API.GetRapidRollingState()
+    local dice = _G.WildCardDice
+    if type(dice) ~= "table" or type(dice.IsShown) ~= "function" then
+        return false
+    end
+    local shownOk, shown = pcall(dice.IsShown, dice)
+    if not shownOk or shown ~= true then
+        return false
+    end
+
+    local diceCore = dice.Core
+    local diceState = nil
+    if type(diceCore) == "table" and type(diceCore.GetState) == "function" then
+        local ok, value = pcall(diceCore.GetState, diceCore)
+        if ok then
+            diceState = value
+        end
+    end
+    local idleState = type(diceCore) == "table" and diceCore.State and diceCore.State.IDLE
+    if state and state.Phase == "Idle" and diceCore
+        and idleState ~= nil and diceState == idleState
+        and not dice.pendingReveal then
+        return false
+    end
+    return true
+end
+
+-- Same early-out WildCardRapidRollingMixin:Roll uses before it will touch the
+-- server: in-flight phases, or a live die that has not yet reached Continue /
+-- a terminal result. Calling Roll in that state is a silent no-op that used to
+-- look like success to Auto-Roll.
+function API.IsRapidRollingAdvanceBlocked(state)
+    state = state or API.GetRapidRollingState()
+    if IsInFlight(state) then
+        return true, "roll_in_flight"
+    end
+    local awaitingContinue = IsAwaitingContinue(state)
+    local terminalResult = IsTerminal(state)
+    if API.IsRapidRollingDiceActive(state) and not awaitingContinue and not terminalResult then
+        return true, "roll_in_flight"
+    end
+    return false, nil
+end
+
+-- Break out of a stranded Rapid session (gray Continue / die stuck on ?).
+-- Cancels the server session, clears local pendingReveal, hides the die, and
+-- asks the Rapid window to refresh its Roll button.
+function API.RecoverStuckRapidSession()
+    local ok, reason = RequireWildcard()
+    if not ok then
+        return false, reason
+    end
+
+    API.CancelRapidRolling()
+
+    local dice = _G.WildCardDice
+    if type(dice) == "table" then
+        dice.pendingReveal = nil
+        if type(dice.Hide) == "function" then
+            pcall(dice.Hide, dice)
+        end
+    end
+
+    local frame = RapidRollingFrame()
+    if frame then
+        if type(frame.RegisterEvent) == "function" then
+            pcall(frame.RegisterEvent, frame, "TOKEN_UPDATED")
+        end
+        if type(frame.UpdateRollButton) == "function" then
+            pcall(frame.UpdateRollButton, frame)
+        elseif type(frame.Refresh) == "function" then
+            pcall(frame.Refresh, frame)
+        end
+    end
+    return true
+end
+
 -- Click-equivalent advance for Rapid Rolling / leveling dice.
 -- Never starts a roll from animation skip; caller must invoke this explicitly.
 -- Whether the player actually has Desired targets is the caller's policy call
@@ -907,9 +988,15 @@ function API.AdvanceRapidRoll(skipConfirm)
     end
 
     -- The native Roll button already encodes every phase rule, so drive it when
-    -- the Rapid window is open instead of re-deriving the sequence.
+    -- the Rapid window is open instead of re-deriving the sequence. Guard the
+    -- silent no-op path first: Roll() returns nothing when blocked, which used
+    -- to look like a successful advance.
     local frame = RapidRollingFrame()
     if frame and frame.IsShown and frame:IsShown() and type(frame.Roll) == "function" then
+        local blocked, blockReason = API.IsRapidRollingAdvanceBlocked()
+        if blocked then
+            return false, blockReason or "roll_in_flight"
+        end
         local rollOk = pcall(frame.Roll, frame, skipConfirm == true)
         if not rollOk then
             return false, "native_roll_error"
@@ -919,12 +1006,12 @@ function API.AdvanceRapidRoll(skipConfirm)
 
     local state = API.GetRapidRollingState()
     local awaitingContinue = IsAwaitingContinue(state)
-    local inFlight = IsInFlight(state)
     local terminalResult = IsTerminal(state)
     local diceIsShown = DiceIsShown()
 
-    if inFlight or (diceIsShown and not awaitingContinue and not terminalResult) then
-        return false, "roll_in_flight"
+    local blocked, blockReason = API.IsRapidRollingAdvanceBlocked(state)
+    if blocked then
+        return false, blockReason or "roll_in_flight"
     end
 
     if terminalResult and not API.IsAwaitingRapidRollingTalentUpgradeRoll() then
@@ -957,6 +1044,11 @@ function API.AdvanceRapidRoll(skipConfirm)
             return false, rollReason or "roll_failed"
         end
         return true
+    end
+
+    -- Dice still on screen with no actionable phase: wait, do not Start again.
+    if diceIsShown and not awaitingContinue and not terminalResult then
+        return false, "roll_in_flight"
     end
 
     local startOk, startReason = API.StartRapidRolling()

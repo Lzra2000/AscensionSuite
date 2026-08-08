@@ -100,10 +100,18 @@ end
 
 -- The icon reel is an AnimationGroup, not a flipbook, so speed does not apply.
 -- Finishing it fires OnFinished -> OnRouletteFinished, which is the same path a
--- naturally completed reel takes. Ascension_VanityCollection uses Finish() on
--- this client; Stop() is the fallback.
+-- naturally completed reel takes on the *leveling* dice. Rapid Rolling wires
+-- reveal through pendingReveal + flipbook order; finishing the reel early there
+-- can leave the dice shown with pendingReveal set while Phase never reaches
+-- AwaitingContinue — Continue stays gray forever. So rapid sessions only get
+-- the flipbook speed-up above; the reel plays out on its already-short duration.
 function AnimationSkip.SkipRoulette(scrollFrame)
     if not ShouldSkipDice() or type(scrollFrame) ~= "table" then
+        return false
+    end
+
+    local dice = _G.WildCardDice
+    if type(dice) == "table" and dice.isRapidRolling then
         return false
     end
 

@@ -92,7 +92,7 @@ local STOP_REASONS = {
     user_stop = "stopped by you",
     native_roll_error = "Ascension's Roll button raised an error",
     native_error = "Ascension refused the roll - see its error message",
-    stalled = "rapid session stopped making progress",
+    stalled = "rapid session stuck — Suite cleared it; press Start again",
     desired_learned = "rolled a Desired entry - start again for the next one",
 }
 
@@ -342,6 +342,29 @@ local function StopAutoRoll()
     MainWindow.RefreshAutoRoll()
 end
 
+-- Manual recovery when Ascension's Continue button is stuck gray (die on "?",
+-- Scrolls Used visible, button disabled). Same path Auto-Roll uses after a stall.
+local function UnstickRapid()
+    local AutoRoller = AscensionSuite.AutoRoller
+    if AutoRoller and AutoRoller.IsRunning and AutoRoller.IsRunning() and AutoRoller.Stop then
+        AutoRoller.Stop("user_stop")
+    end
+    local api = AscensionSuite.AscensionAPI
+    if api and api.RecoverStuckRapidSession then
+        local ok, reason = api.RecoverStuckRapidSession()
+        if autoRollStatus then
+            if ok then
+                autoRollStatus:SetText("Rapid session cleared — try Roll again")
+                autoRollStatus:SetTextColor(0.43, 0.81, 0.54, 1)
+            else
+                autoRollStatus:SetText("Unstick failed — " .. MainWindow.DescribeStopReason(reason))
+                autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
+            end
+        end
+    end
+    MainWindow.RefreshAutoRoll()
+end
+
 local function EnsureFrame()
     if frame then
         return frame
@@ -405,8 +428,14 @@ local function EnsureFrame()
     stopButton:SetText("Stop")
     stopButton:SetScript("OnClick", StopAutoRoll)
 
+    local unstickButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    unstickButton:SetSize(90, 22)
+    unstickButton:SetPoint("TOPLEFT", stopButton, "BOTTOMLEFT", 0, -6)
+    unstickButton:SetText("Unstick")
+    unstickButton:SetScript("OnClick", UnstickRapid)
+
     autoRollStatus = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    autoRollStatus:SetPoint("TOPLEFT", stopButton, "BOTTOMLEFT", 0, -6)
+    autoRollStatus:SetPoint("TOPLEFT", unstickButton, "BOTTOMLEFT", 0, -6)
     autoRollStatus:SetWidth(180)
     autoRollStatus:SetJustifyH("LEFT")
 
