@@ -86,6 +86,14 @@ C_CharacterAdvancement = {
                 Name = "Improved Fireball",
             }
         end
+        if internalId == 2002 then
+            return {
+                ID = 2002,
+                Type = "Talent",
+                Spells = { 2201, 2202, 2203 },
+                Name = "Unranked Talent",
+            }
+        end
         if internalId == 3001 then
             return {
                 ID = 3001,
@@ -96,11 +104,16 @@ C_CharacterAdvancement = {
         return nil
     end,
     IsTalentID = function(_, internalId)
-        return internalId == 2001
+        return internalId == 2001 or internalId == 2002
     end,
     GetTalentRankByID = function(_, internalId)
         if internalId == 2001 then
             return 2, 3
+        end
+        if internalId == 2002 then
+            -- Unlearned talent: rank 0 with maxRank 1 used to crash
+            -- tonumber(GetTalentRank(...)) as tonumber("0", 1).
+            return 0, 1
         end
         return 0, 0
     end,
@@ -114,6 +127,8 @@ assert(API, "AscensionAPI missing")
 assert(API.GetEntryTooltipSpellID(133) == 133, "ability tooltip spell id")
 assert(API.GetEntryTooltipSpellID(nil, 2001) == 2102,
     "talent tooltip uses current rank spell id")
+assert(API.GetEntryTooltipSpellID(nil, 2002) == 2201,
+    "unlearned talent (rank 0) falls back to rank 1 spell id without tonumber crash")
 
 tooltipSpellId = nil
 tooltipHyperlink = nil
