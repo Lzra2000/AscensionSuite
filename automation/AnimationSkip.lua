@@ -1,5 +1,12 @@
 -- AscensionSuite: automation/AnimationSkip.lua
--- Opt-in instant finish for WildCardDice / SkillCard flipbooks (never starts rolls).
+-- Opt-in instant reveal for WildCardDice / SkillCard animations.
+--
+-- Everything here only changes playback *speed* of Ascension's own animations
+-- and then lets the client's own finish callbacks fire. It never calls the
+-- native OnFinished* handlers directly: those handlers drive the dice state
+-- machine (pendingReveal -> SetInternalID -> DECISION_PENDING), so invoking one
+-- while its flipbook is still playing runs the transition twice and can strand
+-- the dice mid-session. It never starts a roll either.
 
 local AscensionSuite = _G.AscensionSuite
 if type(AscensionSuite) ~= "table" then
@@ -10,7 +17,29 @@ end
 local AnimationSkip = {}
 AscensionSuite.AnimationSkip = AnimationSkip
 
-local hooked = false
+-- Ascension's own speeds, restored when the assist is switched back off
+-- (Ascension_WildCard/Dice/WildCardDice.lua Layout()).
+local DICE_FLIPBOOK_SPEEDS = {
+    { name = "DiceAppearFlipBook", native = 1 },
+    { name = "DiceCrackFlipBook", native = 3 },
+    { name = "DiceCollapseFlipBook", native = 2 },
+    { name = "DiceRollFlipBook", native = 2 },
+}
+
+local SKILLCARD_FLIPBOOKS = { "FlipBookCommon", "FlipBookQuality", "FlipBookQualityGlow" }
+local SKILLCARD_NATIVE_SPEED = 1
+
+-- AtlasVerticalFlipbookMixin turns speed S into frameStep ~= S, so a large S
+-- crosses every frame of a book in one or two OnUpdate ticks.
+local SKIP_SPEED = 60
+
+-- Ascension reads DEBUG_WC_ROULETTE_DURATION for the icon reel on the leveling
+-- roll path (WildCardRouletteMixin:Play); rapid rolling hardcodes 0.5.
+local SKIP_ROULETTE_DURATION = 0.05
+
+local attachedDice = false
+local attachedSkillCard = false
+local loadWatcher
 
 local function GetAssists()
     local DB = AscensionSuite.Database
@@ -30,76 +59,176 @@ local function ShouldSkipSkillCard()
     return assists and assists.instantSkillCardSkip == true
 end
 
-local function ForceFinishDice(dice)
-    if not dice or not ShouldSkipDice() then
-        return
+local function SetFlipBookSpeed(flipBook, speed)
+    if type(flipBook) ~= "table" or type(flipBook.SetSpeed) ~= "function" then
+        return false
     end
-    if dice.HideFlipBooks then
-        dice:HideFlipBooks()
-    end
-    if dice.OnFinishedAppear and dice.DiceAppearFlipBook and dice.DiceAppearFlipBook.IsPlaying and dice.DiceAppearFlipBook:IsPlaying() then
-        dice:OnFinishedAppear()
-    elseif dice.OnFinishedRoll and dice.DiceRollFlipBook and dice.DiceRollFlipBook.IsPlaying and dice.DiceRollFlipBook:IsPlaying() then
-        dice:OnFinishedRoll()
-    elseif dice.OnFinishedCrack and dice.DiceCrackFlipBook and dice.DiceCrackFlipBook.IsPlaying and dice.DiceCrackFlipBook:IsPlaying() then
-        dice:OnFinishedCrack()
-    elseif dice.OnFinishedCollapse and dice.DiceCollapseFlipBook and dice.DiceCollapseFlipBook.IsPlaying and dice.DiceCollapseFlipBook:IsPlaying() then
-        dice:OnFinishedCollapse()
-    end
+    local ok = pcall(flipBook.SetSpeed, flipBook, speed)
+    return ok
 end
 
-local function StopFlipBook(flipBook)
-    if not flipBook then
-        return
+------------------------------------------------------------------------
+-- WildCardDice
+------------------------------------------------------------------------
+
+-- Speed is read by AtlasVerticalFlipbookMixin:Play(), so this must be applied
+-- before the next Play() rather than while a book is mid-flight.
+function AnimationSkip.ApplyDiceSpeeds(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" then
+        return false
     end
-    if flipBook.Stop then
-        flipBook:Stop()
+
+    local skip = ShouldSkipDice()
+    local applied = 0
+    for index = 1, #DICE_FLIPBOOK_SPEEDS do
+        local info = DICE_FLIPBOOK_SPEEDS[index]
+        local speed = skip and SKIP_SPEED or info.native
+        if SetFlipBookSpeed(dice[info.name], speed) then
+            applied = applied + 1
+        end
     end
-    if flipBook.Hide then
-        flipBook:Hide()
+
+    if skip then
+        _G.DEBUG_WC_ROULETTE_DURATION = SKIP_ROULETTE_DURATION
+    elseif _G.DEBUG_WC_ROULETTE_DURATION == SKIP_ROULETTE_DURATION then
+        _G.DEBUG_WC_ROULETTE_DURATION = nil
     end
+
+    return applied > 0
 end
 
-local function ForceFinishSkillCardCover(cover)
-    if not cover or not ShouldSkipSkillCard() then
-        return
+-- The icon reel is an AnimationGroup, not a flipbook, so speed does not apply.
+-- Finishing it fires OnFinished -> OnRouletteFinished, which is the same path a
+-- naturally completed reel takes. Ascension_VanityCollection uses Finish() on
+-- this client; Stop() is the fallback.
+function AnimationSkip.SkipRoulette(scrollFrame)
+    if not ShouldSkipDice() or type(scrollFrame) ~= "table" then
+        return false
     end
-    StopFlipBook(cover.FlipBookCommon)
-    StopFlipBook(cover.FlipBookQuality)
-    StopFlipBook(cover.FlipBookQualityGlow)
-    if cover.OnFlip then
-        cover:OnFlip()
+
+    local content = scrollFrame.Content
+    local group = content and content.AnimationGroup
+    if type(group) ~= "table" then
+        return false
     end
+
+    if type(group.Finish) == "function" then
+        return pcall(group.Finish, group)
+    end
+    if type(group.Stop) == "function" then
+        return pcall(group.Stop, group)
+    end
+    return false
+end
+
+local function AttachDice()
+    local dice = _G.WildCardDice
+    if attachedDice or type(dice) ~= "table" or type(_G.hooksecurefunc) ~= "function" then
+        return false
+    end
+    attachedDice = true
+
+    AnimationSkip.ApplyDiceSpeeds(dice)
+
+    -- Re-assert speeds on each show and after each book starts, so a toggle
+    -- flipped mid-session takes effect on the following animation.
+    if type(dice.OnShow) == "function" then
+        hooksecurefunc(dice, "OnShow", function(self)
+            AnimationSkip.ApplyDiceSpeeds(self)
+        end)
+    end
+
+    if type(dice.PlayFlipBook) == "function" then
+        hooksecurefunc(dice, "PlayFlipBook", function(self)
+            AnimationSkip.ApplyDiceSpeeds(self)
+        end)
+    end
+
+    local scrollFrame = dice.ScrollFrame
+    if type(scrollFrame) == "table" and type(scrollFrame.Play) == "function" then
+        hooksecurefunc(scrollFrame, "Play", function(self)
+            AnimationSkip.SkipRoulette(self)
+        end)
+    end
+
+    return true
+end
+
+------------------------------------------------------------------------
+-- SkillCard reveal covers
+------------------------------------------------------------------------
+
+function AnimationSkip.ApplySkillCardSpeeds(cover)
+    if type(cover) ~= "table" then
+        return false
+    end
+
+    local speed = ShouldSkipSkillCard() and SKIP_SPEED or SKILLCARD_NATIVE_SPEED
+    local applied = 0
+    for index = 1, #SKILLCARD_FLIPBOOKS do
+        if SetFlipBookSpeed(cover[SKILLCARD_FLIPBOOKS[index]], speed) then
+            applied = applied + 1
+        end
+    end
+    return applied > 0
+end
+
+-- Covers are template instances, so speeds are applied per cover as the client
+-- refreshes or flips one. Covers built before this hook keeps their own copy of
+-- the mixin methods and stay at native speed.
+local function AttachSkillCard()
+    local mixin = _G.SkillCardUnlockCoverMixin
+    if attachedSkillCard or type(mixin) ~= "table" or type(_G.hooksecurefunc) ~= "function" then
+        return false
+    end
+    attachedSkillCard = true
+
+    if type(mixin.UpdateVisual) == "function" then
+        hooksecurefunc(mixin, "UpdateVisual", function(self)
+            AnimationSkip.ApplySkillCardSpeeds(self)
+        end)
+    end
+
+    if type(mixin.OnMouseUp) == "function" then
+        hooksecurefunc(mixin, "OnMouseUp", function(self)
+            AnimationSkip.ApplySkillCardSpeeds(self)
+        end)
+    end
+
+    return true
+end
+
+------------------------------------------------------------------------
+-- Wiring
+------------------------------------------------------------------------
+
+-- Ascension_WildCard and Ascension_SkillCards are load-on-demand, so the globals
+-- we hook usually do not exist yet at our own ADDON_LOADED.
+function AnimationSkip.Attach()
+    local dice = AttachDice()
+    local card = AttachSkillCard()
+    return dice or card
+end
+
+-- Called when the player flips a skip toggle so the change lands immediately.
+function AnimationSkip.Refresh()
+    AnimationSkip.Attach()
+    AnimationSkip.ApplyDiceSpeeds()
 end
 
 function AnimationSkip.Init()
-    if hooked then
+    AnimationSkip.Attach()
+
+    if loadWatcher or type(CreateFrame) ~= "function" then
         return
     end
-    hooked = true
 
-    local dice = _G.WildCardDice
-    if dice and hooksecurefunc then
-        if dice.PlayFlipBook then
-            hooksecurefunc(dice, "PlayFlipBook", function(self)
-                ForceFinishDice(self)
-            end)
+    loadWatcher = CreateFrame("Frame")
+    loadWatcher:RegisterEvent("ADDON_LOADED")
+    loadWatcher:SetScript("OnEvent", function(_, _, name)
+        if name == "Ascension_WildCard" or name == "Ascension_SkillCards" then
+            AnimationSkip.Attach()
         end
-        if dice.OnPlayRoll then
-            hooksecurefunc(dice, "OnPlayRoll", function(self)
-                ForceFinishDice(self)
-            end)
-        end
-        if dice.OnPlayAppear then
-            hooksecurefunc(dice, "OnPlayAppear", function(self)
-                ForceFinishDice(self)
-            end)
-        end
-    end
-
-    if hooksecurefunc and _G.SkillCardUnlockCoverMixin and _G.SkillCardUnlockCoverMixin.PlayReveal then
-        hooksecurefunc(_G.SkillCardUnlockCoverMixin, "PlayReveal", function(self)
-            ForceFinishSkillCardCover(self)
-        end)
-    end
+    end)
 end

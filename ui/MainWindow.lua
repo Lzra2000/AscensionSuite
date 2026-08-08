@@ -54,12 +54,21 @@ local function CreateCheckbox(parent, label, assistKey, yOffset)
     check:SetScript("OnClick", function(self)
         local assists = GetAssists()
         assists[assistKey] = self:GetChecked() == true
+
         if assistKey == "autoRoll" and not assists.autoRoll then
             local AutoRoller = AscensionSuite.AutoRoller
             if AutoRoller and AutoRoller.Stop then
                 AutoRoller.Stop("assist_off")
             end
         end
+
+        if assistKey == "instantDiceSkip" or assistKey == "instantSkillCardSkip" then
+            local AnimationSkip = AscensionSuite.AnimationSkip
+            if AnimationSkip and AnimationSkip.Refresh then
+                AnimationSkip.Refresh()
+            end
+        end
+
         MainWindow.RefreshAutoRoll()
     end)
 
