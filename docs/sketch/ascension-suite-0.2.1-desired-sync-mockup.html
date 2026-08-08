@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AscensionSuite 0.2.1 — wishlist from the native Desired marks</title>
+<style>
+  :root {
+    --bg: #0a0e14; --ink: #e8eef6; --muted: #8a9aab; --line: #2a3644;
+    --gold: #d4a84b; --good: #6ecf8a; --bad: #e07070; --wish: #4aa8e8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--ink);
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    background: radial-gradient(900px 480px at 70% 0%, #1a2838, var(--bg));
+    padding: 28px 32px 56px;
+  }
+  h1 { margin: 0 0 6px; font-size: 1.3rem; }
+  h2 { font-size: 0.95rem; color: var(--gold); margin: 0 0 8px; }
+  .lead { color: var(--muted); max-width: 60rem; line-height: 1.5; margin: 0 0 20px; }
+  .grid2 { display: grid; grid-template-columns: 420px 1fr; gap: 18px; align-items: start; max-width: 1080px; }
+
+  /* Ascension-side panels */
+  .panel { border: 1px solid var(--line); background: #121820; padding: 12px 14px; }
+  .panel.native { border-color: #48606f; }
+  .row {
+    display: flex; gap: 8px; align-items: center; padding: 6px 8px; margin-bottom: 4px;
+    border: 1px solid var(--line); font-size: 0.82rem; background: #0e141c;
+  }
+  .row.des { border-color: var(--wish); box-shadow: inset 0 0 12px rgba(74,168,232,.18); }
+  .row.dim { opacity: 0.5; }
+  .ico { width: 26px; height: 26px; background: #2a3a4c; border: 1px solid #6a8aa8; flex: none; }
+  .lock { margin-left: auto; color: var(--muted); font-size: 0.78rem; }
+  .callout {
+    margin-top: 10px; border-left: 3px solid var(--gold); padding: 6px 10px;
+    color: var(--muted); font-size: 0.82rem; line-height: 1.45; background: #161d27;
+  }
+
+  /* Suite overlay */
+  .overlay { border: 1px solid var(--gold); background: #121820; padding: 14px 16px; max-width: 640px; }
+  .chk { display: block; margin: 5px 0; font-size: 0.86rem; }
+  .chk input { margin-right: 6px; }
+  .sync {
+    margin: 12px 0 8px; padding: 8px 10px; border: 1px solid var(--wish); background: #0f1a24;
+    display: flex; align-items: center; gap: 10px; font-size: 0.84rem;
+  }
+  .sync .count { color: var(--wish); font-weight: bold; }
+  .sync .btn { margin-left: auto; }
+  .btn {
+    border: 1px solid #6a8aa8; color: var(--ink); background: #1a2430;
+    padding: 5px 12px; font: inherit; font-size: 0.8rem; cursor: pointer;
+  }
+  .btn.go { border-color: var(--good); color: var(--good); }
+  .btn.stop { border-color: var(--bad); color: var(--bad); }
+  .cells { display: grid; grid-template-columns: repeat(8, 46px); gap: 7px; margin-top: 8px; }
+  .cell {
+    width: 46px; height: 46px; border: 1px solid #6a8aa8; background: #0d141c;
+    position: relative; font-size: 0.6rem; color: var(--muted);
+    display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px;
+  }
+  .cell.d { border-color: var(--wish); }
+  .cell.d::after {
+    content: "D"; position: absolute; top: 1px; right: 3px; color: var(--wish); font-size: 0.62rem;
+  }
+  .more { color: var(--muted); font-size: 0.78rem; margin-top: 6px; }
+  .status { font-size: 0.82rem; margin-top: 10px; }
+  .status.bad { color: var(--bad); }
+  .hint { color: var(--muted); font-size: 0.78rem; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+  .new { color: var(--good); font-size: 0.72rem; border: 1px solid var(--good); padding: 0 4px; margin-left: 6px; }
+  .note { margin-top: 22px; color: var(--muted); font-size: 0.86rem; max-width: 1080px; line-height: 1.55; }
+  code { color: #e0c48a; }
+</style>
+</head>
+<body>
+  <h1>0.2.1 — build the wishlist where the player already marks Desired</h1>
+  <p class="lead">
+    No new window and no second board. The player keeps marking Desired in Ascension’s own UI;
+    the Suite learns each mark and shows what it is tracking. Only the three items tagged
+    <span class="new">new</span> are added to the existing <code>/asuite</code> overlay.
+  </p>
+
+  <div class="grid2">
+    <div>
+      <div class="panel native">
+        <h2>Ascension — Character Advancement book</h2>
+        <div class="row des"><span class="ico"></span> Fireball <span class="lock">🔒</span></div>
+        <div class="row"><span class="ico"></span> Frostbolt <span class="lock">🔒</span></div>
+        <div class="row dim"><span class="ico"></span> Arcane Blast <span class="lock">🔒</span></div>
+        <div class="callout">
+          <strong>Alt&nbsp;+&nbsp;right-click</strong> a spell → marks it Desired and adds it to the Suite wishlist.<br />
+          Left-click, Shift-click (learn), Alt-click (unlearn) and the Lock padlock are untouched.
+        </div>
+      </div>
+
+      <div class="panel native" style="margin-top:14px">
+        <h2>Ascension — Rapid Rolling · Desired</h2>
+        <div class="row des"><span class="ico"></span> Fireball</div>
+        <div class="row des"><span class="ico"></span> Living Bomb</div>
+        <div class="row dim"><span class="ico"></span> Scorch</div>
+        <div class="callout">
+          Clicking a row here already toggles Desired. The Suite hooks that toggle, so a mark
+          made in the native list shows up in the overlay with no extra step.
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay">
+      <h2>/asuite — assist overlay</h2>
+      <label class="chk"><input type="checkbox" /> Auto-Roll while leveling (Desired targets only)</label>
+      <label class="chk"><input type="checkbox" /> Instant skip WildCardDice animation</label>
+      <label class="chk"><input type="checkbox" /> Instant skip SkillCard flipbook</label>
+      <label class="chk"><input type="checkbox" /> Accept Wildcard confirm popups</label>
+      <label class="chk"><input type="checkbox" /> Capture rolls into Logbook</label>
+
+      <div class="sync">
+        <span>Desired: <span class="count">3</span> of 12 tracked</span>
+        <span class="new">new</span>
+        <button class="btn">Sync from Rapid</button>
+      </div>
+
+      <div class="cells">
+        <div class="cell d">133</div>
+        <div class="cell d">44457</div>
+        <div class="cell d">116</div>
+        <div class="cell">30451</div>
+        <div class="cell">2136</div>
+        <div class="cell">1449</div>
+        <div class="cell">122</div>
+        <div class="cell">118</div>
+        <div class="cell">130</div>
+        <div class="cell">475</div>
+        <div class="cell">1459</div>
+        <div class="cell">168</div>
+        <div class="cell">604</div>
+        <div class="cell">12051</div>
+        <div class="cell">5143</div>
+        <div class="cell">42897</div>
+      </div>
+      <div class="more">+ 4 more not shown <span class="new">new</span></div>
+
+      <div class="status">
+        <button class="btn go">Start</button>
+        <button class="btn stop">Stop</button>
+      </div>
+      <div class="status bad">
+        Auto-Roll stopped — rolled a Desired entry <span class="new">new</span>
+      </div>
+
+      <div class="hint">
+        Click a cell to toggle Desired · Alt + right-click a spell in the Character Advancement book · /asuite
+      </div>
+    </div>
+  </div>
+
+  <p class="note">
+    <strong>Why these three.</strong> The count line is the only honest way to show what Auto-Roll can see:
+    the client has <code>IsDesiredID</code> per entry and nothing that lists selections, so the overlay reports
+    “tracked” pairs, not the client’s Desired set. <em>Sync from Rapid</em> rescans the Rapid window’s filtered
+    candidate list for marks made before the addon was watching. The overflow line exists because the grid is a
+    fixed two rows and marking in the native window can now fill it faster than typing ids ever did.
+  </p>
+</body>
+</html>

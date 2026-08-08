@@ -10,7 +10,7 @@ if type(AscensionSuite) ~= "table" then
 end
 
 AscensionSuite.NAME = addonName
-AscensionSuite.VERSION = "0.2.0"
+AscensionSuite.VERSION = "0.2.1"
 
 local function OnAddonLoaded(name)
     if name ~= addonName then
@@ -25,6 +25,11 @@ local function OnAddonLoaded(name)
     local Logbook = AscensionSuite.Logbook
     if Logbook and Logbook.Init then
         Logbook.Init()
+    end
+
+    local DesiredSync = AscensionSuite.DesiredSync
+    if DesiredSync and DesiredSync.Init then
+        DesiredSync.Init()
     end
 
     local AnimationSkip = AscensionSuite.AnimationSkip

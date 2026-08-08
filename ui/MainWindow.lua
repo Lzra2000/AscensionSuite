@@ -12,6 +12,9 @@ AscensionSuite.MainWindow = MainWindow
 
 local FRAME_NAME = "AscensionSuiteMainWindow"
 local GRID_COLUMNS = 8
+-- The grid is a fixed two rows. Marking Desired in Ascension's own windows can
+-- fill it far faster than typing ids ever did, so the rest is counted instead.
+local GRID_ROWS = 2
 local CELL_GAP = 10
 local LOG_LINES = 6
 
@@ -19,10 +22,12 @@ local frame
 local inputBox
 local profileBox
 local gridHost
+local gridOverflow
 local logHost
 local cells = {}
 local assistChecks = {}
 local autoRollStatus
+local desiredStatus
 local stopButton
 local startButton
 
@@ -88,6 +93,7 @@ local STOP_REASONS = {
     native_roll_error = "Ascension's Roll button raised an error",
     native_error = "Ascension refused the roll - see its error message",
     stalled = "rapid session stopped making progress",
+    desired_learned = "rolled a Desired entry - start again for the next one",
 }
 
 function MainWindow.DescribeStopReason(reason)
@@ -165,6 +171,27 @@ function MainWindow.RefreshLogbook()
     end
 end
 
+-- "Desired" is what the client confirms right now; "tracked" is every entry the
+-- addon holds an (id, type) pair for. They differ on purpose: only the tracked
+-- ones can be verified at all, and Auto-Roll gates on the confirmed subset.
+function MainWindow.RefreshDesiredStatus(note)
+    if not desiredStatus then
+        return
+    end
+
+    local Wishlist = AscensionSuite.Wishlist
+    if not Wishlist or not Wishlist.CollectTracked then
+        return
+    end
+
+    local text = string.format("Desired: %d of %d tracked",
+        Wishlist.CountDesired(), #Wishlist.CollectTracked())
+    if note then
+        text = text .. "  |  " .. note
+    end
+    desiredStatus:SetText(text)
+end
+
 function MainWindow.RefreshGrid()
     if not gridHost then
         return
@@ -177,12 +204,14 @@ function MainWindow.RefreshGrid()
     end
 
     local spellIds = Wishlist.GetSpellIds()
-    local needed = #spellIds
+    local hidden = math.max(0, #spellIds - GRID_COLUMNS * GRID_ROWS)
+    local needed = #spellIds - hidden
     while #cells < needed do
         local index = #cells + 1
         local cell = SpellCell.Create(gridHost, FRAME_NAME .. "Cell" .. index)
         cell:SetOnChanged(function()
             MainWindow.RefreshGrid()
+            MainWindow.RefreshDesiredStatus()
         end)
         cells[index] = cell
     end
@@ -205,6 +234,26 @@ function MainWindow.RefreshGrid()
     for index = needed + 1, #cells do
         cells[index]:Hide()
     end
+
+    if gridOverflow then
+        if hidden > 0 then
+            gridOverflow:SetText(string.format("+ %d more not shown", hidden))
+            gridOverflow:Show()
+        else
+            gridOverflow:Hide()
+        end
+    end
+end
+
+-- Everything that changes when a Desired mark lands, from any source. Skipped
+-- while the overlay is closed so a bulk desire in the Rapid window does not
+-- rebuild a grid nobody is looking at.
+function MainWindow.RefreshWishlist()
+    if not frame or not frame:IsShown() then
+        return
+    end
+    MainWindow.RefreshGrid()
+    MainWindow.RefreshDesiredStatus()
 end
 
 local function RefreshAssistToggles()
@@ -232,6 +281,27 @@ local function AddSpellFromInput()
 
     inputBox:SetText("")
     MainWindow.RefreshGrid()
+    MainWindow.RefreshDesiredStatus()
+end
+
+local function SyncDesiredFromNative()
+    local DesiredSync = AscensionSuite.DesiredSync
+    if not DesiredSync or not DesiredSync.Sync then
+        return
+    end
+
+    local added, scanned = DesiredSync.Sync()
+    local note
+    if scanned == 0 then
+        note = "no candidates to scan - clear the Rapid search box"
+    elseif added == 0 then
+        note = string.format("scanned %d, nothing new", scanned)
+    else
+        note = string.format("+%d from Rapid", added)
+    end
+
+    MainWindow.RefreshGrid()
+    MainWindow.RefreshDesiredStatus(note)
 end
 
 local function SaveProfile()
@@ -253,6 +323,7 @@ local function LoadProfile()
         Wishlist.LoadProfile(profileBox:GetText(), true)
     end
     MainWindow.RefreshGrid()
+    MainWindow.RefreshDesiredStatus()
 end
 
 local function StartAutoRoll()
@@ -277,7 +348,7 @@ local function EnsureFrame()
     end
 
     frame = CreateFrame("Frame", FRAME_NAME, UIParent)
-    frame:SetSize(720, 520)
+    frame:SetSize(720, 568)
     frame:SetPoint("CENTER")
     frame:SetMovable(true)
     frame:EnableMouse(true)
@@ -380,22 +451,38 @@ local function EnsureFrame()
         self:ClearFocus()
     end)
 
+    desiredStatus = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    desiredStatus:SetPoint("TOPLEFT", 24, -236)
+    desiredStatus:SetWidth(420)
+    desiredStatus:SetJustifyH("LEFT")
+
+    local syncButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    syncButton:SetSize(120, 22)
+    syncButton:SetPoint("TOPLEFT", 452, -232)
+    syncButton:SetText("Sync from Rapid")
+    syncButton:SetScript("OnClick", SyncDesiredFromNative)
+
     gridHost = CreateFrame("Frame", nil, frame)
-    gridHost:SetPoint("TOPLEFT", 24, -240)
-    gridHost:SetSize(420, 140)
+    gridHost:SetPoint("TOPLEFT", 24, -262)
+    gridHost:SetSize(420, 148)
+
+    gridOverflow = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    gridOverflow:SetPoint("TOPLEFT", 24, -416)
+    gridOverflow:SetJustifyH("LEFT")
+    gridOverflow:Hide()
 
     local logLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    logLabel:SetPoint("TOPLEFT", 24, -388)
+    logLabel:SetPoint("TOPLEFT", 24, -436)
     logLabel:SetText("Logbook (recent)")
 
     logHost = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    logHost:SetPoint("TOPLEFT", 24, -404)
+    logHost:SetPoint("TOPLEFT", 24, -452)
     logHost:SetWidth(660)
     logHost:SetJustifyH("LEFT")
 
     local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("BOTTOM", 0, 12)
-    hint:SetText("Click cell toggles Ascension Desired · /asuite")
+    hint:SetText("Click a cell to toggle Desired · Alt + right-click a spell in the Character Advancement book · /asuite")
 
     RefreshAssistToggles()
     return frame
@@ -406,16 +493,14 @@ function MainWindow.Toggle()
     if win:IsShown() then
         win:Hide()
     else
-        MainWindow.RefreshGrid()
-        MainWindow.RefreshLogbook()
-        MainWindow.RefreshAutoRoll()
-        win:Show()
+        MainWindow.Show()
     end
 end
 
 function MainWindow.Show()
     local win = EnsureFrame()
     MainWindow.RefreshGrid()
+    MainWindow.RefreshDesiredStatus()
     MainWindow.RefreshLogbook()
     MainWindow.RefreshAutoRoll()
     win:Show()
