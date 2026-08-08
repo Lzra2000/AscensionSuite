@@ -2,7 +2,7 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
-**v0.2.6** ships: **Wishlist tab** in `/asuite` (works outside Wildcard), Rapid **Continue unstick**, filter-proof Desired sync, an opt-in **keep going after a Desired hit** assist, roll logbook, and guarded assists — all assists default **off**.
+**v0.2.7** ships: **Wishlist rows are clickable again** (selection + scroll fix), hardened Wildcard detection, Rapid **Continue unstick**, filter-proof Desired sync, an opt-in **keep going after a Desired hit** assist, roll logbook, and guarded assists — all assists default **off**.
 
 ## In-game
 
@@ -14,10 +14,11 @@ Two tabs:
 
 ### Wishlist
 - Search + scrollable list (icon, name, id; Desired badge when synced)
+- **Left-click** selects a row; **right-click** toggles Desired in Wildcard
 - Add by spell / entry id (client chrome 1:1 via AscensionAPI)
 - The row you just added, removed or toggled lights up — including when the edit came from the Character Advancement book
 - Remove / Clear (Suite store only — Ascension Desired untouched until you push)
-- **Push to Desired** — Wildcard only; hover it when it is greyed out and it says why
+- **Push to Desired** — merges the list into Ascension Desired in Wildcard; click it anytime the list has rows and it says why if Wildcard is not active
 - Save / Load named profiles
 
 ### Assists

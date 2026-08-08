@@ -41,6 +41,7 @@ local rows = {}
 local filtered = {}
 local touchedKey
 local touchedUntil
+local selectedKey
 
 local function GetAPI()
     return AscensionSuite.AscensionAPI
@@ -150,16 +151,25 @@ local function ShowRowTooltip(row)
     if row._desired then
         GameTooltip:AddLine("Marked Desired in Ascension", 0.35, 0.71, 1)
     elseif IsWildcard() then
-        GameTooltip:AddLine("Click to mark Desired", 0.6, 0.6, 0.6)
+        GameTooltip:AddLine("Right-click to toggle Desired", 0.6, 0.6, 0.6)
     else
         GameTooltip:AddLine("Desired sync happens in Wildcard mode", 0.6, 0.6, 0.6)
     end
+    GameTooltip:AddLine("Left-click selects this row", 0.6, 0.6, 0.6)
     GameTooltip:Show()
 end
 
--- Clicking a row is the Desired toggle. Outside Wildcard there is nothing to
--- toggle, so it says so in the status line instead of doing nothing silently.
-local function OnRowClick(row)
+local function SelectRow(row, note)
+    local key = ItemKey(row._item)
+    if not key then
+        return false
+    end
+    selectedKey = key
+    WishlistPanel.Refresh(note)
+    return true
+end
+
+local function OnRowToggleDesired(row)
     local Wishlist = GetWishlist()
     local item = row._item
     if not Wishlist or not item then
@@ -167,32 +177,44 @@ local function OnRowClick(row)
     end
 
     if not IsWildcard() then
-        WishlistPanel.Refresh("Desired is Wildcard-only. The entry stays on your wishlist either way.")
+        SelectRow(row, "Selected " .. (row._name or "entry")
+            .. ". Desired is Wildcard-only — Push marks every row when you enter Wildcard.")
         return
     end
 
     local api = GetAPI()
     local entryId, entryType = Wishlist.GetItemPair(item)
     if not api or not entryId then
-        WishlistPanel.Refresh("This client cannot resolve that id to an advancement entry yet.")
+        SelectRow(row, "Selected " .. (row._name or "entry")
+            .. ". This client cannot resolve that id to an advancement entry yet.")
         return
     end
 
     if api.IsDesiredID(entryId, entryType) then
         api.RemoveDesiredID(entryId, entryType)
         WishlistPanel.NoteTouched(entryId, entryType, item.spellId)
-        WishlistPanel.Refresh()
+        SelectRow(row)
         return
     end
 
     if not api.CanAddDesiredID(entryId, entryType) then
-        WishlistPanel.Refresh("Ascension will not accept that entry as Desired right now.")
+        SelectRow(row, "Selected " .. (row._name or "entry")
+            .. ". Ascension will not accept that entry as Desired right now.")
         return
     end
 
     api.AddDesiredID(entryId, entryType)
     WishlistPanel.NoteTouched(entryId, entryType, item.spellId)
-    WishlistPanel.Refresh()
+    SelectRow(row)
+end
+
+local function OnRowClick(row, button)
+    if button == "RightButton" then
+        OnRowToggleDesired(row)
+        return
+    end
+    local name = row._name or "entry"
+    SelectRow(row, "Selected " .. name .. ".")
 end
 
 local function OnRowRemove(row)
@@ -217,6 +239,12 @@ local function CreateRow(parent, index)
     stripe:SetAllPoints()
     stripe:SetTexture(1, 1, 1, 0.03)
     row._stripe = stripe
+
+    local select = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+    select:SetAllPoints()
+    select:SetTexture(1, 0.82, 0.2, 0.16)
+    select:Hide()
+    row._select = select
 
     local touch = row:CreateTexture(nil, "BORDER")
     touch:SetAllPoints()
@@ -272,6 +300,8 @@ local function CreateRow(parent, index)
         end
     end)
     row:SetScript("OnClick", OnRowClick)
+    row:EnableMouse(true)
+    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
     return row
 end
@@ -308,6 +338,12 @@ local function FillRow(row, entry, position)
         row._touch:Show()
     else
         row._touch:Hide()
+    end
+
+    if selectedKey and ItemKey(entry.item) == selectedKey then
+        row._select:Show()
+    else
+        row._select:Hide()
     end
 
     row:Show()
@@ -412,11 +448,11 @@ function WishlistPanel.GetPushBlockReason()
     if not Wishlist then
         return "The wishlist is not loaded yet."
     end
-    if not IsWildcard() then
-        return "Desired only exists in Wildcard mode. Your list is saved until you get there."
-    end
     if Wishlist.Count() == 0 then
         return "There is nothing on the wishlist to push."
+    end
+    if not IsWildcard() then
+        return "Desired only exists in Wildcard mode. Your list is saved until you get there."
     end
     return nil
 end
@@ -496,9 +532,8 @@ function WishlistPanel.Refresh(note)
         end
     end
 
-    local wildcard = IsWildcard()
     if pushButton then
-        pushButton:SetEnabled(wildcard and total > 0)
+        pushButton:SetEnabled(total > 0)
     end
     if clearButton then
         clearButton:SetEnabled(total > 0)
@@ -591,9 +626,12 @@ function WishlistPanel.Create(parent, width)
     listFrame:SetBackdropColor(0.04, 0.035, 0.025, 0.92)
     listFrame:SetBackdropBorderColor(0.45, 0.38, 0.20, 1)
 
+    -- Only the scrollbar strip is mouse-active. A full-width FauxScrollFrame sits
+    -- above row buttons in 3.3.5a and eats clicks even when the thumb is narrow.
     scrollFrame = CreateFrame("ScrollFrame", FRAME_NAME .. "Scroll", listFrame, "FauxScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", LIST_INSET, -LIST_INSET)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -SCROLLBAR_WIDTH, LIST_INSET)
+    scrollFrame:SetPoint("TOPRIGHT", listFrame, "TOPRIGHT", -LIST_INSET, -LIST_INSET)
+    scrollFrame:SetPoint("BOTTOMRIGHT", listFrame, "BOTTOMRIGHT", -LIST_INSET, LIST_INSET)
+    scrollFrame:SetWidth(SCROLLBAR_WIDTH)
     -- The updater is wrapped rather than passed straight through: FrameXML calls
     -- it as updateFunction(self), and Refresh's first argument is the status note.
     scrollFrame:SetScript("OnVerticalScroll", function(self, offset)
@@ -609,6 +647,7 @@ function WishlistPanel.Create(parent, width)
         local row = CreateRow(listFrame, index)
         row:SetWidth(rowWidth)
         row:SetPoint("TOPLEFT", listFrame, "TOPLEFT", LIST_INSET, -(LIST_INSET + (index - 1) * ROW_HEIGHT))
+        row:SetFrameLevel((scrollFrame:GetFrameLevel() or 0) + 2)
         row:Hide()
         rows[index] = row
     end
@@ -688,8 +727,9 @@ function WishlistPanel.Create(parent, width)
     hint:SetPoint("TOPLEFT", pushButton, "BOTTOMLEFT", 0, -14)
     hint:SetWidth(contentWidth)
     hint:SetJustifyH("LEFT")
-    hint:SetText("Click a row to toggle Desired \194\183 Alt + right-click a spell in the Character Advancement "
-        .. "book to add or remove it here (the row lights up) \194\183 x removes it from the Suite wishlist only.")
+    hint:SetText("Left-click selects a row \194\183 right-click toggles Desired in Wildcard \194\183 Alt + right-click a spell "
+        .. "in the Character Advancement book to add or remove it here (the row lights up) \194\183 x removes it from "
+        .. "the Suite wishlist only.")
 
     -- Only runs while a row is lit, and its whole job is to put the highlight out
     -- again once nobody is looking at a fresh edit any more.
@@ -719,4 +759,8 @@ end
 -- panel can be asserted on without a real client.
 function WishlistPanel.GetFilteredRows()
     return filtered
+end
+
+function WishlistPanel.GetSelectedKey()
+    return selectedKey
 end

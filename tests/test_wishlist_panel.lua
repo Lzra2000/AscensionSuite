@@ -92,6 +92,10 @@ function Frame:SetEnabled(value) self._enabled = value and true or false end
 function Frame:IsEnabled() return self._enabled ~= false end
 function Frame:GetID() return self._id end
 function Frame:SetID(value) self._id = value end
+function Frame:GetFrameLevel() return self._frameLevel or 0 end
+function Frame:SetFrameLevel(value) self._frameLevel = value end
+function Frame:EnableMouse() end
+function Frame:RegisterForClicks() end
 function Frame:CreateFontString() return NewFontString() end
 function Frame:CreateTexture() return NewTexture() end
 
@@ -278,22 +282,32 @@ scrollFrame._offset = 0
 Panel.Refresh()
 
 ------------------------------------------------------------------------
--- Push to Desired is the only Wildcard-gated control
+-- Row selection works in any mode; Desired toggle is right-click in Wildcard
 ------------------------------------------------------------------------
 
-assert(pushButton._enabled == false, "Push is disabled outside Wildcard")
-pushButton:Click()
-assert(Wishlist.CountDesired() == 0, "and clicking it anyway marks nothing")
+wildcard = false
+Panel.Refresh()
 
--- A greyed-out button with no explanation is the most common "it is broken"
--- report, so the reason has to be available to the tooltip.
+row1 = _G.AscensionSuiteWishlistPanelRow1
+assert(row1 and row1:IsShown(), "rows render outside Wildcard")
+row1._scripts.OnClick(row1, "LeftButton")
+assert(Panel.GetSelectedKey() ~= nil, "left-click selects a row outside Wildcard")
+assert(row1._select and row1._select:IsShown(), "selection highlight is visible")
+
 local blocked = Panel.GetPushBlockReason()
-assert(blocked and blocked:find("Wildcard"), "Push says why it is disabled, got " .. tostring(blocked))
+assert(blocked and blocked:find("Wildcard"), "Push tooltip says why Desired is blocked, got " .. tostring(blocked))
+
+pushButton:Click()
+assert(Wishlist.CountDesired() == 0, "Push outside Wildcard marks nothing")
 
 wildcard = true
 Panel.Refresh()
-assert(pushButton._enabled == true, "Push comes alive in Wildcard")
-assert(Panel.GetPushBlockReason() == nil, "and stops giving a reason once it is live")
+row1._scripts.OnClick(row1, "RightButton")
+assert(Wishlist.CountDesired() >= 1, "right-click toggles Desired in Wildcard")
+
+------------------------------------------------------------------------
+-- Push to Desired (Wildcard)
+------------------------------------------------------------------------
 
 pushButton:Click()
 assert(Wishlist.CountDesired() == 12, "every row is pushed to Desired")
