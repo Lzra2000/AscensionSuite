@@ -2,7 +2,7 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
-**v0.3.1** fixes the **Loadouts** tab going blank/transparent when opened from a hidden parent, and adds an opt-in **auto-unstick** assist for gray Rapid Continue (manual **Unstick** remains). **v0.3.0** shipped the Loadouts tab — save named builds, load/apply to Desired in Wildcard, and share via **ASUITE1** text strings — plus Push now resolves `(entryId, entryType)` before Ascension and reports refuse reasons.
+**v0.4.0** redesigns the **Loadouts** tab to mirror native Ascension Archetypes sections (sidebar nav, spell filters grouped by class, local notes per section) with an always-visible automation strip (Apply → Desired, Auto-Roll, Sync from Rapid, → Wishlist) and **Import Archetype…** from the active/draft build via the AscensionAPI seam. **v0.3.1** fixed Loadouts layout 0×0 issues and added auto-unstick.
 
 ## In-game
 
@@ -21,11 +21,12 @@ Three tabs:
 - **Push to Desired** — merges the list into Ascension Desired in Wildcard; click it anytime the list has rows and it says why if Wildcard is not active
 
 ### Loadouts
-- Saved builds list (name, entry count, character/shared)
-- **Save Build** snapshots the current wishlist (+ Desired marks)
-- **Load → Wishlist** / **Apply → Desired** (load + push in Wildcard)
-- **Capture Known** optional snapshot per build
-- **ASUITE1** share string Copy / Import
+- Archetype-style sidebar: Overview, Spells and Talents, Equipment, Pros and Cons, Itemization, Rotation, Enchants and Consumables, Macros, WeakAuras, Additional Notes
+- **Import Archetype…** pulls spells + section text from the active/draft native build (C_BuildCreator / C_BuildEditor seam only)
+- Automation strip: **Apply → Desired**, **Start Auto-Roll** (only when Auto-Roll assist is on), **Sync from Rapid**, **→ Wishlist**
+- Spells and Talents: Core/Optimal/Empowering/Synergistic filters, class grouping, Desired badges — only this section drives automation
+- Other sections: local editable notes stored on the loadout (SavedVariables)
+- Saved builds list, **Save Build**, **Reset**, **ASUITE1** Copy / Import string
 
 ### Assists
 - Checkboxes (all default off): Auto-Roll, keep going after a Desired hit, dice/SkillCard animation skip, Wildcard popup accept, logbook capture, **auto-unstick gray Rapid Continue**

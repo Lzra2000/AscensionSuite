@@ -15,6 +15,37 @@ local MAX_LOADOUTS = 50
 local MAX_ENTRIES = 300
 local SHARE_PREFIX = "ASUITE1"
 
+-- Mirrors BuildCreatorUtil.DescriptionSection keys (read-only reference).
+Loadouts.SECTION_ORDER = {
+    "OVERVIEW",
+    "SPELLS_AND_TALENTS",
+    "EQUIPMENT",
+    "PROS_AND_CONS",
+    "ITEMIZATION",
+    "ROTATION",
+    "CONSUMABLES",
+    "MACROS",
+    "WEAKAURAS",
+    "NOTES",
+}
+
+Loadouts.SECTION_LABELS = {
+    OVERVIEW = "Overview",
+    SPELLS_AND_TALENTS = "Spells and Talents",
+    EQUIPMENT = "Equipment",
+    PROS_AND_CONS = "Pros and Cons",
+    ITEMIZATION = "Itemization",
+    ROTATION = "Rotation",
+    CONSUMABLES = "Enchants and Consumables",
+    MACROS = "Macros",
+    WEAKAURAS = "WeakAuras",
+    NOTES = "Additional Notes",
+}
+
+Loadouts.SECTION_HINTS = {
+    SPELLS_AND_TALENTS = "automation source",
+}
+
 local function GetDB()
     local DB = AscensionSuite.Database
     if DB and DB.Get then
@@ -54,6 +85,85 @@ local function NormalizeEntryType(value)
         end
     end
     return nil
+end
+
+local function EmptySections()
+    local sections = {}
+    for index = 1, #Loadouts.SECTION_ORDER do
+        local key = Loadouts.SECTION_ORDER[index]
+        sections[key] = ""
+    end
+    return sections
+end
+
+local function NormalizeSections(source, fallbackNotes)
+    local sections = EmptySections()
+    if type(source) == "table" then
+        for key, value in pairs(source) do
+            if type(key) == "string" and sections[key] ~= nil and type(value) == "string" then
+                sections[key] = value
+            end
+        end
+    end
+    if fallbackNotes and fallbackNotes ~= "" and sections.OVERVIEW == "" then
+        sections.OVERVIEW = fallbackNotes
+    end
+    return sections
+end
+
+local function NormalizeTags(tags)
+    if type(tags) ~= "table" then
+        return {}
+    end
+    return {
+        core = tags.core == true,
+        optimal = tags.optimal == true,
+        empowering = tags.empowering == true,
+        synergistic = tags.synergistic == true,
+    }
+end
+
+local function TagLabel(tags)
+    tags = NormalizeTags(tags)
+    if tags.core then
+        return "Core"
+    end
+    if tags.optimal then
+        return "Optimal"
+    end
+    if tags.empowering then
+        return "Empowering"
+    end
+    if tags.synergistic then
+        return "Synergistic"
+    end
+    return "Utility"
+end
+
+local function EntryPassesFilters(row, filters)
+    if type(row) ~= "table" then
+        return false
+    end
+    if type(filters) ~= "table" then
+        return true
+    end
+    local tags = NormalizeTags(row.tags)
+    if tags.core and filters.core == false then
+        return false
+    end
+    if tags.optimal and filters.optimal == false then
+        return false
+    end
+    if tags.empowering and filters.empowering == false then
+        return false
+    end
+    if tags.synergistic and filters.synergistic == false then
+        return false
+    end
+    if not tags.core and not tags.optimal and not tags.empowering and not tags.synergistic then
+        return true
+    end
+    return true
 end
 
 local function CopyTable(source)
@@ -181,7 +291,11 @@ function Loadouts.Get(id)
         return nil
     end
     local store = GetStore()
-    return store[id]
+    local loadout = store[id]
+    if loadout then
+        Loadouts.EnsureLoadoutShape(loadout)
+    end
+    return loadout
 end
 
 function Loadouts.Create(name, notes, shared)
@@ -203,6 +317,11 @@ function Loadouts.Create(name, notes, shared)
         name = name,
         notes = type(notes) == "string" and notes or "",
         entries = {},
+        sections = EmptySections(),
+        author = PlayerName(),
+        category = nil,
+        complexity = nil,
+        equipment = { armorTypes = {}, weaponTypes = {} },
         updatedAt = Now(),
         character = shared == true and "shared" or PlayerName(),
     }
@@ -220,11 +339,237 @@ function Loadouts.Delete(id)
     return true
 end
 
+function Loadouts.EnsureLoadoutShape(loadout)
+    if type(loadout) ~= "table" then
+        return loadout
+    end
+    loadout.sections = NormalizeSections(loadout.sections, loadout.notes)
+    if type(loadout.equipment) ~= "table" then
+        loadout.equipment = { armorTypes = {}, weaponTypes = {} }
+    else
+        if type(loadout.equipment.armorTypes) ~= "table" then
+            loadout.equipment.armorTypes = {}
+        end
+        if type(loadout.equipment.weaponTypes) ~= "table" then
+            loadout.equipment.weaponTypes = {}
+        end
+    end
+    if type(loadout.entries) ~= "table" then
+        loadout.entries = {}
+    end
+    for index = 1, #loadout.entries do
+        local row = loadout.entries[index]
+        if type(row) == "table" then
+            row.tags = NormalizeTags(row.tags)
+        end
+    end
+    return loadout
+end
+
+function Loadouts.GetSectionLabel(key)
+    return Loadouts.SECTION_LABELS[key] or key
+end
+
+function Loadouts.GetSections(loadout)
+    if type(loadout) ~= "table" then
+        return EmptySections()
+    end
+    return NormalizeSections(loadout.sections, loadout.notes)
+end
+
+function Loadouts.SetSectionText(id, key, text)
+    local loadout = Loadouts.Get(id)
+    if not loadout or type(key) ~= "string" then
+        return false, "not_found"
+    end
+    Loadouts.EnsureLoadoutShape(loadout)
+    if loadout.sections[key] == nil then
+        return false, "bad_section"
+    end
+    loadout.sections[key] = type(text) == "string" and text or ""
+    if key == "OVERVIEW" then
+        loadout.notes = loadout.sections.OVERVIEW
+    end
+    loadout.updatedAt = Now()
+    return true
+end
+
+function Loadouts.UpdateMeta(id, patch)
+    local loadout = Loadouts.Get(id)
+    if not loadout or type(patch) ~= "table" then
+        return false, "not_found"
+    end
+    Loadouts.EnsureLoadoutShape(loadout)
+    if type(patch.name) == "string" then
+        local name = patch.name:match("^%s*(.-)%s*$")
+        if name ~= "" then
+            loadout.name = name
+        end
+    end
+    if patch.author ~= nil then
+        loadout.author = tostring(patch.author)
+    end
+    if patch.category ~= nil then
+        loadout.category = patch.category
+    end
+    if patch.complexity ~= nil then
+        loadout.complexity = patch.complexity
+    end
+    loadout.updatedAt = Now()
+    return true
+end
+
+function Loadouts.AddEntry(id, row)
+    local loadout = Loadouts.Get(id)
+    if not loadout or type(row) ~= "table" then
+        return false, "not_found"
+    end
+    Loadouts.EnsureLoadoutShape(loadout)
+    if #loadout.entries >= MAX_ENTRIES then
+        return false, "entry_limit"
+    end
+
+    local entryId = NormalizeId(row.entryId)
+    local entryType = NormalizeEntryType(row.entryType)
+    local spellId = NormalizeId(row.spellId)
+    if not entryId and spellId then
+        local api = GetAPI()
+        if api and api.ResolveEntry then
+            local entry = api.ResolveEntry(spellId)
+            if entry then
+                entryId = NormalizeId(entry.ID or entry.Id or entry.id)
+                entryType = entryType or NormalizeEntryType(entry.Type or entry.type)
+            end
+        end
+    end
+
+    for index = 1, #loadout.entries do
+        local existing = loadout.entries[index]
+        if existing.entryId == entryId and existing.entryType == entryType then
+            return false, "duplicate"
+        end
+    end
+
+    loadout.entries[#loadout.entries + 1] = {
+        entryId = entryId,
+        entryType = entryType,
+        spellId = spellId,
+        name = row.name,
+        desired = row.desired == true,
+        tags = NormalizeTags(row.tags),
+        classGroup = row.classGroup,
+    }
+    loadout.updatedAt = Now()
+    return true
+end
+
+function Loadouts.ImportFromArchetype(id)
+    local loadout = Loadouts.Get(id)
+    if not loadout then
+        return false, "not_found"
+    end
+    local api = GetAPI()
+    if not api or not api.GetImportableBuild or not api.CollectBuildSpellEntries then
+        return false, "no_api"
+    end
+
+    local build, source = api.GetImportableBuild()
+    if not build then
+        return false, "no_build"
+    end
+
+    Loadouts.EnsureLoadoutShape(loadout)
+    local entries = api.CollectBuildSpellEntries(build)
+    if #entries == 0 then
+        return false, "no_spells"
+    end
+
+    loadout.entries = {}
+    for index = 1, math.min(#entries, MAX_ENTRIES) do
+        local row = entries[index]
+        loadout.entries[#loadout.entries + 1] = {
+            entryId = row.entryId,
+            entryType = row.entryType,
+            spellId = row.spellId,
+            name = row.name,
+            desired = row.desired == true,
+            tags = NormalizeTags(row.tags),
+            classGroup = row.classGroup,
+        }
+    end
+
+    if api.UnpackBuildDescription and type(build.Description) == "string" then
+        local unpacked = api.UnpackBuildDescription(build.Description)
+        for key, text in pairs(unpacked) do
+            if loadout.sections[key] ~= nil then
+                loadout.sections[key] = text
+            end
+        end
+        if loadout.sections.OVERVIEW ~= "" then
+            loadout.notes = loadout.sections.OVERVIEW
+        end
+    end
+
+    if api.CollectBuildEquipmentStubs then
+        loadout.equipment = api.CollectBuildEquipmentStubs(build)
+    end
+
+    if build.Name and build.Name ~= "" then
+        loadout.name = build.Name
+    end
+    if build.AuthorName and build.AuthorName ~= "" then
+        loadout.author = build.AuthorName
+    end
+    if api.DescribeBuildCategory then
+        loadout.category = api.DescribeBuildCategory(build.Category) or loadout.category
+    end
+    if api.DescribeBuildDifficulty then
+        loadout.complexity = api.DescribeBuildDifficulty(build.Difficulty) or loadout.complexity
+    end
+
+    loadout.updatedAt = Now()
+    return true, #loadout.entries, source
+end
+
+function Loadouts.GroupEntries(entries, filters)
+    local groups = {}
+    local order = {}
+    if type(entries) ~= "table" then
+        return groups, order, 0
+    end
+
+    local total = 0
+    for index = 1, #entries do
+        local described = Loadouts.DescribeEntry(entries[index])
+        if described and EntryPassesFilters(entries[index], filters) then
+            total = total + 1
+            local label = entries[index].classGroup or described.classGroup or "Other"
+            if not groups[label] then
+                groups[label] = {}
+                order[#order + 1] = label
+            end
+            described.tagLabel = TagLabel(entries[index].tags)
+            groups[label][#groups[label] + 1] = described
+        end
+    end
+    return groups, order, total
+end
+
+function Loadouts.ResetToSaved(id)
+    local loadout = Loadouts.Get(id)
+    if not loadout then
+        return false, "not_found"
+    end
+    Loadouts.EnsureLoadoutShape(loadout)
+    return true
+end
+
 function Loadouts.Rename(id, name, notes)
     local loadout = Loadouts.Get(id)
     if not loadout then
         return false, "not_found"
     end
+    Loadouts.EnsureLoadoutShape(loadout)
     if type(name) == "string" then
         name = name:match("^%s*(.-)%s*$")
         if name ~= "" then
@@ -233,6 +578,7 @@ function Loadouts.Rename(id, name, notes)
     end
     if type(notes) == "string" then
         loadout.notes = notes
+        loadout.sections.OVERVIEW = notes
     end
     loadout.updatedAt = Now()
     return true
@@ -406,6 +752,8 @@ function Loadouts.DescribeEntry(row)
         icon = icon,
         desired = desired,
         displayId = entryId and ("e:" .. tostring(entryId)) or tostring(spellId or "?"),
+        tagLabel = TagLabel(row.tags),
+        classGroup = row.classGroup,
     }
 end
 

@@ -191,6 +191,10 @@ assert(frame, "loadouts panel builds on first tab open")
 local listRow = _G.AscensionSuiteLoadoutsPanelListRow1
 assert(listRow and listRow:GetWidth() > 0, "list rows have non-zero width after build")
 
+local spellRow = _G.AscensionSuiteLoadoutsPanelSpellRow1
+assert(spellRow and spellRow:GetWidth() > 0, "spell rows have non-zero width after build")
+assert(Panel.GetActiveSection() == "SPELLS_AND_TALENTS", "default section is spells")
+
 ------------------------------------------------------------------------
 -- Layout invalidation keeps widths after tab round-trip
 ------------------------------------------------------------------------
@@ -200,6 +204,9 @@ MainWindow.SelectTab(2)
 Panel.InvalidateLayout()
 
 assert(listRow:GetWidth() > 0, "list row width survives Assists round-trip")
+if spellRow then
+    assert(spellRow:GetWidth() > 0, "spell row width survives Assists round-trip")
+end
 assert(Panel.GetFilteredEntries() ~= nil, "filtered entries table exists")
 
 ------------------------------------------------------------------------

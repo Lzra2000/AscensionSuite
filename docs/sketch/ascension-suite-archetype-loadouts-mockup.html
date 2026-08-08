@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AscensionSuite — Archetype-style Loadouts (preview)</title>
+<style>
+  :root {
+    --page: #0b0d10;
+    --stone: #14110d;
+    --panel: #0e0c09;
+    --gold: #ffd100;
+    --gold-dim: #c8a03c;
+    --gold-line: #6e5a24;
+    --ink: #f4ead6;
+    --muted: #9c927f;
+    --wish: #59b6ff;
+    --good: #62d187;
+    --bad: #e2726f;
+    --nav: #1a1610;
+    --nav-on: #2a2316;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 28px 50px; color: var(--ink);
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    background: radial-gradient(1100px 560px at 62% -10%, #1e232c, var(--page));
+  }
+  h1 { margin: 0 0 6px; font-size: 1.22rem; }
+  .lead { color: var(--muted); max-width: 78rem; line-height: 1.5; margin: 0 0 18px; font-size: .88rem; }
+  code { color: #edcd82; }
+  a { color: #edcd82; }
+  .stage { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+
+  .dialog {
+    position: relative; width: 860px; background:
+      linear-gradient(180deg, rgba(60,48,28,.35), rgba(0,0,0,0)) , var(--stone);
+    border: 2px solid var(--gold-line);
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px #0b0906, 0 18px 44px rgba(0,0,0,.65), inset 0 0 60px rgba(0,0,0,.55);
+    padding: 14px 14px 12px;
+  }
+  .dialog::before {
+    content: ""; position: absolute; inset: 5px; border: 1px solid #3d3320; pointer-events: none;
+  }
+  .titlebar { display: flex; align-items: baseline; gap: 10px; margin: 0 0 2px; padding-left: 4px; }
+  .titlebar h2 { margin: 0; font-size: 1rem; color: var(--gold); text-shadow: 0 1px 0 #000; }
+  .ver { color: var(--muted); font-size: .72rem; }
+  .close {
+    position: absolute; top: 8px; right: 10px; width: 22px; height: 22px; line-height: 20px;
+    text-align: center; color: #f0d9a0; border: 1px solid var(--gold-line);
+    background: #241d12; border-radius: 50%; font-size: .8rem;
+  }
+
+  .tabs { display: flex; gap: 4px; margin: 10px 0 0; padding-left: 4px; }
+  .tab {
+    padding: 5px 14px 6px; font-size: .78rem; color: #cdbf9d;
+    background: linear-gradient(180deg, #241d12, #17130c);
+    border: 1px solid #4c3f22; border-bottom: none; border-radius: 5px 5px 0 0;
+  }
+  .tab.on {
+    color: var(--gold); background: linear-gradient(180deg, #3b2f18, #241c10);
+    border-color: var(--gold-line);
+  }
+  .tabline { height: 1px; background: var(--gold-line); margin-bottom: 10px; }
+
+  /* Archetypes-like body */
+  .build-shell { display: flex; gap: 0; border: 1px solid #43381f; background: var(--panel); min-height: 430px; }
+  .sidebar {
+    width: 168px; flex: none; background: var(--nav); border-right: 1px solid #43381f;
+    padding: 6px 0;
+  }
+  .nav-item {
+    padding: 7px 12px; font-size: .76rem; color: #c8b896; border-left: 2px solid transparent;
+  }
+  .nav-item.on {
+    background: var(--nav-on); color: var(--gold); border-left-color: var(--gold);
+  }
+  .nav-item .hint { display: block; font-size: .64rem; color: #6f6754; margin-top: 1px; }
+  .nav-item.on .hint { color: #8a7a4a; }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 8px 10px; border-bottom: 1px solid #2f2818; background: #12100c;
+  }
+  .meta .name {
+    font-size: .95rem; color: var(--gold); font-weight: 600; margin-right: 6px;
+  }
+  .chip {
+    font-size: .7rem; color: #cdbf9d; border: 1px solid #4c3f22; padding: 3px 8px;
+    background: #1a1610; border-radius: 2px;
+  }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  .btn {
+    padding: 4px 10px; font: inherit; font-size: .74rem; color: #f0d9a0;
+    background: linear-gradient(180deg, #6a2a22, #3d1510);
+    border: 1px solid #8a4030; border-radius: 3px;
+  }
+  .btn.gold {
+    background: linear-gradient(180deg, #5a4518, #2e230c);
+    border-color: var(--gold-line); color: var(--gold);
+  }
+  .btn.quiet {
+    background: linear-gradient(180deg, #2a2418, #16130c);
+    border-color: #4c3f22; color: #cdbf9d;
+  }
+  .btn.good {
+    background: linear-gradient(180deg, #1f4a28, #102616);
+    border-color: #3a7a48; color: #9de0ad;
+  }
+  .meta .spacer { flex: 1; }
+
+  /* Automation strip — Suite's job */
+  .auto-bar {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    padding: 7px 10px; background: #0a1410; border-bottom: 1px solid #1e3a28;
+  }
+  .auto-bar .label {
+    font-size: .68rem; color: #6aaa7a; text-transform: uppercase; letter-spacing: .05em; margin-right: 4px;
+  }
+  .auto-bar .status { font-size: .72rem; color: var(--muted); width: 100%; margin-top: 2px; }
+  .auto-bar .status .ok { color: var(--good); }
+  .auto-bar .status .bad { color: var(--bad); }
+
+  .content { padding: 10px 12px 12px; flex: 1; }
+  .section-h {
+    display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px;
+  }
+  .section-h h3 { margin: 0; font-size: .92rem; color: var(--gold); }
+  .section-h .count { margin-left: auto; font-size: .72rem; color: var(--muted); }
+  .section-h .count b { color: var(--wish); }
+
+  .filters { display: flex; gap: 10px; margin-bottom: 8px; font-size: .72rem; color: #b8ae96; }
+  .filters label { display: flex; align-items: center; gap: 4px; }
+  .filters input { accent-color: var(--gold-dim); }
+
+  .spell-groups { max-height: 210px; overflow: hidden; border: 1px solid #43381f; background: #0a0906; }
+  .group-h {
+    padding: 4px 8px; font-size: .7rem; font-weight: 600;
+    background: #1a2214; color: #7cc45a; border-bottom: 1px solid #2a3420;
+  }
+  .group-h.shaman { background: #121c2a; color: #59b6ff; border-color: #1e3048; }
+  .group-h.warrior { background: #2a1c12; color: #d4a06a; border-color: #3a2a18; }
+  .row {
+    display: flex; align-items: center; gap: 7px; height: 26px; padding: 0 8px;
+    font-size: .78rem; border-bottom: 1px solid #1a1610;
+  }
+  .row:nth-child(even) { background: rgba(255,255,255,.015); }
+  .ico { width: 18px; height: 18px; border: 1px solid #6b5a30; border-radius: 2px; flex: none; }
+  .ico.f { background: linear-gradient(135deg,#8a3a12,#e0872c); }
+  .ico.n { background: linear-gradient(135deg,#264d1e,#7cc45a); }
+  .ico.i { background: linear-gradient(135deg,#1d4f7a,#7fd0f5); }
+  .nm { flex: 1; color: #f0e6cc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tag {
+    font-size: .62rem; padding: 1px 5px; border-radius: 2px; border: 1px solid #3a3420; color: #9c927f;
+  }
+  .tag.core { color: #edcd82; border-color: #6e5a24; }
+  .tag.opt { color: #62d187; border-color: #2a5a38; }
+  .tag.syn { color: #59b6ff; border-color: #2a4a6a; }
+  .badge { font-size: .64rem; color: #59b6ff; width: 48px; text-align: right; }
+
+  .foot {
+    display: flex; gap: 6px; margin-top: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .foot .hint { font-size: .7rem; color: var(--muted); margin-left: auto; max-width: 280px; text-align: right; }
+
+  .aside {
+    width: 260px; font-size: .8rem; color: var(--muted); line-height: 1.45;
+  }
+  .aside h3 { color: var(--gold-dim); font-size: .88rem; margin: 0 0 8px; }
+  .aside ul { margin: 0; padding-left: 1.1rem; }
+  .aside li { margin-bottom: 6px; }
+  .aside .note {
+    margin-top: 12px; padding: 10px; border: 1px solid #43381f; background: #12100c;
+    border-radius: 3px; font-size: .74rem;
+  }
+  .aside .ok { color: var(--good); }
+  .aside .no { color: var(--bad); }
+</style>
+</head>
+<body>
+  <h1>AscensionSuite — Loadouts like Ascension Archetypes + automate</h1>
+  <p class="lead">
+    Mirror native <strong>Archetypes / BuildCreator</strong> sections (from Ascension client:
+    Overview → Spells and Talents → Equipment → … → Notes). Suite does
+    <em>not</em> replace Publish — it automates Desired / Auto-Roll from the
+    Spells &amp; Talents list. Confirm before Lua.
+  </p>
+
+  <div class="stage">
+    <div class="dialog">
+      <div class="close">×</div>
+      <div class="titlebar">
+        <h2>AscensionSuite</h2>
+        <span class="ver">v0.4.0 preview</span>
+      </div>
+      <div class="tabs">
+        <div class="tab">Wishlist</div>
+        <div class="tab on">Loadouts</div>
+        <div class="tab">Assists</div>
+      </div>
+      <div class="tabline"></div>
+
+      <div class="build-shell">
+        <nav class="sidebar">
+          <div class="nav-item">Overview</div>
+          <div class="nav-item on">Spells and Talents<span class="hint">automation source</span></div>
+          <div class="nav-item">Equipment</div>
+          <div class="nav-item">Pros and Cons</div>
+          <div class="nav-item">Itemization</div>
+          <div class="nav-item">Rotation</div>
+          <div class="nav-item">Enchants and Consumables</div>
+          <div class="nav-item">Macros</div>
+          <div class="nav-item">WeakAuras</div>
+          <div class="nav-item">Additional Notes</div>
+        </nav>
+
+        <div class="main">
+          <div class="meta">
+            <span class="name">Stormstrike leveling</span>
+            <span class="chip">Author <b>Lazra</b></span>
+            <span class="chip">PvE</span>
+            <span class="chip">Complexity <b>Master</b></span>
+            <span class="spacer"></span>
+            <button class="btn quiet">Import Archetype…</button>
+            <button class="btn gold">Save Build</button>
+            <button class="btn quiet">Reset</button>
+          </div>
+
+          <div class="auto-bar">
+            <span class="label">Automate</span>
+            <button class="btn">Apply → Desired</button>
+            <button class="btn good">Start Auto-Roll</button>
+            <button class="btn quiet">Sync from Rapid</button>
+            <button class="btn quiet">→ Wishlist</button>
+            <div class="status">
+              <span class="ok">12 spells ready</span> ·
+              Desired <b style="color:#59b6ff">3</b> of 12 ·
+              missing will be rolled (Wildcard + assists on)
+            </div>
+          </div>
+
+          <div class="content">
+            <div class="section-h">
+              <h3>Spells and Talents</h3>
+              <span class="count"><b>12</b> entries · grouped by class like Archetypes</span>
+            </div>
+            <div class="filters">
+              <label><input type="checkbox" checked> Core</label>
+              <label><input type="checkbox" checked> Optimal</label>
+              <label><input type="checkbox" checked> Empowering</label>
+              <label><input type="checkbox" checked> Synergistic</label>
+              <button class="btn quiet" style="margin-left:auto">+ Add Spell</button>
+            </div>
+            <div class="spell-groups">
+              <div class="group-h">Beast Mastery Hunter</div>
+              <div class="row">
+                <span class="ico n"></span><span class="nm">Multi-Shot</span>
+                <span class="tag core">Core</span><span class="badge">Desired</span>
+              </div>
+              <div class="row">
+                <span class="ico n"></span><span class="nm">Arrows of Fire</span>
+                <span class="tag opt">Optimal</span><span class="badge"></span>
+              </div>
+              <div class="group-h shaman">Enhancement Shaman</div>
+              <div class="row">
+                <span class="ico f"></span><span class="nm">Lava Lash</span>
+                <span class="tag core">Core</span><span class="badge">Desired</span>
+              </div>
+              <div class="row">
+                <span class="ico i"></span><span class="nm">Fire Storm</span>
+                <span class="tag syn">Synergistic</span><span class="badge"></span>
+              </div>
+              <div class="row">
+                <span class="ico f"></span><span class="nm">Empowered Stormstrike</span>
+                <span class="tag core">Core</span><span class="badge">Desired</span>
+              </div>
+              <div class="group-h warrior">Protection Warrior</div>
+              <div class="row">
+                <span class="ico f"></span><span class="nm">Disarm</span>
+                <span class="tag">Utility</span><span class="badge"></span>
+              </div>
+            </div>
+            <div class="foot">
+              <button class="btn quiet">Copy ASUITE1</button>
+              <button class="btn quiet">Import string…</button>
+              <span class="hint">Other sidebar pages are local notes/lists (like Archetypes). Only Spells &amp; Talents drive Auto-Roll.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="aside">
+      <h3>Like Ascension — automated</h3>
+      <ul>
+        <li>Same section list as native Archetypes (<code>BuildCreatorUtil.DescriptionSection</code>)</li>
+        <li><strong>Import Archetype…</strong> pulls the active/draft build’s spells via <code>C_BuildCreator</code> / <code>C_BuildEditor</code> (seam only)</li>
+        <li><strong>Apply → Desired</strong> + Auto-Roll = the automation layer Ascension doesn’t do</li>
+        <li>Core / Optimal / Empowering / Synergistic filters match BuildCreator tags</li>
+      </ul>
+      <div class="note">
+        <span class="ok">In scope:</span> structure, local save, import from native build,
+        Desired push, Auto-Roll, ASUITE1 share, text sections for notes/rotation/macros.<br><br>
+        <span class="no">Out of scope:</span> Publish Build to Ascension, Draft/HoF purchase,
+        rewriting native Archetypes UI, gear auto-equip.
+      </div>
+    </aside>
+  </div>
+</body>
+</html>
