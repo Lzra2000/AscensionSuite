@@ -16,14 +16,14 @@ AscensionSuite treats **player-initiated** Ascension actions as sacred. The addo
 | **Hall of Fate** | No auto-claim HoF rewards |
 | **Store / merchant** | No auto-purchase or currency spend |
 
-## Opt-in assists (v0.2.1)
+## Opt-in assists (v0.2.0)
 
 Mutating assists default **off** and must:
 
 1. Route **only** through `AscensionAPI`, behind **`C_GameMode` / Wildcard gates**.
 2. Target **Ascension Desired** (player-selected) entry sets only — no broad reroll loops. Auto-Roll refuses to start until at least one tracked wishlist entry is verified Desired via `IsDesiredID`, because rolling with nothing Desired is a reroll loop until scrolls run out.
 3. Expose a visible **Stop** control while Auto-Roll is running.
-4. **Halt** on `nil` or error API results — never swallow failures in a tight loop.
+4. **Halt** on `nil` or error API results — never swallow failures in a tight loop. Ascension's own Roll button reports failures by showing `RollingFrame.ErrorFrame` and returning nothing, so Auto-Roll also stops when that frame is up, and stops on a rapid session whose phase has not moved for 15s. A refused roll must never be retried on a timer.
 5. Limit popup accept to an **allowlist** of roll confirmations: `CONFIRM_WILDCARD_MASS_ROLL`, `CONFIRM_WILDCARD_LEVELING`. Accept **button 1 only**.
 6. Animation skip may only change Ascension's own **playback speed** and finish an already-playing animation group. It must not call the client's `OnFinished*` handlers itself (they drive the dice state machine and would run transitions twice), and must **never** start a roll by skipping alone.
 

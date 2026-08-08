@@ -2,9 +2,7 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
-**v0.2.1** ships: **AscensionAPI** wrappers, **wishlist → Desired sync**, **roll logbook**, and guarded assists (Auto-Roll, animation skip, popup accept) — all default **off**.
-
-> Install **0.2.1 or later**. The v0.2.0 zip was missing the `automation/` directory its TOC loads, so its assists could not load in-game.
+**v0.2.0** ships: **AscensionAPI** wrappers, **wishlist → Desired sync**, **roll logbook**, and guarded assists (Auto-Roll, animation skip, popup accept) — all default **off**.
 
 ## In-game
 
@@ -56,6 +54,11 @@ way to count Desired *selections* (only `IsDesiredID` per entry), so entries you
 marked directly in Ascension's Rapid window are invisible to the addon — add them
 through the overlay if you want Auto-Roll to run.
 
+It stops on its own and tells you why: the Desired set going empty, leaving
+Wildcard mode, Ascension refusing a roll (its own error frame, e.g. out of
+scrolls), or a rapid session whose phase stops moving for 15s. It never retries a
+roll the client has already refused.
+
 ## Layout
 
 ```
@@ -78,7 +81,7 @@ tests/          sandbox load, wishlist, assists, animation skip, popups, logbook
 ```sh
 sh scripts/check.sh
 sh scripts/build-dist.sh
-sh scripts/release.sh 0.2.1
+sh scripts/release.sh 0.2.0
 ```
 
 `build-dist.sh` cross-checks every TOC-listed Lua file against the built archive,
