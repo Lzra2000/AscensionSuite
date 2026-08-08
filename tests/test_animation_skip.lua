@@ -136,10 +136,19 @@ local duration = _G.DEBUG_WC_ROULETTE_DURATION
 assert(type(duration) == "number" and duration > 0 and duration < 0.5,
     "roulette duration override must be a small positive number, got " .. tostring(duration))
 
--- Reel is finished through the client's own completion path.
+-- Reel is finished through the client's own completion path on the leveling die.
 dice.ScrollFrame:Play()
 assert(group.finishCalls == 1, "reel should be finished once per play, got " .. group.finishCalls)
 assert(group.stopCalls == 0, "Finish() is preferred over Stop() when available")
+
+-- Rapid Rolling must NOT Finish() the reel: that strands pendingReveal and leaves
+-- Ascension's Continue button gray. Flipbook speed-up still applies.
+dice.isRapidRolling = true
+local finishBeforeRapid = group.finishCalls
+dice.ScrollFrame:Play()
+assert(group.finishCalls == finishBeforeRapid,
+    "rapid reel must play out; Finish() caused gray Continue in-game")
+dice.isRapidRolling = false
 
 -- Native finish handlers stay untouched: that is what caused double transitions.
 assert(finishedHandlerCalls == 0,

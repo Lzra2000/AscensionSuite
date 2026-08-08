@@ -2,7 +2,7 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
-**v0.2.1** ships: **AscensionAPI** wrappers, **wishlist built from the Desired marks you make in Ascension's own windows**, **roll logbook**, and guarded assists (Auto-Roll, animation skip, popup accept) — all default **off**.
+**v0.2.2** ships: Rapid Rolling **Continue unstick** (dice-skip no longer strands gray Continue), plus **wishlist from native Desired marks**, **roll logbook**, and guarded assists (Auto-Roll, animation skip, popup accept) — all default **off**.
 
 ## Marking a wishlist entry
 
@@ -28,6 +28,7 @@ Opens the **assist overlay**:
 
 - **Assists** (checkboxes, all default off): Auto-Roll, dice/skillcard animation skip, Wildcard popup accept, logbook capture.
 - **Start / Stop** for Auto-Roll (Stop is mandatory while running).
+- **Unstick** clears a stranded Rapid session when Continue is stuck gray (die on "?").
 - **`Desired: N of M tracked`** — N is what the client confirms Desired right now, M is every entry the addon holds an id/type pair for.
 - **Sync from Rapid** — rescan for marks made before the addon was watching.
 - **Spell / entry id → Add** resolves icon/name/tooltip 1:1 via `AscensionAPI`, then calls `C_Wildcard.AddDesiredID`.
