@@ -29,6 +29,11 @@ local RAPID_TERMINAL_PHASES = {
     Cancelled = true,
 }
 
+-- Ascension_WildCard's saved Desired table is per character and per spec, so it is
+-- small in practice; the cap only exists so a corrupt SavedVariable cannot turn one
+-- Sync click into an unbounded run of IsDesiredID probes.
+local MAX_SAVED_SELECTION_PROBES = 1000
+
 ------------------------------------------------------------------------
 -- Namespace helpers
 ------------------------------------------------------------------------
@@ -523,7 +528,8 @@ end
 -- Walk the candidate list and keep the rows IsDesiredID confirms are actually
 -- selected. This is the closest thing to enumerating Desired selections the
 -- client allows, and it only sees what the current Rapid search/filter admits:
--- a narrowed filter hides selections rather than deselecting them.
+-- a narrowed filter hides selections rather than deselecting them. Use
+-- CollectAllDesiredSelections unless you specifically want the filtered view.
 function API.CollectDesiredSelections(maxScan)
     local selections = {}
     local total = API.GetNumFilteredDesiredEntries()
@@ -550,6 +556,139 @@ function API.CollectDesiredSelections(maxScan)
     end
 
     return selections, total
+end
+
+-- Drop the Rapid window's Desired *search text* so the candidate list widens to
+-- everything the filter checkboxes admit, and hand back the undo. Ascension's own
+-- WildCardRapidRollingMixin:DesiredSearch(text) is the funnel -- passing "" runs
+-- C_Wildcard.SetFilteredDesiredEntries("", <current filter>), and calling it with
+-- no argument re-reads the search box, which this never writes to. So the player's
+-- typed search survives, in the box and in Ascension's own saved filter state.
+--
+-- Returns nil when there is nothing to widen (no Rapid frame, or an empty box),
+-- which is also the signal that a scan already saw the full candidate list.
+function API.WidenDesiredCandidates()
+    local frame = RapidRollingFrame()
+    if type(frame) ~= "table" or type(frame.DesiredSearch) ~= "function" then
+        return nil
+    end
+
+    local searchBox = frame.DesiredSearchBox
+    if type(searchBox) ~= "table" or type(searchBox.GetText) ~= "function" then
+        return nil
+    end
+
+    local ok, text = pcall(searchBox.GetText, searchBox)
+    if not ok or type(text) ~= "string" or text:match("^%s*$") then
+        return nil
+    end
+
+    if not pcall(frame.DesiredSearch, frame, "") then
+        return nil
+    end
+
+    return function()
+        pcall(frame.DesiredSearch, frame)
+    end
+end
+
+-- Ascension_WildCard remembers every Desired toggle the player makes in the Rapid
+-- window in its own per-character SavedVariable (RapidRollDesired[specID][type][id],
+-- written by WildCardRapidRollingMixin:SaveDesiredEntry). Reading it finds marks the
+-- filtered candidate list cannot show at all -- including ones made in a previous
+-- session. It is a hint, not an authority: every pair is still confirmed with
+-- IsDesiredID before it counts, so a stale row contributes nothing.
+function API.CollectSavedRapidSelections()
+    local selections = {}
+    local saved = _G.RapidRollDesired
+    if type(saved) ~= "table" then
+        return selections, 0
+    end
+
+    local buckets = {}
+    local specUtil = Namespace("SpecializationUtil")
+    if specUtil and type(specUtil.GetActiveSpecialization) == "function" then
+        local ok, specId = pcall(specUtil.GetActiveSpecialization)
+        if ok and specId ~= nil and type(saved[specId]) == "table" then
+            buckets[#buckets + 1] = saved[specId]
+        end
+    end
+
+    -- No spec id (or no bucket for it): every spec's bucket is fair game, since
+    -- IsDesiredID answers for the spec that is actually active anyway.
+    if #buckets == 0 then
+        for _, bucket in pairs(saved) do
+            if type(bucket) == "table" then
+                buckets[#buckets + 1] = bucket
+            end
+        end
+    end
+
+    local probed = 0
+    for bucketIndex = 1, #buckets do
+        for entryType, ids in pairs(buckets[bucketIndex]) do
+            if type(entryType) == "string" and type(ids) == "table" then
+                for entryId in pairs(ids) do
+                    local id = tonumber(entryId)
+                    if id and probed < MAX_SAVED_SELECTION_PROBES then
+                        probed = probed + 1
+                        if API.IsDesiredID(id, entryType) then
+                            local entry = API.GetEntryByInternalID(id)
+                            selections[#selections + 1] = {
+                                id = id,
+                                type = entryType,
+                                spellId = EntrySpellID(entry),
+                                name = entry and FirstString(entry.Name, entry.name) or nil,
+                            }
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return selections, probed
+end
+
+-- Every Desired selection the client will admit to, from both sources, with the
+-- Rapid search box taken out of the way for the duration of the scan. This is what
+-- "Sync from Rapid" and Auto-Roll should use: the filtered scan alone silently
+-- misses selections whenever the player has typed in the Desired search box.
+--
+-- Returns the merged selections, how many candidate rows were scanned, and whether
+-- the search box had to be widened -- the caller uses the last one to say so.
+function API.CollectAllDesiredSelections(maxScan)
+    local restore = API.WidenDesiredCandidates()
+    local widened = restore ~= nil
+
+    local ok, selections, scanned = pcall(API.CollectDesiredSelections, maxScan)
+    if restore then
+        restore()
+    end
+    if not ok then
+        return {}, 0, widened
+    end
+
+    selections = selections or {}
+    scanned = scanned or 0
+
+    local seen = {}
+    for index = 1, #selections do
+        local row = selections[index]
+        seen[row.type .. ":" .. tostring(row.id)] = true
+    end
+
+    local saved = API.CollectSavedRapidSelections()
+    for index = 1, #saved do
+        local row = saved[index]
+        local key = row.type .. ":" .. tostring(row.id)
+        if not seen[key] then
+            seen[key] = true
+            selections[#selections + 1] = row
+        end
+    end
+
+    return selections, scanned, widened
 end
 
 -- Whether Rapid Rolling is usable at all for the active spec / game mode.
@@ -850,6 +989,16 @@ function API.IsRapidRollingDesiredHit()
     return API.GetRapidRollingStopCode() == "STOP_RAPID_ROLLING_DESIRED_ENTRY_LEARNED"
 end
 
+-- Which entry the session just learned. Ascension's own Roll button reads the same
+-- field to decide whether to offer Lock / Unlearn for it.
+function API.GetRapidRollingLearnedEntryID()
+    local state = API.GetRapidRollingState()
+    if not state then
+        return nil
+    end
+    return tonumber(state.LearnedEntryID)
+end
+
 function API.IsAwaitingRapidRollingTalentUpgradeRoll()
     local wc = WC()
     if not wc then
@@ -945,12 +1094,23 @@ function API.IsRapidRollingAdvanceBlocked(state)
 end
 
 -- Break out of a stranded Rapid session (gray Continue / die stuck on ?).
--- Cancels the server session, clears local pendingReveal, hides the die, and
--- asks the Rapid window to refresh its Roll button.
+-- Cancels the server session, clears local pendingReveal, hides the die, and puts
+-- the Rapid window back in a state where its own Roll button works again.
+--
+-- The order mirrors Ascension's own terminal-session teardown in
+-- WildCardRapidRollingMixin:Roll: completingSession is raised *before* the cancel so
+-- the ROLL_ABILITIES_NO_ROLL the server answers a cancelled session with does not
+-- surface as a red error the player has to dismiss. Ascension clears the flag itself
+-- on the next Roll and on OnShow, so it never outlives the recovery.
 function API.RecoverStuckRapidSession()
     local ok, reason = RequireWildcard()
     if not ok then
         return false, reason
+    end
+
+    local frame = RapidRollingFrame()
+    if type(frame) == "table" then
+        frame.completingSession = true
     end
 
     API.CancelRapidRolling()
@@ -963,15 +1123,39 @@ function API.RecoverStuckRapidSession()
         end
     end
 
-    local frame = RapidRollingFrame()
-    if frame then
+    if type(frame) == "table" then
+        -- Roll() unregisters TOKEN_UPDATED for the duration of a roll and never
+        -- re-registers it when the session strands, so the scroll counters stay
+        -- frozen until the window is reopened.
         if type(frame.RegisterEvent) == "function" then
             pcall(frame.RegisterEvent, frame, "TOKEN_UPDATED")
         end
+
+        local rolling = frame.RollingFrame
+        local errorFrame = rolling and rolling.ErrorFrame
+        if type(errorFrame) == "table" and type(errorFrame.Hide) == "function" then
+            pcall(errorFrame.Hide, errorFrame)
+        end
+
         if type(frame.UpdateRollButton) == "function" then
             pcall(frame.UpdateRollButton, frame)
         elseif type(frame.Refresh) == "function" then
             pcall(frame.Refresh, frame)
+        end
+
+        -- Roll() disables the button by hand. UpdateRollButton normally re-enables
+        -- it, but only when it agrees a roll can start; if it left the button dead
+        -- while the client says otherwise, the player is still stuck.
+        local rollButton = rolling and rolling.RollButton
+        if type(rollButton) == "table" and type(rollButton.IsEnabled) == "function" then
+            local enabledOk, enabled = pcall(rollButton.IsEnabled, rollButton)
+            if enabledOk and not enabled and API.CanStartRapidRolling() == true then
+                if type(rollButton.Enable) == "function" then
+                    pcall(rollButton.Enable, rollButton)
+                elseif type(rollButton.SetEnabled) == "function" then
+                    pcall(rollButton.SetEnabled, rollButton, true)
+                end
+            end
         end
     end
     return true

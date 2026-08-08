@@ -45,6 +45,13 @@ local function GetWishlistPanel()
     return AscensionSuite.WishlistPanel
 end
 
+local function Print(message)
+    local chat = _G.DEFAULT_CHAT_FRAME
+    if chat and type(chat.AddMessage) == "function" then
+        chat:AddMessage("|cff6ba8e8AscensionSuite|r " .. tostring(message))
+    end
+end
+
 local function CreateCheckbox(parent, label, assistKey, yOffset)
     local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     check:SetPoint("TOPLEFT", 0, yOffset)
@@ -93,6 +100,11 @@ local STOP_REASONS = {
     native_error = "Ascension refused the roll - see its error message",
     stalled = "rapid session stuck — Suite cleared it; press Start again",
     desired_learned = "rolled a Desired entry - start again for the next one",
+    desired_list_done = "every Desired entry on the wishlist has been rolled",
+    desired_repeat = "the same entry landed twice - stopped rather than reroll it",
+    chain_limit = "reached the chained-session limit - press Start to keep going",
+    not_wildcard_mode = "not in Wildcard mode",
+    no_wildcard_api = "Ascension's Wildcard API is not loaded",
 }
 
 function MainWindow.DescribeStopReason(reason)
@@ -110,10 +122,18 @@ function MainWindow.RefreshAutoRoll()
     local assists = GetAssists()
     local AutoRoller = AscensionSuite.AutoRoller
     local running = AutoRoller and AutoRoller.IsRunning and AutoRoller.IsRunning()
+    local hits = 0
+    if AutoRoller and AutoRoller.GetDesiredHits then
+        hits = AutoRoller.GetDesiredHits() or 0
+    end
 
     if autoRollStatus then
         if running then
-            autoRollStatus:SetText("Auto-Roll: running")
+            if hits > 0 then
+                autoRollStatus:SetText(string.format("Auto-Roll: running (%d Desired landed)", hits))
+            else
+                autoRollStatus:SetText("Auto-Roll: running")
+            end
             autoRollStatus:SetTextColor(0.43, 0.81, 0.54, 1)
         elseif AutoRoller and AutoRoller.GetLastError and AutoRoller.GetLastError() then
             autoRollStatus:SetText("Auto-Roll stopped - " .. MainWindow.DescribeStopReason(AutoRoller.GetLastError()))
@@ -220,14 +240,17 @@ local function SyncDesiredFromNative()
         return
     end
 
-    local added, scanned = DesiredSync.Sync()
+    local added, scanned, widened = DesiredSync.Sync()
     local note
     if scanned == 0 then
-        note = "no candidates to scan - clear the Rapid search box"
+        note = "no Desired candidates to scan - open Rapid Rolling first"
     elseif added == 0 then
         note = string.format("scanned %d, nothing new", scanned)
     else
         note = string.format("+%d from Rapid", added)
+    end
+    if widened then
+        note = note .. " (searched past your Rapid filter, then put it back)"
     end
 
     local panel = GetWishlistPanel()
@@ -266,7 +289,15 @@ end
 local function StartAutoRoll()
     local AutoRoller = AscensionSuite.AutoRoller
     if AutoRoller and AutoRoller.Start then
-        AutoRoller.Start()
+        -- A refused Start used to leave the status line reading "idle", which is
+        -- indistinguishable from the button not having been pressed.
+        local ok, reason = AutoRoller.Start()
+        if not ok and autoRollStatus then
+            autoRollStatus:SetText("Auto-Roll did not start - " .. MainWindow.DescribeStopReason(reason))
+            autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
+            MainWindow.RefreshDesiredStatus()
+            return
+        end
     end
     MainWindow.RefreshAutoRoll()
     MainWindow.RefreshDesiredStatus()
@@ -282,22 +313,36 @@ end
 
 -- Manual recovery when Ascension's Continue button is stuck gray (die on "?",
 -- Scrolls Used visible, button disabled). Same path Auto-Roll uses after a stall.
+--
+-- The result goes to chat as well as the status line: the player pressing Unstick
+-- is looking at the Rapid window, not at the Suite window behind it, so a line
+-- they will actually see is the difference between "it worked" and "nothing
+-- happened, press it again".
 local function UnstickRapid()
     local AutoRoller = AscensionSuite.AutoRoller
     if AutoRoller and AutoRoller.IsRunning and AutoRoller.IsRunning() and AutoRoller.Stop then
         AutoRoller.Stop("user_stop")
     end
+
     local api = AscensionSuite.AscensionAPI
-    if api and api.RecoverStuckRapidSession then
-        local ok, reason = api.RecoverStuckRapidSession()
-        if autoRollStatus then
-            if ok then
-                autoRollStatus:SetText("Rapid session cleared — try Roll again")
-                autoRollStatus:SetTextColor(0.43, 0.81, 0.54, 1)
-            else
-                autoRollStatus:SetText("Unstick failed — " .. MainWindow.DescribeStopReason(reason))
-                autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
-            end
+    if not api or not api.RecoverStuckRapidSession then
+        return
+    end
+
+    local ok, reason = api.RecoverStuckRapidSession()
+    if ok then
+        Print("Rapid session cleared. Ascension's Roll button should work again.")
+    else
+        Print("Unstick did nothing - " .. MainWindow.DescribeStopReason(reason) .. ".")
+    end
+
+    if autoRollStatus then
+        if ok then
+            autoRollStatus:SetText("Rapid session cleared — try Roll again")
+            autoRollStatus:SetTextColor(0.43, 0.81, 0.54, 1)
+        else
+            autoRollStatus:SetText("Unstick failed — " .. MainWindow.DescribeStopReason(reason))
+            autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
         end
     end
     MainWindow.RefreshAutoRoll()
@@ -369,10 +414,11 @@ end
 
 local function BuildAssistContent(content)
     CreateCheckbox(content, "Auto-Roll while leveling (Desired targets only)", "autoRoll", -4)
-    CreateCheckbox(content, "Instant skip WildCardDice animation", "instantDiceSkip", -28)
-    CreateCheckbox(content, "Instant skip SkillCard flipbook", "instantSkillCardSkip", -52)
-    CreateCheckbox(content, "Accept Wildcard confirm popups", "acceptWildcardPopups", -76)
-    CreateCheckbox(content, "Capture rolls into Logbook", "captureRolls", -100)
+    CreateCheckbox(content, "  ...and keep going after a Desired entry lands", "autoRollContinue", -28)
+    CreateCheckbox(content, "Instant skip WildCardDice animation", "instantDiceSkip", -52)
+    CreateCheckbox(content, "Instant skip SkillCard flipbook", "instantSkillCardSkip", -76)
+    CreateCheckbox(content, "Accept Wildcard confirm popups", "acceptWildcardPopups", -100)
+    CreateCheckbox(content, "Capture rolls into Logbook", "captureRolls", -124)
 
     startButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
     startButton:SetWidth(90)
@@ -401,13 +447,13 @@ local function BuildAssistContent(content)
     autoRollStatus:SetJustifyH("RIGHT")
 
     local profileLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    profileLabel:SetPoint("TOPLEFT", 0, -140)
+    profileLabel:SetPoint("TOPLEFT", 0, -164)
     profileLabel:SetText("Desired profile")
 
     profileBox = CreateFrame("EditBox", FRAME_NAME .. "Profile", content, "InputBoxTemplate")
     profileBox:SetWidth(140)
     profileBox:SetHeight(22)
-    profileBox:SetPoint("TOPLEFT", 8, -158)
+    profileBox:SetPoint("TOPLEFT", 8, -182)
     profileBox:SetAutoFocus(false)
     profileBox:SetMaxLetters(32)
     profileBox:SetText("my-hero")
@@ -426,24 +472,24 @@ local function BuildAssistContent(content)
     loadButton:SetText("Load")
     loadButton:SetScript("OnClick", LoadProfile)
 
-    local syncButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    local syncButton = CreateFrame("Button", FRAME_NAME .. "SyncButton", content, "UIPanelButtonTemplate")
     syncButton:SetWidth(140)
     syncButton:SetHeight(22)
-    syncButton:SetPoint("TOPRIGHT", 0, -158)
+    syncButton:SetPoint("TOPRIGHT", 0, -182)
     syncButton:SetText("Sync from Rapid")
     syncButton:SetScript("OnClick", SyncDesiredFromNative)
 
     desiredStatus = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    desiredStatus:SetPoint("TOPLEFT", 0, -192)
+    desiredStatus:SetPoint("TOPLEFT", 0, -216)
     desiredStatus:SetWidth(CONTENT_WIDTH)
     desiredStatus:SetJustifyH("LEFT")
 
     local logLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    logLabel:SetPoint("TOPLEFT", 0, -222)
+    logLabel:SetPoint("TOPLEFT", 0, -246)
     logLabel:SetText("Logbook (recent)")
 
     logHost = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    logHost:SetPoint("TOPLEFT", 0, -240)
+    logHost:SetPoint("TOPLEFT", 0, -264)
     logHost:SetWidth(CONTENT_WIDTH)
     logHost:SetJustifyH("LEFT")
 end

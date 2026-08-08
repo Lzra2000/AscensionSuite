@@ -589,16 +589,29 @@ function Wishlist.IsDesired(spellOrEntryId)
 end
 
 -- Pulls Desired selections the player made in a native window into the wishlist.
--- The scan universe is the Rapid window's filtered candidate list, so a narrow
--- search box hides selections from it; each candidate is confirmed with
--- IsDesiredID rather than assumed to be selected.
+-- The seam widens the Rapid window's Desired search for the duration of the scan
+-- and puts it back afterwards, because the candidate list is the scan universe and
+-- a typed search narrows it: before that, syncing with "fire" in the search box
+-- found only the Desired marks whose names contain "fire". Each candidate is still
+-- confirmed with IsDesiredID rather than assumed to be selected.
+--
+-- Returns how many rows were newly added, how many candidates were scanned, and
+-- whether the search box had to be widened.
 function Wishlist.SyncFromNative()
     local api = GetAPI()
-    if not api or not api.CollectDesiredSelections then
-        return 0, 0
+    if not api then
+        return 0, 0, false
     end
 
-    local selections, scanned = api.CollectDesiredSelections()
+    local selections, scanned, widened
+    if api.CollectAllDesiredSelections then
+        selections, scanned, widened = api.CollectAllDesiredSelections()
+    elseif api.CollectDesiredSelections then
+        selections, scanned = api.CollectDesiredSelections()
+    else
+        return 0, 0, false
+    end
+
     local added = 0
     for index = 1, #selections do
         local row = selections[index]
@@ -607,7 +620,7 @@ function Wishlist.SyncFromNative()
             added = added + 1
         end
     end
-    return added, scanned or 0
+    return added, scanned or 0, widened == true
 end
 
 ------------------------------------------------------------------------

@@ -10,8 +10,9 @@
 --   1. WildCardRapidRollingFrame:SaveDesiredEntry / :RemoveDesiredEntry -- the
 --      funnel every Desired toggle in the native Rapid window goes through,
 --      including the "desire all build spells" bulk actions.
---   2. WILDCARD_DESIRED_ENTRIES_CHANGED -- rescans the Rapid window's filtered
---      candidate list and keeps the rows IsDesiredID confirms, which recovers
+--   2. WILDCARD_DESIRED_ENTRIES_CHANGED -- rescans the Rapid window's candidate
+--      list (with its search box widened for the duration) plus Ascension's own
+--      saved Desired table, keeping the rows IsDesiredID confirms. That recovers
 --      marks made before the addon was watching.
 --   3. Alt + right-click on a Character Advancement spell button.
 --
@@ -73,6 +74,15 @@ local function RefreshOverlay()
     end
 end
 
+-- Light up the row an edit landed on, so a mark made in Ascension's own window is
+-- visibly confirmed on the panel side. Nothing is drawn on Ascension's widgets.
+local function NoteTouched(entryId, entryType, spellId)
+    local panel = AscensionSuite.WishlistPanel
+    if panel and panel.NoteTouched then
+        panel.NoteTouched(entryId, entryType, spellId)
+    end
+end
+
 ------------------------------------------------------------------------
 -- Tracking
 ------------------------------------------------------------------------
@@ -84,6 +94,9 @@ function DesiredSync.Track(entryId, entryType, spellId, name)
     end
 
     local ok, isNew = Wishlist.AddEntry(entryId, entryType, spellId, name)
+    if ok then
+        NoteTouched(entryId, entryType, spellId)
+    end
     if ok and isNew then
         RefreshOverlay()
     end
@@ -115,14 +128,14 @@ function DesiredSync.Sync()
 
     local Wishlist = GetWishlist()
     if not Wishlist or not Wishlist.SyncFromNative then
-        return 0, 0
+        return 0, 0, false
     end
 
-    local added, scanned = Wishlist.SyncFromNative()
+    local added, scanned, widened = Wishlist.SyncFromNative()
     if added > 0 then
         RefreshOverlay()
     end
-    return added, scanned
+    return added, scanned, widened == true
 end
 
 local function FlushScan()
@@ -341,6 +354,11 @@ function DesiredSync.Init()
         if event == "ADDON_LOADED" then
             if name == "Ascension_WildCard" or name == "Ascension_CharacterAdvancement" then
                 DesiredSync.Attach()
+                -- A row added while the advancement book was unloaded has an id
+                -- and nothing else, and draws as a placeholder until something
+                -- re-describes it. This is the moment the client can: the data
+                -- those rows were waiting for just arrived.
+                RefreshOverlay()
             end
             return
         end
