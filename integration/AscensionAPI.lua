@@ -441,6 +441,150 @@ function API.GetEntrySpellIDByInternalID(internalId)
     return EntrySpellID(API.ResolveEntryByInternalID(internalId))
 end
 
+-- Spell id the client should use for a hover tooltip. Talents resolve to the
+-- current rank (or rank 1 when unknown), matching Rapid Rolling list items.
+function API.GetEntryTooltipSpellID(spellOrEntryId, internalId)
+    local entry = nil
+    local knownInternal = tonumber(internalId)
+    if knownInternal then
+        entry = API.ResolveEntryByInternalID(knownInternal)
+    end
+    if not entry then
+        entry = API.ResolveEntry(spellOrEntryId)
+    end
+    if not entry then
+        return tonumber(spellOrEntryId)
+    end
+
+    local entryId = FirstNumber(entry.ID, entry.Id, entry.id, entry.internalID, entry.InternalID)
+    local ca = CA()
+    local isTalent = false
+    if entryId and ca then
+        isTalent = Call(ca, { "IsTalentID" }, entryId) == true
+    end
+
+    if isTalent and entryId then
+        local rank = tonumber(API.GetTalentRank(entryId)) or 0
+        if rank < 1 then
+            rank = 1
+        end
+        local spells = entry.Spells or entry.spells
+        if type(spells) == "table" then
+            local spellId = tonumber(spells[rank])
+            if spellId then
+                return spellId
+            end
+            return tonumber(spells[1])
+        end
+        local byRank = API.GetTalentRankSpellID(entryId, rank)
+        if byRank then
+            return byRank
+        end
+    end
+
+    local spellId = EntrySpellID(entry)
+    if spellId then
+        return spellId
+    end
+    return tonumber(spellOrEntryId)
+end
+
+local function TooltipSetHyperlink(tooltip, link)
+    if not link or link == "" or type(tooltip.SetHyperlink) ~= "function" then
+        return false
+    end
+    tooltip:SetHyperlink(link)
+    return true
+end
+
+local function TooltipSetSpellById(tooltip, spellId)
+    spellId = tonumber(spellId)
+    if not spellId then
+        return false
+    end
+
+    if type(tooltip.SetSpellByID) == "function" then
+        tooltip:SetSpellByID(spellId)
+        return true
+    end
+
+    local linkUtil = _G.LinkUtil
+    if type(linkUtil) == "table" and type(linkUtil.GetSpellLink) == "function" then
+        local link = linkUtil:GetSpellLink(spellId)
+        if link and link ~= "" then
+            return TooltipSetHyperlink(tooltip, link)
+        end
+    end
+
+    return TooltipSetHyperlink(tooltip, "spell:" .. tostring(spellId))
+end
+
+-- Paint the native Ascension / Blizzard spell tooltip on owner. Returns true when
+-- GameTooltip was populated from client APIs; false when callers should fall back
+-- to GetEntryTooltipLines. Tag / Suggestion entries have no spell tooltip.
+function API.ShowEntryTooltip(owner, spellOrEntryId, anchor, internalId)
+    local tooltip = _G.GameTooltip
+    if not tooltip or not owner then
+        return false
+    end
+
+    anchor = anchor or "ANCHOR_RIGHT"
+    tooltip:SetOwner(owner, anchor)
+
+    local entry = nil
+    local knownInternal = tonumber(internalId)
+    if knownInternal then
+        entry = API.ResolveEntryByInternalID(knownInternal)
+    end
+    if not entry then
+        entry = API.ResolveEntry(spellOrEntryId)
+    end
+
+    local entryType = entry and FirstString(entry.Type, entry.type, entry.entryType, entry.EntryType)
+    if entryType == "Tag" or entryType == "Suggestion" then
+        local name = FirstString(entry.Name, entry.name, entry.spellName, entry.displayName) or "Entry"
+        tooltip:SetText(name, 1, 1, 1)
+        local tagFormat = _G.SPELL_TAG_TOOLTIP
+        if type(tagFormat) == "string" then
+            local highlight = _G.HIGHLIGHT_FONT_COLOR
+            local wrapped = name
+            if type(highlight) == "table" and type(highlight.WrapText) == "function" then
+                wrapped = highlight:WrapText(name)
+            end
+            tooltip:AddLine(tagFormat:format(wrapped), 1, 0.82, 0, true)
+        end
+        return true
+    end
+
+    local spellId = API.GetEntryTooltipSpellID(spellOrEntryId, internalId)
+    if spellId and TooltipSetSpellById(tooltip, spellId) then
+        return true
+    end
+
+    local entryId = knownInternal or (entry and FirstNumber(entry.ID, entry.Id, entry.id))
+    local linkUtil = _G.LinkUtil
+    if entryId and type(linkUtil) == "table" then
+        local rank = tonumber(API.GetTalentRank(entryId)) or 1
+        if rank < 1 then
+            rank = 1
+        end
+        if type(linkUtil.GetTalentLinkByID) == "function" then
+            local talentLink = linkUtil:GetTalentLinkByID(entryId, rank)
+            if talentLink and TooltipSetHyperlink(tooltip, talentLink) then
+                return true
+            end
+        end
+        if type(linkUtil.GetSpellLinkInternalID) == "function" then
+            local internalLink = linkUtil:GetSpellLinkInternalID(entryId)
+            if internalLink and internalLink ~= "" and TooltipSetHyperlink(tooltip, internalLink) then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
 function API.GetEntryTooltipLines(spellOrEntryId)
     local lines = {}
     local id = tonumber(spellOrEntryId)

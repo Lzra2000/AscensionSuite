@@ -139,15 +139,23 @@ local function ShowRowTooltip(row)
         return
     end
 
-    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
-    GameTooltip:ClearLines()
+    local item = row._item
+    local internalId = item and item.entryId
+    local usedNative = api.ShowEntryTooltip(row, row._displayId, "ANCHOR_RIGHT", internalId)
 
-    local lines = api.GetEntryTooltipLines(row._displayId)
-    for index = 1, #lines do
-        if index == 1 then
-            GameTooltip:SetText(lines[index], 1, 0.82, 0.3)
-        else
-            GameTooltip:AddLine(lines[index], 1, 1, 1, true)
+    if not usedNative then
+        GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+        if type(GameTooltip.ClearLines) == "function" then
+            GameTooltip:ClearLines()
+        end
+
+        local lines = api.GetEntryTooltipLines(row._displayId)
+        for index = 1, #lines do
+            if index == 1 then
+                GameTooltip:SetText(lines[index], 1, 0.82, 0.3)
+            else
+                GameTooltip:AddLine(lines[index], 1, 1, 1, true)
+            end
         end
     end
 

@@ -3,6 +3,24 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.2.9 (2026-08-08) -- Wishlist rows show native spell tooltips
+
+#### Added
+- **`AscensionAPI.ShowEntryTooltip`** paints the real client spell tooltip on a
+  widget via `GameTooltip:SetSpellByID` (or spell hyperlink fallback), matching
+  Character Advancement and Rapid Rolling hover behavior.
+- **Rank-aware talent tooltips** — `GetEntryTooltipSpellID` resolves the current
+  talent rank (or rank 1 when unknown) before fetching.
+- Tag / Suggestion advancement entries show name + tag description text instead
+  of a spell tooltip (no spell id on those types).
+- `tests/test_wishlist_tooltip.lua` — tooltip spell-id resolution and native
+  fetch path.
+
+#### Changed
+- Wishlist panel row hover uses `ShowEntryTooltip` first; the old
+  `GetEntryTooltipLines` text stack remains as fallback when the client cannot
+  resolve a spell.
+
 ### 0.2.8 (2026-08-08) -- Wishlist panel shows stored rows again
 
 #### Fixed
