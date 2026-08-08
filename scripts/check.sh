@@ -23,6 +23,7 @@ echo ""
 echo "== C_* outside integration/AscensionAPI.lua =="
 SEAM="integration/AscensionAPI.lua"
 STRAY=$(grep -rn -E '\bC_[A-Za-z]+[.:]' . --include='*.lua' \
+    --exclude-dir=dist --exclude-dir=.git \
     | grep -v "^\./${SEAM}:" \
     | grep -v -E '^[^:]+:[0-9]+:[[:space:]]*--' || true)
 
@@ -37,6 +38,7 @@ echo ""
 echo "== Roll starters outside seam (only integration/AscensionAPI.lua) =="
 ROLL_STRAY=$(grep -rn -E '\b(RollAbilities|RerollAbilities|StartRapidRolling|ContinueRapidRolling|CancelRapidRolling)\s*\(' . \
     --include='*.lua' \
+    --exclude-dir=dist --exclude-dir=.git \
     | grep -v "^\./${SEAM}:" \
     | grep -v -E '^[^:]+:[0-9]+:[[:space:]]*--' || true)
 
