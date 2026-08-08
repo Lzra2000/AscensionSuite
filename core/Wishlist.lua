@@ -178,15 +178,49 @@ end
 
 Wishlist.GetItemPair = ItemPair
 
+local function PairFromEntry(entry)
+    if type(entry) ~= "table" then
+        return nil, nil
+    end
+    local entryId = NormalizeId(entry.ID or entry.Id or entry.id or entry.internalID or entry.InternalID)
+    local entryType = NormalizeEntryType(entry.Type or entry.type or entry.entryType or entry.EntryType)
+    if not entryId or not entryType then
+        return nil, nil
+    end
+    return entryId, entryType
+end
+
+local function CachedPairValid(api, entryId, entryType, spellId)
+    if not api or not entryId or not entryType then
+        return false
+    end
+    if api.ResolveEntryByInternalID then
+        local entry = api.ResolveEntryByInternalID(entryId)
+        if type(entry) == "table" then
+            local resolvedId, resolvedType = PairFromEntry(entry)
+            if resolvedId == entryId and resolvedType == entryType then
+                if spellId then
+                    local spellFromEntry = NormalizeId(entry.Spell or entry.spell or entry.SpellID or entry.spellID)
+                    if spellFromEntry and spellFromEntry ~= spellId then
+                        return false
+                    end
+                end
+                return true
+            end
+            return false
+        end
+    end
+    if api.IsDesiredID and api.CanAddDesiredID then
+        if api.IsDesiredID(entryId, entryType) or api.CanAddDesiredID(entryId, entryType) then
+            return true
+        end
+    end
+    return spellId == nil
+end
+
 function Wishlist.ResolveItemPair(item)
     if type(item) ~= "table" then
         return nil, nil, "invalid_item"
-    end
-
-    local entryType = NormalizeEntryType(item.entryType)
-    local entryId = NormalizeId(item.entryId)
-    if entryId and entryType then
-        return entryId, entryType, nil
     end
 
     local api = GetAPI()
@@ -194,26 +228,50 @@ function Wishlist.ResolveItemPair(item)
         return nil, nil, "no_api"
     end
 
+    local spellId = NormalizeId(item.spellId)
+    local entryId = NormalizeId(item.entryId)
+    local entryType = NormalizeEntryType(item.entryType)
+
+    -- Native Rapid Rolling resolves spell-first (GetEntryBySpellID), which is the
+    -- only reliable way to get the correct Type for talents vs abilities.
+    if spellId and api.GetEntryBySpellID then
+        local entry = api.GetEntryBySpellID(spellId)
+        if type(entry) == "table" then
+            local resolvedId, resolvedType = PairFromEntry(entry)
+            if resolvedId and resolvedType then
+                item.entryId = resolvedId
+                item.entryType = resolvedType
+                if not item.name and api.GetEntryName then
+                    item.name = api.GetEntryName(spellId)
+                end
+                return resolvedId, resolvedType, nil
+            end
+        end
+    end
+
+    if entryId and entryType and CachedPairValid(api, entryId, entryType, spellId) then
+        return entryId, entryType, nil
+    end
+
     local entry
     if entryId and api.ResolveEntryByInternalID then
         entry = api.ResolveEntryByInternalID(entryId)
     end
-    if not entry and item.spellId and api.ResolveEntry then
-        entry = api.ResolveEntry(item.spellId)
+    if not entry and spellId and api.ResolveEntry then
+        entry = api.ResolveEntry(spellId)
     end
-    if not entry and item.spellId and api.ResolveEntryByInternalID then
-        entry = api.ResolveEntryByInternalID(item.spellId)
+    if not entry and spellId and api.ResolveEntryByInternalID then
+        entry = api.ResolveEntryByInternalID(spellId)
     end
-    if not entry and api.ResolveEntry and (item.spellId or entryId) then
-        entry = api.ResolveEntry(item.spellId or entryId)
+    if not entry and api.ResolveEntry and (spellId or entryId) then
+        entry = api.ResolveEntry(spellId or entryId)
     end
 
     if type(entry) ~= "table" then
         return nil, nil, "unresolved"
     end
 
-    entryId = NormalizeId(entry.ID or entry.Id or entry.id or entry.internalID or entry.InternalID)
-    entryType = NormalizeEntryType(entry.Type or entry.type or entry.entryType or entry.EntryType)
+    entryId, entryType = PairFromEntry(entry)
     if not entryId or not entryType then
         return nil, nil, "incomplete_entry"
     end

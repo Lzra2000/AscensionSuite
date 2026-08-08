@@ -31,6 +31,7 @@ local buildShell
 local sectionSidebar
 local navButtons = {}
 local mainColumn
+local sectionContent
 local nameLabel
 local authorChip
 local categoryChip
@@ -38,6 +39,7 @@ local complexityChip
 local autoStatusLabel
 local sectionTitle
 local sectionCount
+local filterBar
 local spellScrollFrame
 local spellListFrame
 local spellRows = {}
@@ -131,7 +133,14 @@ local function RefreshShareBox()
         shareBox:SetText("")
         return
     end
-    shareBox:SetText(Loadouts.ExportString(selectedId) or "")
+    local text = Loadouts.ExportString(selectedId) or ""
+    shareBox:SetText(text)
+    if shareBox.SetCursorPosition then
+        shareBox:SetCursorPosition(0)
+    end
+    if shareBox.HighlightText then
+        shareBox:HighlightText(0, 0)
+    end
 end
 
 local function BuildSpellDisplayRows(loadout)
@@ -275,6 +284,7 @@ local function RefreshSectionContent(loadout)
     sectionTitle:SetText(label)
 
     if activeSection == "SPELLS_AND_TALENTS" then
+        if filterBar then filterBar:Show() end
         if notesEdit then notesEdit:Hide() end
         if equipmentLabel then equipmentLabel:Hide() end
         if spellListFrame then spellListFrame:Show() end
@@ -300,6 +310,7 @@ local function RefreshSectionContent(loadout)
     end
 
     if spellListFrame then spellListFrame:Hide() end
+    if filterBar then filterBar:Hide() end
     if notesEdit then notesEdit:Show() end
 
     if activeSection == "EQUIPMENT" and equipmentLabel and loadout and loadout.equipment then
@@ -322,6 +333,11 @@ local function RefreshSectionContent(loadout)
             local sections = Loadouts and Loadouts.GetSections(loadout) or {}
             notesEdit:SetText(sections.EQUIPMENT or "")
         end
+        if notesEdit.ClearAllPoints then
+            notesEdit:ClearAllPoints()
+            notesEdit:SetPoint("TOPLEFT", sectionTitle, "BOTTOMLEFT", 0, -8)
+            notesEdit:SetPoint("BOTTOMRIGHT", sectionContent, "BOTTOMRIGHT", -4, 0)
+        end
         return
     end
 
@@ -330,6 +346,11 @@ local function RefreshSectionContent(loadout)
     if notesEdit and notesEdit.SetText and loadout then
         local sections = Loadouts and Loadouts.GetSections(loadout) or {}
         notesEdit:SetText(sections[activeSection] or "")
+    end
+    if notesEdit and notesEdit.ClearAllPoints then
+        notesEdit:ClearAllPoints()
+        notesEdit:SetPoint("TOPLEFT", sectionTitle, "BOTTOMLEFT", 0, -8)
+        notesEdit:SetPoint("BOTTOMRIGHT", sectionContent, "BOTTOMRIGHT", -4, 0)
     end
 end
 
@@ -478,7 +499,7 @@ local function OnApplyDesired()
         SetStatus("Select a build first.", false)
         return
     end
-    local ok, result = Loadouts.Apply(selectedId)
+    local ok, result = Loadouts.Apply(selectedId, spellFilters)
     if not ok then
         SetStatus("Apply failed — " .. tostring(result or "error") .. ".", false)
         return
@@ -542,6 +563,20 @@ local function OnStartAutoRoll()
         SetAutoStatus("Auto-Roll is off — enable it on the Assists tab first.", false)
         return
     end
+
+    local Loadouts = GetLoadouts()
+    if Loadouts and selectedId then
+        local ok, result = Loadouts.Apply(selectedId, spellFilters)
+        if ok and result and result.gate == "not_wildcard" then
+            SetAutoStatus("Apply needs Wildcard mode before Auto-Roll can run.", false)
+            return
+        end
+        local MainWindow = AscensionSuite.MainWindow
+        if MainWindow and MainWindow.RefreshWishlist then
+            MainWindow.RefreshWishlist()
+        end
+    end
+
     local AutoRoller = AscensionSuite.AutoRoller
     if not AutoRoller or not AutoRoller.Start then
         SetAutoStatus("Auto-Roll is not available.", false)
@@ -1017,6 +1052,7 @@ local function BuildPanel(parent, width)
     autoStatusLabel:SetJustifyH("LEFT")
 
     local content = CreateFrame("Frame", nil, mainColumn)
+    sectionContent = content
     content:SetPoint("TOPLEFT", autoBar, "BOTTOMLEFT", 0, -6)
     content:SetPoint("BOTTOMRIGHT", mainColumn, "BOTTOMRIGHT", 0, 58)
 
@@ -1028,7 +1064,7 @@ local function BuildPanel(parent, width)
     sectionCount:SetPoint("TOPRIGHT", -4, -4)
     sectionCount:SetJustifyH("RIGHT")
 
-    local filterBar = CreateFrame("Frame", nil, content)
+    filterBar = CreateFrame("Frame", nil, content)
     filterBar:SetPoint("TOPLEFT", sectionTitle, "BOTTOMLEFT", 0, -8)
     filterBar:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -24)
     filterBar:SetHeight(24)
@@ -1109,9 +1145,10 @@ local function BuildPanel(parent, width)
     shareBox = CreateFrame("EditBox", FRAME_NAME .. "Share", foot, "InputBoxTemplate")
     shareBox:SetPoint("BOTTOMLEFT", copyButton, "TOPLEFT", 0, 4)
     shareBox:SetPoint("BOTTOMRIGHT", foot, "BOTTOMRIGHT", 0, 28)
-    shareBox:SetHeight(22)
+    shareBox:SetHeight(44)
+    shareBox:SetMultiLine(true)
     shareBox:SetAutoFocus(false)
-    shareBox:SetMaxLetters(4000)
+    shareBox:SetMaxLetters(8000)
 
     statusLabel = foot:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     statusLabel:SetPoint("TOPRIGHT", foot, "TOPRIGHT", 0, -2)
