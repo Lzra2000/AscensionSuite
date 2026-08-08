@@ -375,6 +375,15 @@ CharacterAdvancement:ShowSpellDropDownMenu(iceBlock)
 assert(not Wishlist.HasEntry(2002, "Talent"), "Alt + right-click again removes it from the wishlist")
 assert(#messages == 1 and messages[1]:find("Removed from wishlist"), "and says so plainly")
 
+-- A row typed into the panel while the book was unavailable carries a spell id
+-- and no (id, type) pair. Alt + right-clicking that spell has to recognise it as
+-- already on the list, or the first click reads as an add and does nothing.
+AscensionSuiteDB.wishlist = { { spellId = 116 } }
+messages = {}
+CharacterAdvancement:ShowSpellDropDownMenu(iceBlock)
+assert(Wishlist.Count() == 0, "the pairless row is the one that gets removed")
+assert(messages[1]:find("Removed from wishlist"), "on the first click, not the second")
+
 assert(lockCalls == 0, "editing the wishlist must never lock or unlock an entry")
 assert(unlearnCalls == 0, "editing the wishlist must never unlearn an entry")
 

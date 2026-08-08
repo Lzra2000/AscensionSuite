@@ -90,13 +90,13 @@ function DesiredSync.Track(entryId, entryType, spellId, name)
     return ok, isNew
 end
 
-function DesiredSync.Untrack(entryId, entryType)
+function DesiredSync.Untrack(entryId, entryType, spellId)
     local Wishlist = GetWishlist()
     if not Wishlist or not Wishlist.RemoveEntry then
         return false
     end
 
-    local removed = Wishlist.RemoveEntry(entryId, entryType)
+    local removed = Wishlist.RemoveEntry(entryId, entryType, spellId)
     if removed then
         RefreshOverlay()
     end
@@ -180,12 +180,12 @@ function DesiredSync.ToggleDesired(entryId, entryType, spellId, name)
 
     local wildcard = api ~= nil and api.IsWildcardModeActive() == true
 
-    if Wishlist.HasEntry(id, entryType) then
+    if Wishlist.HasEntry(id, entryType, spellId) then
         local unmarked = false
         if wildcard and api.IsDesiredID(id, entryType) then
             unmarked = api.RemoveDesiredID(id, entryType) ~= false
         end
-        DesiredSync.Untrack(id, entryType)
+        DesiredSync.Untrack(id, entryType, spellId)
         return true, unmarked and "removed" or "removed_local", label
     end
 
