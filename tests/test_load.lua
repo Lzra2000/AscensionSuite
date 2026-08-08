@@ -191,12 +191,40 @@ toc:close()
 
 assert(#files > 0, "AscensionSuite.toc lists no Lua files")
 
+------------------------------------------------------------------------
+-- One version, in every place that states one
+--
+-- The TOC is what the client reads, Bootstrap is what the /asuite title bar
+-- shows, and the CHANGELOG heading is what release.sh looks for. A release that
+-- bumps two of the three ships a window claiming the wrong version.
+------------------------------------------------------------------------
+
+local function ReadFile(path)
+    local handle = assert(io.open(path, "r"), path .. " missing")
+    local text = handle:read("*a")
+    handle:close()
+    return text
+end
+
+local tocVersion = ReadFile(ROOT .. "/AscensionSuite.toc"):match("##%s*Version:%s*([%d%.]+)")
+assert(tocVersion, "AscensionSuite.toc has no ## Version:")
+
+local changelogVersion = ReadFile(ROOT .. "/CHANGELOG.md"):match("###%s+([%d%.]+)%s")
+assert(changelogVersion == tocVersion,
+    "CHANGELOG.md's newest entry is " .. tostring(changelogVersion) .. ", the TOC says " .. tocVersion)
+
+assert(ReadFile(ROOT .. "/README.md"):find("v" .. tocVersion, 1, true),
+    "README.md does not mention v" .. tocVersion)
+
 for index = 1, #files do
     local path = ROOT .. "/" .. files[index]
     local chunk, err = loadfile(path)
     assert(chunk, files[index] .. ": " .. tostring(err))
     chunk(ADDON_NAME)
 end
+
+assert(AscensionSuite.VERSION == tocVersion,
+    "Bootstrap says v" .. tostring(AscensionSuite.VERSION) .. ", the TOC says v" .. tocVersion)
 
 local API = AscensionSuite.AscensionAPI
 assert(API, "AscensionAPI missing")

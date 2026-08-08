@@ -75,7 +75,11 @@ local function ContinueAfterHit()
     return assists ~= nil and assists.autoRollContinue == true
 end
 
-local function CanOperate()
+-- skipTargets exists because the Desired set empties at the moment the last entry
+-- is learned, and a tick that finds it empty still has a finished session in front
+-- of it to close out. Gating on targets before that would leave the player looking
+-- at a COMPLETE button nobody pressed.
+local function CanOperate(skipTargets)
     local assists = GetAssists()
     if not assists or assists.autoRoll ~= true then
         return false, "assist_off"
@@ -87,7 +91,7 @@ local function CanOperate()
     if not api or not api.IsWildcardModeActive() then
         return false, "not_wildcard"
     end
-    if not HasDesiredTargets() then
+    if not skipTargets and not HasDesiredTargets() then
         return false, "no_desired_targets"
     end
     if not api.IsRapidRollingFrameShown() and not api.CanRollAbilities() then
@@ -133,14 +137,8 @@ local function Tick(delta)
         return
     end
 
-    local canRun, reason = CanOperate()
+    local canRun, reason = CanOperate(true)
     if not canRun then
-        -- Running the Desired set empty is how a chained run is *supposed* to
-        -- finish, so it should not read like the "you have no targets" refusal
-        -- that stops a run before it starts.
-        if reason == "no_desired_targets" and desiredHits > 0 then
-            reason = "desired_list_done"
-        end
         AutoRoller.Stop(reason)
         return
     end
@@ -189,6 +187,10 @@ local function Tick(delta)
             return
         end
 
+        -- Read before the close: the state that names the learned entry is the
+        -- one the close throws away.
+        local learnedId = api.GetRapidRollingLearnedEntryID and api.GetRapidRollingLearnedEntryID()
+
         api.AdvanceRapidRoll(true)
         desiredHits = desiredHits + 1
 
@@ -199,7 +201,6 @@ local function Tick(delta)
 
         -- An entry the client still reports as Desired after learning it would
         -- make the chain roll for something it already has.
-        local learnedId = api.GetRapidRollingLearnedEntryID and api.GetRapidRollingLearnedEntryID()
         if learnedId then
             if learnedThisRun[learnedId] then
                 AutoRoller.Stop("desired_repeat")
@@ -219,6 +220,14 @@ local function Tick(delta)
         return
     end
     chainPending = false
+
+    -- Rolling with nothing Desired left is the reroll loop the assist boundary
+    -- rules out, so this is where a chained run finishes. It reads as a finish
+    -- rather than the "you have no targets" refusal because it is one.
+    if not HasDesiredTargets() then
+        AutoRoller.Stop(desiredHits > 0 and "desired_list_done" or "no_desired_targets")
+        return
+    end
 
     local ok, err = api.AdvanceRapidRoll(true)
     if not ok then

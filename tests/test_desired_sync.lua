@@ -387,4 +387,47 @@ assert(messages[1]:find("Removed from wishlist"), "on the first click, not the s
 assert(lockCalls == 0, "editing the wishlist must never lock or unlock an entry")
 assert(unlearnCalls == 0, "editing the wishlist must never unlearn an entry")
 
+------------------------------------------------------------------------
+-- The panel hears about edits made outside it
+--
+-- A mark made with Alt + right-click in the Character Advancement book happens
+-- with the Suite window somewhere behind it. The row is where the confirmation
+-- goes -- nothing may be drawn on Ascension's own widgets -- so the panel has to
+-- be told which row.
+------------------------------------------------------------------------
+
+local touched = {}
+local refreshes = 0
+AscensionSuite.WishlistPanel = {
+    NoteTouched = function(entryId, entryType, spellId)
+        touched[#touched + 1] = { entryId, entryType, spellId }
+        return true
+    end,
+    Refresh = function() end,
+}
+AscensionSuite.MainWindow = {
+    RefreshWishlist = function() refreshes = refreshes + 1 end,
+}
+
+altDown = true
+CharacterAdvancement:ShowSpellDropDownMenu({ entry = ENTRIES[2001], spellID = 133 })
+assert(#touched == 1, "the panel is told which row a book mark landed on")
+assert(touched[1][1] == 2001 and touched[1][2] == "Ability", "and it is the right one")
+assert(refreshes > 0, "and asked to redraw")
+
+------------------------------------------------------------------------
+-- Rows waiting on the advancement book refresh when it finally loads
+--
+-- A row typed in while Ascension_CharacterAdvancement was unloaded has an id and
+-- nothing else, and draws as a placeholder until something re-describes it.
+------------------------------------------------------------------------
+
+refreshes = 0
+FireEvent("ADDON_LOADED", "Ascension_CharacterAdvancement")
+assert(refreshes > 0, "the wishlist is redrawn once the book's data exists")
+
+refreshes = 0
+FireEvent("ADDON_LOADED", "SomeOtherAddon")
+assert(refreshes == 0, "but not for every addon that happens to load")
+
 print("OK: AscensionSuite desired sync test passed")

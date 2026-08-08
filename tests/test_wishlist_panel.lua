@@ -37,7 +37,15 @@ local function NewFontString()
         SetHeight = Noop,
         SetJustifyH = Noop,
         SetTextColor = Noop,
-        SetText = function(_, value) text = value or "" end,
+        -- Strict on purpose. The client raises on a non-string here, and the one
+        -- caller that used to hand it a frame -- the scroll handler, via
+        -- FauxScrollFrame_OnVerticalScroll(self, ..., updateFunction) -- only broke
+        -- in game, where the harness could not see it.
+        SetText = function(_, value)
+            assert(type(value) == "string" or type(value) == "number",
+                "FontString:SetText needs a string, got " .. type(value))
+            text = value or ""
+        end,
         GetText = function() return text end,
         Show = function() shown = true end,
         Hide = function() shown = false end,
@@ -114,19 +122,24 @@ end
 UIParent = CreateFrame("Frame")
 GameTooltip = CreateFrame("Frame")
 
--- Enough FauxScrollFrame for the offset maths the panel relies on.
+-- Enough FauxScrollFrame for the offset maths the panel relies on, called the way
+-- FrameXML calls it -- including handing the update function the scroll frame.
 local function FauxUpdate(frame, numItems, numToDisplay)
     frame._numItems = numItems
     frame._numToDisplay = numToDisplay
 end
 FauxScrollFrame_Update = FauxUpdate
 FauxScrollFrame_GetOffset = function(frame) return frame._offset or 0 end
+FauxScrollFrame_SetOffset = function(frame, offset) frame._offset = offset end
 FauxScrollFrame_OnVerticalScroll = function(frame, offset, valueStep, updater)
     frame._offset = math.floor((offset or 0) / (valueStep or 1))
     if updater then
-        updater()
+        updater(frame)
     end
 end
+
+local clock = 1000
+function GetTime() return clock end
 
 ------------------------------------------------------------------------
 -- Client stubs
@@ -244,12 +257,23 @@ Panel.Refresh()
 assert(#Panel.GetFilteredRows() == 12, "clearing the search restores the list")
 
 -- Twelve rows into eight visible slots: scrolling has to move the window, not
--- the list.
+-- the list. FrameXML calls the update function with the scroll frame, so this
+-- also covers the panel taking a frame where its status note goes.
 local row1 = _G.AscensionSuiteWishlistPanelRow1
 local firstBeforeScroll = row1._nameLabel:GetText()
 scrollFrame._scripts.OnVerticalScroll(scrollFrame, 4 * 28)
 assert(scrollFrame._offset == 4, "the scroll handler converts pixels to rows")
 assert(row1._nameLabel:GetText() ~= firstBeforeScroll, "and the top row follows the offset")
+
+-- Scrolled down, then a search that leaves fewer rows than the offset. Without a
+-- clamp the panel renders eight blanks over matches that are right there.
+searchBox:SetText("frost")
+Panel.Refresh()
+assert(#Panel.GetFilteredRows() == 2, "two matches")
+assert(row1:IsShown(), "the first match is drawn, not scrolled past")
+assert(row1._nameLabel:GetText():lower():find("frost"), "and it is one of the matches")
+
+searchBox:SetText("")
 scrollFrame._offset = 0
 Panel.Refresh()
 
@@ -261,15 +285,60 @@ assert(pushButton._enabled == false, "Push is disabled outside Wildcard")
 pushButton:Click()
 assert(Wishlist.CountDesired() == 0, "and clicking it anyway marks nothing")
 
+-- A greyed-out button with no explanation is the most common "it is broken"
+-- report, so the reason has to be available to the tooltip.
+local blocked = Panel.GetPushBlockReason()
+assert(blocked and blocked:find("Wildcard"), "Push says why it is disabled, got " .. tostring(blocked))
+
 wildcard = true
 Panel.Refresh()
 assert(pushButton._enabled == true, "Push comes alive in Wildcard")
+assert(Panel.GetPushBlockReason() == nil, "and stops giving a reason once it is live")
 
 pushButton:Click()
 assert(Wishlist.CountDesired() == 12, "every row is pushed to Desired")
 
 local rows = Panel.GetFilteredRows()
 assert(rows[1].desired, "and the rows report the badge")
+
+------------------------------------------------------------------------
+-- Push merges rather than replacing
+------------------------------------------------------------------------
+
+local pushed, already, failed = Wishlist.PushToDesired()
+assert(pushed == 0 and already == 12 and failed == 0,
+    "a second push adds nothing and un-marks nothing")
+
+desired = {}
+Wishlist.PushToDesired()
+assert(Wishlist.CountDesired() == 12, "and it re-marks a Desired set the player cleared")
+
+------------------------------------------------------------------------
+-- A row that was just touched is lit, and goes out on its own
+------------------------------------------------------------------------
+
+Panel.Refresh()
+local touchTarget = Panel.GetFilteredRows()[3]
+assert(Panel.NoteTouched(touchTarget.entryId, touchTarget.entryType, touchTarget.spellId),
+    "an edit from anywhere can light its row")
+Panel.Refresh()
+
+local lit = 0
+for index = 1, 8 do
+    local row = _G["AscensionSuiteWishlistPanelRow" .. index]
+    if row and row._touch and row._touch:IsShown() then
+        lit = lit + 1
+        assert(row._nameLabel:GetText() == touchTarget.name, "the lit row is the one that was touched")
+    end
+end
+assert(lit == 1, "exactly one row is lit (got " .. lit .. ")")
+
+clock = clock + 30
+Panel.Refresh()
+for index = 1, 8 do
+    local row = _G["AscensionSuiteWishlistPanelRow" .. index]
+    assert(not (row and row._touch and row._touch:IsShown()), "the highlight expires by itself")
+end
 
 ------------------------------------------------------------------------
 -- Removing a row touches the wishlist only
