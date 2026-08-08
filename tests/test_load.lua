@@ -112,6 +112,10 @@ local function NewFrame()
             return function(self) return self._text or "" end
         elseif key == "SetOwner" or key == "ClearLines" or key == "AddLine" then
             return Noop
+        elseif key == "SetSpellByID" then
+            return function(self, spellId) self._spellId = spellId end
+        elseif key == "SetHyperlink" then
+            return function(self, link) self._hyperlink = link end
         elseif key == "GetChecked" or key == "SetChecked" then
             return Noop
         end
@@ -231,6 +235,8 @@ assert(API, "AscensionAPI missing")
 assert(API.GetEntryIcon(133):find("Icons"), "GetEntryIcon failed")
 assert(API.GetEntryName(133):find("CA Entry"), "GetEntryName failed")
 assert(#API.GetEntryTooltipLines(133) > 0, "GetEntryTooltipLines failed")
+assert(API.ShowEntryTooltip(GameTooltip, 133) == true, "ShowEntryTooltip failed")
+assert(GameTooltip._spellId == 133, "ShowEntryTooltip uses SetSpellByID")
 
 AscensionSuite.Database.Init()
 assert(AscensionSuiteDB.assists.autoRoll == false, "autoRoll must default false")
