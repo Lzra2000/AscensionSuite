@@ -101,6 +101,13 @@ local function CreateCheckbox(parent, label, assistKey, yOffset)
             end
         end
 
+        if assistKey == "autoUnstick" then
+            local AutoUnstick = AscensionSuite.AutoUnstick
+            if AutoUnstick and AutoUnstick.Refresh then
+                AutoUnstick.Refresh()
+            end
+        end
+
         MainWindow.RefreshAutoRoll()
         MainWindow.RefreshLogbook()
     end)
@@ -275,6 +282,13 @@ function MainWindow.RefreshWishlist()
     MainWindow.RefreshDesiredStatus()
 end
 
+function MainWindow.RefreshLoadouts()
+    local loadoutsPanel = GetLoadoutsPanel()
+    if loadoutsPanel and loadoutsPanel.Refresh then
+        loadoutsPanel.Refresh()
+    end
+end
+
 local function EnsureWishlistPanel()
     local content = contents[TAB_WISHLIST]
     local panel = GetWishlistPanel()
@@ -396,7 +410,7 @@ local function UnstickRapid()
 
     local api = AscensionSuite.AscensionAPI
     if not api or not api.RecoverStuckRapidSession then
-        return
+        return false
     end
 
     local ok, reason = api.RecoverStuckRapidSession()
@@ -416,6 +430,11 @@ local function UnstickRapid()
         end
     end
     MainWindow.RefreshAutoRoll()
+    return ok
+end
+
+function MainWindow.UnstickRapid()
+    return UnstickRapid()
 end
 
 ------------------------------------------------------------------------
@@ -493,6 +512,7 @@ local function BuildAssistContent(content)
     CreateCheckbox(content, "Instant skip SkillCard flipbook", "instantSkillCardSkip", -76)
     CreateCheckbox(content, "Accept Wildcard confirm popups", "acceptWildcardPopups", -100)
     CreateCheckbox(content, "Capture rolls into Logbook", "captureRolls", -124)
+    CreateCheckbox(content, "Auto-unstick gray Rapid Continue", "autoUnstick", -148)
 
     startButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
     startButton:SetWidth(90)
@@ -521,7 +541,7 @@ local function BuildAssistContent(content)
     autoRollStatus:SetJustifyH("RIGHT")
 
     local loadoutsHint = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    loadoutsHint:SetPoint("TOPLEFT", 0, -164)
+    loadoutsHint:SetPoint("TOPLEFT", 0, -188)
     loadoutsHint:SetWidth(CONTENT_WIDTH)
     loadoutsHint:SetJustifyH("LEFT")
     loadoutsHint:SetText("Save and load named builds on the Loadouts tab.")
@@ -529,21 +549,21 @@ local function BuildAssistContent(content)
     local syncButton = CreateFrame("Button", FRAME_NAME .. "SyncButton", content, "UIPanelButtonTemplate")
     syncButton:SetWidth(140)
     syncButton:SetHeight(22)
-    syncButton:SetPoint("TOPRIGHT", 0, -182)
+    syncButton:SetPoint("TOPRIGHT", 0, -206)
     syncButton:SetText("Sync from Rapid")
     syncButton:SetScript("OnClick", SyncDesiredFromNative)
 
     desiredStatus = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    desiredStatus:SetPoint("TOPLEFT", 0, -216)
+    desiredStatus:SetPoint("TOPLEFT", 0, -240)
     desiredStatus:SetWidth(CONTENT_WIDTH)
     desiredStatus:SetJustifyH("LEFT")
 
     local logLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    logLabel:SetPoint("TOPLEFT", 0, -246)
+    logLabel:SetPoint("TOPLEFT", 0, -270)
     logLabel:SetText("Logbook (recent)")
 
     logHost = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    logHost:SetPoint("TOPLEFT", 0, -264)
+    logHost:SetPoint("TOPLEFT", 0, -288)
     logHost:SetWidth(CONTENT_WIDTH)
     logHost:SetJustifyH("LEFT")
 end
@@ -633,10 +653,12 @@ function MainWindow.Show()
     win:Show()
     MainWindow.SelectTab(activeTab)
 
-    EnsureWishlistPanel()
-    local panel = GetWishlistPanel()
-    if panel and panel.Refresh then
-        panel.Refresh()
+    if activeTab == TAB_LOADOUTS then
+        EnsureLoadoutsPanel()
+        MainWindow.RefreshLoadouts()
+    else
+        EnsureWishlistPanel()
+        MainWindow.RefreshWishlist()
     end
     MainWindow.RefreshDesiredStatus()
     MainWindow.RefreshLogbook()

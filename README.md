@@ -2,7 +2,7 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
-**v0.3.0** ships: **Loadouts tab** — save named builds from your wishlist, load/apply to Desired in Wildcard, and share via **ASUITE1** text strings — plus Push now resolves `(entryId, entryType)` before Ascension and reports refuse reasons.
+**v0.3.1** fixes the **Loadouts** tab going blank/transparent when opened from a hidden parent, and adds an opt-in **auto-unstick** assist for gray Rapid Continue (manual **Unstick** remains). **v0.3.0** shipped the Loadouts tab — save named builds, load/apply to Desired in Wildcard, and share via **ASUITE1** text strings — plus Push now resolves `(entryId, entryType)` before Ascension and reports refuse reasons.
 
 ## In-game
 
@@ -28,9 +28,9 @@ Three tabs:
 - **ASUITE1** share string Copy / Import
 
 ### Assists
-- Checkboxes (all default off): Auto-Roll, keep going after a Desired hit, dice/SkillCard animation skip, Wildcard popup accept, logbook capture
+- Checkboxes (all default off): Auto-Roll, keep going after a Desired hit, dice/SkillCard animation skip, Wildcard popup accept, logbook capture, **auto-unstick gray Rapid Continue**
 - **Start / Stop** for Auto-Roll, with a readable reason whenever it refuses or stops
-- **Unstick** if Rapid Continue is stuck gray — confirms in chat
+- **Unstick** if Rapid Continue is stuck gray — confirms in chat (auto-unstick uses the same recovery when opted in)
 - **Sync from Rapid** to pull in marks made before the addon was watching
 - Logbook of recent rolls
 
@@ -56,6 +56,7 @@ Auto-Roll only runs against Ascension **Desired**. Start (or **Push to Desired**
 | `instantSkillCardSkip` | `false` | Speed up SkillCard reveal flipbooks |
 | `acceptWildcardPopups` | `false` | Auto-accept Wildcard roll confirms only |
 | `captureRolls` | `false` | Append roll results to logbook |
+| `autoUnstick` | `false` | After a short stuck window, recover gray Rapid Continue (same path as **Unstick**) |
 
 ### Keep going after a Desired hit
 

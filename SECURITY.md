@@ -123,7 +123,8 @@ temporarily widened.
 
 ## Recovering a stranded session
 
-`RecoverStuckRapidSession` (the **Unstick** button, and Auto-Roll's stall path)
+`RecoverStuckRapidSession` (the **Unstick** button, Auto-Roll's stall path, and
+the opt-in **auto-unstick** assist when Auto-Roll is not running)
 cancels the session and puts the window back together. It only ever undoes what
 Ascension's own `Roll()` did on the way in — re-register `TOKEN_UPDATED`, clear
 `pendingReveal`, hide the die, clear the error frame, ask the frame to recompute

@@ -3,6 +3,25 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.3.1 (2026-08-08) -- Loadouts layout fix and auto-unstick assist
+
+#### Added
+- **Auto-unstick gray Rapid Continue** — opt-in checkbox on the Assists tab
+  (`autoUnstick`, default off). When enabled, detects the same stranded-die /
+  gray-Continue state as the manual **Unstick** button and calls
+  `RecoverStuckRapidSession` after a short stuck window, with a cooldown so it
+  cannot loop forever. Auto-Roll's own stall recovery still owns recovery while a
+  run is active.
+- `automation/AutoUnstick.lua`, `AscensionAPI.IsRapidRollingContinueStuck`.
+- `tests/test_loadouts_panel.lua`, `tests/test_auto_unstick.lua`.
+
+#### Fixed
+- **Loadouts tab could stay empty/transparent** when the panel was built while
+  its parent tab was hidden (same 0×0 layout class as the Wishlist fix in
+  0.2.8). `LoadoutsPanel.InvalidateLayout` now re-sizes list/entry rows and
+  detail widgets; `/asuite` ensures and refreshes Loadouts on show when that tab
+  is active.
+
 ### 0.3.0 (2026-08-08) -- Loadouts tab and Push refuse fixes
 
 #### Added

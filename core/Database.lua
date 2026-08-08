@@ -19,6 +19,7 @@ local DEFAULTS = {
         instantSkillCardSkip = false,
         acceptWildcardPopups = false,
         captureRolls = false,
+        autoUnstick = false,
     },
     wishlist = {},
     desiredProfiles = {},
