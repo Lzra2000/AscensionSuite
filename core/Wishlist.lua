@@ -138,10 +138,13 @@ function Wishlist.TrackEntry(entryId, entryType, spellId, name)
         return false, "invalid_entry"
     end
 
+    -- The id is always an advancement internal ID here, so it has to be resolved
+    -- in that id space: a spell-first lookup can land on an unrelated entry whose
+    -- spell ID collides with this internal ID.
     local api = GetAPI()
     local resolvedSpellId = NormalizeSpellId(spellId)
-    if not resolvedSpellId and api and api.GetEntrySpellID then
-        resolvedSpellId = NormalizeSpellId(api.GetEntrySpellID(id))
+    if not resolvedSpellId and api and api.GetEntrySpellIDByInternalID then
+        resolvedSpellId = NormalizeSpellId(api.GetEntrySpellIDByInternalID(id))
     end
 
     local entries = Wishlist.GetEntries()

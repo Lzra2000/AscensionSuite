@@ -362,6 +362,13 @@ function API.GetEntrySpellID(spellOrEntryId)
     return tonumber(spellOrEntryId)
 end
 
+-- Same lookup for a caller that already knows it holds an internal ID. Spell IDs
+-- and internal IDs are separate id spaces, so resolving one as the other can land
+-- on an unrelated entry whose id happens to collide.
+function API.GetEntrySpellIDByInternalID(internalId)
+    return EntrySpellID(API.ResolveEntryByInternalID(internalId))
+end
+
 function API.GetEntryTooltipLines(spellOrEntryId)
     local lines = {}
     local id = tonumber(spellOrEntryId)
