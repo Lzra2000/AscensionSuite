@@ -2,7 +2,7 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
-**v0.4.0** redesigns the **Loadouts** tab to mirror native Ascension Archetypes sections (sidebar nav, spell filters grouped by class, local notes per section) with an always-visible automation strip (Apply → Desired, Auto-Roll, Sync from Rapid, → Wishlist) and **Import Archetype…** from the active/draft build via the AscensionAPI seam. **v0.3.1** fixed Loadouts layout 0×0 issues and added auto-unstick.
+**v0.4.1** fixes a Lua 5.1 tooltip crash when hovering unranked talents on the wishlist (`tonumber` multi-return leak from `GetTalentRank`). **v0.4.0** redesigns the **Loadouts** tab to mirror native Ascension Archetypes sections (sidebar nav, spell filters grouped by class, local notes per section) with an always-visible automation strip (Apply → Desired, Auto-Roll, Sync from Rapid, → Wishlist) and **Import Archetype…** from the active/draft build via the AscensionAPI seam. **v0.3.1** fixed Loadouts layout 0×0 issues and added auto-unstick.
 
 ## In-game
 

@@ -3,6 +3,15 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.1 (2026-08-08) -- Tooltip tonumber crash fix
+
+#### Fixed
+- **Wishlist tooltip crash** when hovering talents at rank 0: `GetEntryTooltipSpellID`
+  no longer passes `GetTalentRank`'s second return value into `tonumber` as an
+  invalid radix (`tonumber("0", 1)` on Lua 5.1). Added `TonumberFirst` helper
+  and regression test for unlearned talents.
+- **ShowEntryTooltip** talent-link fallback uses the same safe rank coercion.
+
 ### 0.4.0 (2026-08-08) -- Archetype-style Loadouts + automate strip
 
 #### Added

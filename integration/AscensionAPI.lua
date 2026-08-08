@@ -136,6 +136,14 @@ local function FirstNumber(...)
     return nil
 end
 
+-- Lua 5.1 tonumber(e, base) treats a second argument as radix; never pass a
+-- multi-return call straight into tonumber (e.g. GetTalentRank returns rank, maxRank).
+-- Assign through a local: tonumber(select(1, ...)) still leaks the second value.
+local function TonumberFirst(...)
+    local value = select(1, ...)
+    return tonumber(value)
+end
+
 -- Advancement entries carry Spells as a per-rank array (entry.Spells[rank]);
 -- Ascension's own list items read Spells[1] as the representative spell, so a
 -- lookup that only knows about a scalar Spell field misses most entries.
@@ -464,7 +472,7 @@ function API.GetEntryTooltipSpellID(spellOrEntryId, internalId)
     end
 
     if isTalent and entryId then
-        local rank = tonumber(API.GetTalentRank(entryId)) or 0
+        local rank = TonumberFirst(API.GetTalentRank(entryId)) or 0
         if rank < 1 then
             rank = 1
         end
@@ -564,7 +572,7 @@ function API.ShowEntryTooltip(owner, spellOrEntryId, anchor, internalId)
     local entryId = knownInternal or (entry and FirstNumber(entry.ID, entry.Id, entry.id))
     local linkUtil = _G.LinkUtil
     if entryId and type(linkUtil) == "table" then
-        local rank = tonumber(API.GetTalentRank(entryId)) or 1
+        local rank = TonumberFirst(API.GetTalentRank(entryId)) or 1
         if rank < 1 then
             rank = 1
         end
