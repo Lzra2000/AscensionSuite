@@ -16,7 +16,7 @@ while IFS= read -r file; do
         echo "  OK:   $file"
     fi
 done <<EOF
-$(find . -name '*.lua' ! -path './.git/*' | sort)
+$(find . -name '*.lua' ! -path './.git/*' ! -path './dist/*' | sort)
 EOF
 
 echo ""
