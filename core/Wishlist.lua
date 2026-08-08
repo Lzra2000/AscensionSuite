@@ -181,11 +181,15 @@ function Wishlist.SaveProfile(name, includeKnownSnapshot)
         return false, "no_api"
     end
 
+    -- entries is the Desired set to restore; spellIds is the whole tracked
+    -- wishlist. Keeping them apart matters because tracking a spell in the grid
+    -- is not the same as marking it Desired, and loading a profile must not
+    -- desire everything the player merely kept an eye on.
     local entries = {}
     local spellIds = Wishlist.GetSpellIds()
     for index = 1, #spellIds do
         local entryId, entryType = ResolveEntryPair(spellIds[index])
-        if entryId and entryType then
+        if entryId and entryType and api.IsDesiredID(entryId, entryType) then
             entries[#entries + 1] = {
                 id = entryId,
                 type = entryType,
