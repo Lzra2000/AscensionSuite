@@ -102,13 +102,15 @@ end
 -- caller can tell "nothing was marked" apart from "nothing was scanned" -- an
 -- empty scan usually means the Rapid search box is narrowing the candidates.
 function DesiredSync.Sync()
+    -- Cleared before the guard: a scan that cannot run must still leave the
+    -- queue empty, or the scanner frame retries it every frame.
+    lastScan = Now()
+    pendingScan = false
+
     local Wishlist = GetWishlist()
     if not Wishlist or not Wishlist.SyncFromNative then
         return 0, 0
     end
-
-    lastScan = Now()
-    pendingScan = false
 
     local added, scanned = Wishlist.SyncFromNative()
     if added > 0 then
@@ -154,7 +156,13 @@ function DesiredSync.ToggleDesired(entryId, entryType, spellId, name)
         return false, "not_wildcard"
     end
 
-    local label = name or api.GetEntryName(spellId or id)
+    -- Name lookups go through the spell id when there is one: GetEntryName
+    -- resolves spell-first, so handing it an internal id can name the wrong entry.
+    local label = name
+    if not label and spellId then
+        label = api.GetEntryName(spellId)
+    end
+    label = label or ("entry " .. tostring(id))
 
     if api.IsDesiredID(id, entryType) then
         api.RemoveDesiredID(id, entryType)
