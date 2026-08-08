@@ -1,0 +1,24 @@
+# AscensionSuite — Cursor project rules
+
+AscensionSuite is a World of Warcraft addon for the Ascension / Project Ebonhold client.
+
+## Hard constraints
+
+- **Lua 5.1 syntax only** — no `goto`, no bitwise operators, no `//`.
+- **`C_*` globals only in `integration/AscensionAPI.lua`.** Feature modules use the seam; `scripts/check.sh` enforces this.
+- **No Draft / Hall of Fate / store automation.** Read-only observation and future opt-in Wildcard assists only.
+- **Assists default off.** Never auto-enable Auto-Roll, animation skip, or popup accept.
+
+## UI changes
+
+- Read `docs/sketch/` before product decisions.
+- **Send a visual preview** (HTML mockup is fine) and get approval **before** implementing UI or asset changes.
+
+## Before committing
+
+1. Run `sh scripts/check.sh` (syntax + seam scan).
+2. `luac5.1 -p` any changed Lua file.
+
+## Versioning
+
+User-visible releases bump `AscensionSuite.toc` Version and add a `CHANGELOG.md` entry.

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Ascension Suite — UI sketch</title>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --panel: #141c26;
+    --ink: #e8eef6;
+    --muted: #8a9aab;
+    --line: #2a3644;
+    --gold: #d4a84b;
+    --good: #6ecf8a;
+    --bad: #e07070;
+    --glow: #4aa8e8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--ink);
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    background:
+      radial-gradient(1000px 500px at 80% -10%, #1a3048, transparent),
+      var(--bg);
+    padding: 28px 32px 60px;
+  }
+  h1 { margin: 0 0 4px; font-size: 1.55rem; letter-spacing: 0.02em; }
+  .brand { color: var(--gold); font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; }
+  .lead { color: var(--muted); max-width: 52rem; line-height: 1.45; margin: 8px 0 22px; }
+  nav.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  nav.tabs button {
+    background: #121820; border: 1px solid var(--line); color: var(--muted);
+    padding: 8px 14px; cursor: pointer; font: inherit;
+  }
+  nav.tabs button.on {
+    color: var(--gold); border-color: var(--gold);
+    box-shadow: 0 0 12px rgba(212,168,75,.28);
+  }
+  .screen { display: none; }
+  .screen.on { display: block; }
+  .window {
+    max-width: 980px; border: 1px solid var(--line);
+    background: linear-gradient(180deg, #1c2632, var(--panel));
+    padding: 14px 16px 18px;
+  }
+  .bar {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; gap: 10px; flex-wrap: wrap;
+  }
+  .bar h2 { margin: 0; font-size: 1.05rem; color: var(--gold); }
+  .chip {
+    display: inline-block; padding: 3px 8px; font-size: 0.72rem;
+    border: 1px solid var(--line); color: var(--muted); margin-right: 6px;
+  }
+  .chip.on { color: var(--good); border-color: var(--good); }
+  .chip.warn { color: var(--bad); border-color: var(--bad); }
+  .grid2 { display: grid; grid-template-columns: 240px 1fr; gap: 14px; }
+  .side, .main {
+    border: 1px solid var(--line); background: rgba(0,0,0,.22); padding: 12px; min-height: 340px;
+  }
+  .side h3, .main h3 { margin: 0 0 10px; font-size: 0.82rem; color: var(--gold); letter-spacing: 0.04em; }
+  .row {
+    border: 1px solid transparent; padding: 8px 8px; margin-bottom: 6px;
+    cursor: pointer; color: var(--muted); font-size: 0.86rem;
+  }
+  .row:hover { border-color: var(--line); color: var(--ink); }
+  .row.active { border-color: var(--gold); color: var(--gold); }
+  .btn {
+    border: 1px solid var(--gold); color: var(--gold); background: #121820;
+    padding: 7px 12px; font: inherit; cursor: pointer; margin-right: 6px; margin-top: 6px;
+  }
+  .btn.ghost { border-color: var(--line); color: var(--muted); }
+  .btn.stop { border-color: var(--bad); color: var(--bad); }
+  .btn.good { border-color: var(--good); color: var(--good); }
+  .btn:disabled { opacity: 0.35; cursor: default; }
+  .spellgrid {
+    display: grid; grid-template-columns: repeat(8, 64px); gap: 10px;
+  }
+  .cell {
+    width: 64px; height: 64px; position: relative;
+    background: radial-gradient(circle at 50% 40%, #2a3a4c, #151c26);
+    border: 2px solid #6a8aa8;
+    box-shadow: 0 0 12px rgba(74,168,232,.25);
+  }
+  .cell.locked { border-color: var(--gold); box-shadow: 0 0 14px rgba(212,168,75,.4); }
+  .cell.off { border-color: #444; opacity: 0.45; filter: grayscale(.7); }
+  .cell .id {
+    position: absolute; bottom: 2px; left: 2px; right: 2px;
+    font-size: 0.55rem; color: #cde; background: rgba(0,0,0,.55); text-align: center;
+  }
+  .cell .tag {
+    position: absolute; top: 2px; right: 2px; font-size: 0.55rem;
+    color: var(--gold); background: rgba(0,0,0,.6); padding: 1px 3px;
+  }
+  .log {
+    font-family: Consolas, "Courier New", monospace; font-size: 0.78rem;
+    color: var(--muted); line-height: 1.5; max-height: 280px; overflow: auto;
+  }
+  .log .t { color: var(--gold); }
+  .log .ok { color: var(--good); }
+  .log .x { color: var(--bad); }
+  .settings label {
+    display: flex; align-items: center; gap: 10px; margin: 10px 0;
+    color: var(--ink); font-size: 0.9rem;
+  }
+  .settings .hint { color: var(--muted); font-size: 0.78rem; margin: -4px 0 12px 28px; }
+  .toggle {
+    width: 34px; height: 18px; border: 1px solid var(--line); background: #0e141c; position: relative;
+  }
+  .toggle.on { border-color: var(--gold); background: rgba(212,168,75,.2); }
+  .toggle i {
+    position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: var(--muted);
+  }
+  .toggle.on i { left: 18px; background: var(--gold); }
+  .note { margin-top: 18px; color: var(--muted); font-size: 0.86rem; max-width: 980px; line-height: 1.45; }
+  code { color: #e0c48a; }
+  .tooltip-demo {
+    margin-top: 12px; border: 1px solid var(--line); padding: 10px 12px; max-width: 280px;
+    background: #0e141c; font-size: 0.82rem;
+  }
+  .tooltip-demo .name { color: var(--gold); margin-bottom: 4px; }
+  .tooltip-demo .meta { color: var(--muted); font-size: 0.72rem; }
+</style>
+</head>
+<body>
+  <div class="brand">Ascension Suite · sketch</div>
+  <h1>UI & system — first pass</h1>
+  <p class="lead">
+    Builds + Logbook from every run · share · spell icon/id/tooltip 1:1 from client ·
+    Auto-Roller · instant Dice/SkillCard skip · accept Wildcard popups ·
+    Rapid board lock / unlock / deselect. All assists default <strong>off</strong>.
+  </p>
+
+  <nav class="tabs" id="tabs">
+    <button class="on" data-tab="builds">1 · Builds</button>
+    <button data-tab="logbook">2 · Logbook</button>
+    <button data-tab="rapid">3 · Rapid Board</button>
+    <button data-tab="settings">4 · Assists</button>
+    <button data-tab="share">5 · Share</button>
+  </nav>
+
+  <!-- BUILDS -->
+  <section class="screen on" id="builds">
+    <div class="window">
+      <div class="bar">
+        <h2>Builds</h2>
+        <div>
+          <span class="chip on">Hero</span>
+          <span class="chip">Assists off</span>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="side">
+          <h3>Saved</h3>
+          <div class="row active">Agility Opener · today</div>
+          <div class="row">Night run #12 · yesterday</div>
+          <div class="row">Manual draft</div>
+          <button class="btn">New from last Run</button>
+          <button class="btn ghost">Import share</button>
+        </div>
+        <div class="main">
+          <h3>Agility Opener</h3>
+          <p style="color:var(--muted);font-size:0.88rem;margin:0 0 12px;line-height:1.4">
+            Saved from Run <code>2026-08-08 12:40</code>. Locked Rapid targets + deselections.
+            Spells painted 1:1 from Ascension (icon / id / tooltip).
+          </p>
+          <div class="spellgrid">
+            <div class="cell locked"><span class="tag">LOCK</span><span class="id">31220</span></div>
+            <div class="cell locked"><span class="tag">LOCK</span><span class="id">3618</span></div>
+            <div class="cell"><span class="id">1680</span></div>
+            <div class="cell off"><span class="tag">OFF</span><span class="id">6673</span></div>
+          </div>
+          <div class="tooltip-demo">
+            <div class="name">Ancestral Fury</div>
+            <div class="meta">spell=31220 · Talent · from client tooltip</div>
+            Description and costs copied 1:1 from Ascension entry / spell tooltip APIs — no local rewrite.
+          </div>
+          <button class="btn good">Open Rapid Board</button>
+          <button class="btn ghost">Share Build</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOGBOOK -->
+  <section class="screen" id="logbook">
+    <div class="window">
+      <div class="bar">
+        <h2>Logbook — every run</h2>
+        <span class="chip">append-only</span>
+      </div>
+      <div class="grid2">
+        <div class="side">
+          <h3>Runs</h3>
+          <div class="row active">12:40 Rapid · 14 events</div>
+          <div class="row">12:22 Dice skip · 3 events</div>
+          <div class="row">11:58 SkillCards · 6 events</div>
+        </div>
+        <div class="main">
+          <h3>Run detail</h3>
+          <div class="log">
+            <div><span class="t">12:40:01</span> Rapid start · locked [31220, 3618]</div>
+            <div><span class="t">12:40:02</span> <span class="ok">roll ok</span> → Absolute Horror (id 31220)</div>
+            <div><span class="t">12:40:03</span> popup CONFIRM_WILDCARD_MASS_ROLL · auto-accepted</div>
+            <div><span class="t">12:40:04</span> dice flipbook skipped</div>
+            <div><span class="t">12:40:08</span> deselect 6673</div>
+            <div><span class="t">12:40:11</span> <span class="x">Stop</span> · player</div>
+          </div>
+          <button class="btn">Save as Build</button>
+          <button class="btn ghost">Export run JSON</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RAPID -->
+  <section class="screen" id="rapid">
+    <div class="window">
+      <div class="bar">
+        <h2>Rapid Board</h2>
+        <div>
+          <button class="btn good">Start Auto-Roll</button>
+          <button class="btn stop">Stop</button>
+          <span class="chip warn">Stop always visible while running</span>
+        </div>
+      </div>
+      <p style="color:var(--muted);font-size:0.86rem;margin:0 0 12px">
+        Click = cycle <strong>Lock → Deselect → Clear</strong>. Auto-Roll only uses <strong>LOCK</strong> cells.
+        Icons/ids/tooltips live from server/client — same SpellCell as Builds.
+      </p>
+      <div class="spellgrid">
+        <div class="cell locked"><span class="tag">LOCK</span><span class="id">31220</span></div>
+        <div class="cell locked"><span class="tag">LOCK</span><span class="id">3618</span></div>
+        <div class="cell"><span class="id">1680</span></div>
+        <div class="cell"><span class="id">20271</span></div>
+        <div class="cell off"><span class="tag">OFF</span><span class="id">6673</span></div>
+        <div class="cell"><span class="id">133</span></div>
+        <div class="cell"><span class="id">116</span></div>
+        <div class="cell"><span class="id">686</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="screen" id="settings">
+    <div class="window settings">
+      <div class="bar"><h2>Assists (all default off)</h2></div>
+      <label><span class="toggle"><i></i></span> Enable Auto-Roller</label>
+      <div class="hint">Modes: Confirm each roll · Run until locks satisfied. No currency cap — Stop is mandatory.</div>
+      <label><span class="toggle"><i></i></span> Instant Dice animation skip</label>
+      <div class="hint">Force-finish / skip flipbooks; never starts a roll by itself.</div>
+      <label><span class="toggle"><i></i></span> Instant SkillCard reveal skip</label>
+      <div class="hint">Skip SkillCard flip / reveal waits only.</div>
+      <label><span class="toggle"><i></i></span> Accept Wildcard confirm popups</label>
+      <div class="hint">Allowlist only (leveling / mass roll / unlearn confirms). No Draft / HoF / store.</div>
+    </div>
+  </section>
+
+  <!-- SHARE -->
+  <section class="screen" id="share">
+    <div class="window">
+      <div class="bar"><h2>Build Share</h2></div>
+      <p style="color:var(--muted);font-size:0.88rem;line-height:1.45">
+        Compact clipboard payload: name + locked / deselected / desired ids + optional Path.
+        Import creates a Build only — never starts Auto-Roll.
+      </p>
+      <div class="log" style="border:1px solid var(--line);padding:10px;margin:10px 0">
+        ASBv1|Agility Opener|L:31220,3618|X:6673|P:AGI
+      </div>
+      <button class="btn">Copy</button>
+      <button class="btn ghost">Paste &amp; Import</button>
+    </div>
+  </section>
+
+  <p class="note">
+    System write-up: <code>/opt/cursor/artifacts/ascension-suite-sketch-system.md</code>.
+    Next: approve this sketch → new empty repo → step 1 shell + SpellCell 1:1 proof.
+  </p>
+
+<script>
+  var tabs = document.querySelectorAll('#tabs button');
+  tabs.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      tabs.forEach(function (b) { b.classList.remove('on'); });
+      btn.classList.add('on');
+      document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('on'); });
+      document.getElementById(btn.getAttribute('data-tab')).classList.add('on');
+    });
+  });
+  document.querySelectorAll('.settings .toggle').forEach(function (t) {
+    t.addEventListener('click', function () { t.classList.toggle('on'); });
+  });
+</script>
+</body>
+</html>
