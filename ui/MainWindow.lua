@@ -76,6 +76,25 @@ local function CreateCheckbox(parent, label, assistKey, yOffset)
     return check
 end
 
+local STOP_REASONS = {
+    assist_off = "assist switched off",
+    no_desired_targets = "mark a wishlist spell Desired first",
+    level_out_of_range = "only runs while leveling 1-60",
+    not_wildcard = "not in Wildcard mode",
+    rapid_not_ready = "no roll available right now",
+    roll_in_flight = "waiting on the current roll",
+    session_complete = "rapid session finished",
+    user_stop = "stopped by you",
+    native_roll_error = "Ascension's Roll button raised an error",
+}
+
+function MainWindow.DescribeStopReason(reason)
+    if reason == nil then
+        return "unknown reason"
+    end
+    return STOP_REASONS[reason] or tostring(reason)
+end
+
 function MainWindow.RefreshAutoRoll()
     if not frame then
         return
@@ -90,7 +109,7 @@ function MainWindow.RefreshAutoRoll()
             autoRollStatus:SetText("Auto-Roll: running")
             autoRollStatus:SetTextColor(0.43, 0.81, 0.54, 1)
         elseif AutoRoller and AutoRoller.GetLastError and AutoRoller.GetLastError() then
-            autoRollStatus:SetText("Auto-Roll stopped: " .. tostring(AutoRoller.GetLastError()))
+            autoRollStatus:SetText("Auto-Roll stopped — " .. MainWindow.DescribeStopReason(AutoRoller.GetLastError()))
             autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
         else
             autoRollStatus:SetText("Auto-Roll: idle")

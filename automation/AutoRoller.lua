@@ -39,6 +39,18 @@ local function PlayerLevelInRange()
     return level >= 1 and level <= 60
 end
 
+-- Rolling with nothing marked Desired is a plain reroll loop until scrolls run
+-- out, which the assist boundary rules out. The client cannot count Desired
+-- selections, so this verifies the wishlist entries the addon tracks; targets
+-- marked only in the native Rapid window are not visible to it.
+local function HasDesiredTargets()
+    local Wishlist = AscensionSuite.Wishlist
+    if not Wishlist or not Wishlist.CountDesired then
+        return false
+    end
+    return Wishlist.CountDesired() > 0
+end
+
 local function CanOperate()
     local assists = GetAssists()
     if not assists or assists.autoRoll ~= true then
@@ -50,6 +62,9 @@ local function CanOperate()
     local api = GetAPI()
     if not api or not api.IsWildcardModeActive() then
         return false, "not_wildcard"
+    end
+    if not HasDesiredTargets() then
+        return false, "no_desired_targets"
     end
     if not api.IsRapidRollingFrameShown() and not api.CanRollAbilities() then
         return false, "rapid_not_ready"

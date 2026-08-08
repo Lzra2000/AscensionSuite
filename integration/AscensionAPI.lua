@@ -453,6 +453,10 @@ function API.ClearDesiredSpells()
     return Call(wc, { "ClearDesiredSpells" })
 end
 
+-- Size of the Desired *candidate* list after the Rapid window's search/filter,
+-- not the number of entries the player marked Desired. The client exposes no
+-- count or enumeration of actual Desired selections, only IsDesiredID per entry,
+-- so never use this as a "player has targets" gate.
 function API.GetNumFilteredDesiredEntries()
     local wc = WC()
     if not wc then
@@ -463,6 +467,18 @@ function API.GetNumFilteredDesiredEntries()
         return count
     end
     return 0
+end
+
+-- Whether Rapid Rolling is usable at all for the active spec / game mode.
+function API.CanUseRapidRolling()
+    if not API.IsWildcardModeActive() then
+        return false
+    end
+    local wc = WC()
+    if not wc then
+        return false
+    end
+    return Call(wc, { "CanUseRapidRolling" }) == true
 end
 
 ------------------------------------------------------------------------
@@ -766,19 +782,22 @@ end
 
 -- Click-equivalent advance for Rapid Rolling / leveling dice.
 -- Never starts a roll from animation skip; caller must invoke this explicitly.
+-- Whether the player actually has Desired targets is the caller's policy call
+-- (see AutoRoller): the client exposes no way to count selected Desired entries.
 function API.AdvanceRapidRoll(skipConfirm)
     local ok, reason = RequireWildcard()
     if not ok then
         return false, reason
     end
 
-    if API.GetNumFilteredDesiredEntries() == 0 and not API.IsAwaitingRapidRollingTalentUpgradeRoll() then
-        return false, "no_desired_targets"
-    end
-
+    -- The native Roll button already encodes every phase rule, so drive it when
+    -- the Rapid window is open instead of re-deriving the sequence.
     local frame = RapidRollingFrame()
     if frame and frame.IsShown and frame:IsShown() and type(frame.Roll) == "function" then
-        frame:Roll(skipConfirm == true)
+        local rollOk = pcall(frame.Roll, frame, skipConfirm == true)
+        if not rollOk then
+            return false, "native_roll_error"
+        end
         return true
     end
 
@@ -802,9 +821,9 @@ function API.AdvanceRapidRoll(skipConfirm)
 
     if awaitingContinue or API.IsAwaitingRapidRollingTalentUpgradeRoll() then
         if API.IsAwaitingRapidRollingTalentUpgradeRoll() and API.CanRollAbilities() then
-            local rollOk = API.RollAbilities()
+            local rollOk, rollReason = API.RollAbilities()
             if not rollOk then
-                return false, "roll_failed"
+                return false, rollReason or "roll_failed"
             end
             return true
         end
@@ -815,7 +834,8 @@ function API.AdvanceRapidRoll(skipConfirm)
         return true
     end
 
-    if API.CanRollAbilities() and not API.IsRapidRollingFrameShown() and API.GetNumFilteredDesiredEntries() == 0 then
+    -- No Rapid window and no session: this is the plain leveling dice.
+    if not API.IsRapidRollingFrameShown() and API.CanRollAbilities() then
         local rollOk, rollReason = API.RollAbilities()
         if not rollOk then
             return false, rollReason or "roll_failed"

@@ -144,6 +144,28 @@ function Wishlist.IsDesired(spellOrEntryId)
     return api.IsDesiredID(entryId, entryType)
 end
 
+-- How many tracked wishlist entries are currently marked Desired in Ascension.
+-- This is the only Desired set the addon can enumerate: the client offers
+-- IsDesiredID per entry but no count or listing of Desired selections, so
+-- entries the player marked directly in the native Rapid window are invisible
+-- here and are reported as zero.
+function Wishlist.CountDesired()
+    local api = GetAPI()
+    if not api then
+        return 0
+    end
+
+    local count = 0
+    local spellIds = Wishlist.GetSpellIds()
+    for index = 1, #spellIds do
+        local entryId, entryType = ResolveEntryPair(spellIds[index])
+        if entryId and entryType and api.IsDesiredID(entryId, entryType) then
+            count = count + 1
+        end
+    end
+    return count
+end
+
 function Wishlist.SaveProfile(name, includeKnownSnapshot)
     if type(name) ~= "string" then
         return false, "invalid name"
