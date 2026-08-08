@@ -3,6 +3,46 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.2.3 (2026-08-08) -- A real Wishlist panel, editable outside Wildcard
+
+The wishlist stops being a side effect of Ascension's Desired set and becomes a
+list the player owns: build it whenever you like, in any game mode, and push it
+into Desired when you are in Wildcard and want Auto-Roll to chase it.
+
+#### Fixed
+- **Alt + right-click no longer reports an error for a mark that worked.**
+  Outside Wildcard it used to print `Desired marks only exist in Wildcard mode.`
+  and do nothing. It now adds the spell to the Suite wishlist -- clicking again
+  removes it -- and only touches `AddDesiredID` when Wildcard is actually active.
+  The line that explains the Desired sync is shown **once per session**, not once
+  per spell, so building a list is not a wall of warnings.
+
+#### Added
+- **Wishlist panel** (`ui/WishlistPanel.lua`) on a new **Wishlist** tab in
+  `/asuite`: search by name or id, a scrollable list of every entry with its
+  icon, name, id and a live **Desired** badge, add by spell or entry id, remove
+  per row, clear the list, and **Push to Desired** with a status line that says
+  what happened. Icon, name and tooltip come from `AscensionAPI` 1:1.
+- **Assists tab** keeps everything that was in the old overlay -- toggles,
+  Start / Stop / Unstick, Desired profiles, Sync from Rapid, logbook.
+- `Wishlist.PushToDesired`, `Search`, `Describe`, `Add`, `Remove`, `Clear`,
+  `Contains`, `Count`.
+- `tests/test_wishlist_panel.lua`.
+
+#### Changed
+- **One wishlist store.** `AscensionSuiteDB.wishlistSpellIds` and
+  `wishlistEntries` were two views of the same list, and neither alone could
+  describe a row: the spell id draws it, the `(entryId, entryType)` pair is what
+  every Desired call needs. They are folded into `AscensionSuiteDB.wishlist`
+  (db v5, migrated on load), whose rows carry both and resolve the missing half
+  lazily -- so an id the client cannot resolve in one game mode is kept rather
+  than dropped, and can resolve later.
+- **Auto-Roll Start pushes the wishlist to Desired first** when the Desired set
+  is empty, so a list built outside Wildcard works on the first Start. If you
+  have already narrowed Desired by hand, that choice is left alone.
+- The 8x2 icon grid and its `+N more` counter are gone, replaced by the panel's
+  scrollable list. `ui/SpellCell.lua` went with it.
+
 ### 0.2.2 (2026-08-08) -- Unstick gray Continue on Rapid Rolling
 
 Hotfix for the hang where Rapid Rolling shows **Continue** grayed out with the
