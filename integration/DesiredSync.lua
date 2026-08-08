@@ -96,8 +96,6 @@ function DesiredSync.Track(entryId, entryType, spellId, name)
     local ok, isNew = Wishlist.AddEntry(entryId, entryType, spellId, name)
     if ok then
         NoteTouched(entryId, entryType, spellId)
-    end
-    if ok and isNew then
         RefreshOverlay()
     end
     return ok, isNew
@@ -176,6 +174,11 @@ function DesiredSync.ToggleDesired(entryId, entryType, spellId, name)
     local api = GetAPI()
     local Wishlist = GetWishlist()
     local id = tonumber(entryId)
+    if type(entryType) ~= "string" or entryType == "" then
+        if entryType ~= nil then
+            entryType = tostring(entryType)
+        end
+    end
     if not id or type(entryType) ~= "string" or entryType == "" then
         return false, "invalid_entry"
     end
@@ -211,7 +214,10 @@ function DesiredSync.ToggleDesired(entryId, entryType, spellId, name)
         end
     end
 
-    DesiredSync.Track(id, entryType, spellId, name)
+    local tracked, trackReason = DesiredSync.Track(id, entryType, spellId, name)
+    if not tracked then
+        return false, trackReason or "track_failed", label
+    end
     return true, marked and "added" or "added_local", label
 end
 
@@ -237,8 +243,13 @@ function DesiredSync.OnSpellDropDown(spellButton)
     end
 
     local entryId = tonumber(entry.ID or entry.Id or entry.id)
-    local entryType = entry.Type or entry.type
-    if not entryId or type(entryType) ~= "string" then
+    local entryType = entry.Type or entry.type or entry.entryType or entry.EntryType
+    if not entryId or type(entryType) ~= "string" or entryType == "" then
+        if entryId and entryType ~= nil then
+            entryType = tostring(entryType)
+        end
+    end
+    if not entryId or type(entryType) ~= "string" or entryType == "" then
         return false
     end
 

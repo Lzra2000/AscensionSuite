@@ -60,6 +60,66 @@ local function NormalizeId(value)
     return math.floor(id)
 end
 
+-- Ascension entries carry Type as a string, but some callers hand through an enum
+-- table value or a differently-cased field name. Desired calls need the string.
+local function NormalizeEntryType(value)
+    if type(value) == "string" then
+        local trimmed = value:match("^%s*(.-)%s*$")
+        if trimmed ~= "" then
+            return trimmed
+        end
+        return nil
+    end
+    if value ~= nil then
+        local text = tostring(value)
+        if text ~= "" then
+            return text
+        end
+    end
+    return nil
+end
+
+local function ForEachItem(items, visitor)
+    if type(items) ~= "table" or type(visitor) ~= "function" then
+        return
+    end
+
+    local count = #items
+    if count > 0 then
+        for index = 1, count do
+            visitor(items[index], index)
+        end
+        return
+    end
+
+    -- SavedVariables occasionally round-trip as a sparse map instead of a dense
+    -- array, which makes #items read as 0 even though rows exist.
+    for key, item in pairs(items) do
+        if type(item) == "table" then
+            visitor(item, key)
+        end
+    end
+end
+
+local function ItemCount(items)
+    if type(items) ~= "table" then
+        return 0
+    end
+
+    local count = #items
+    if count > 0 then
+        return count
+    end
+
+    local sparse = 0
+    for _, item in pairs(items) do
+        if type(item) == "table" then
+            sparse = sparse + 1
+        end
+    end
+    return sparse
+end
+
 ------------------------------------------------------------------------
 -- Store
 ------------------------------------------------------------------------
@@ -73,7 +133,7 @@ function Wishlist.GetItems()
 end
 
 function Wishlist.Count()
-    return #Wishlist.GetItems()
+    return ItemCount(Wishlist.GetItems())
 end
 
 local function FindByPair(items, entryId, entryType)
@@ -202,7 +262,8 @@ end
 -- Character Advancement book hook and the native Rapid list both do.
 function Wishlist.AddEntry(entryId, entryType, spellId, name)
     local id = NormalizeId(entryId)
-    if not id or type(entryType) ~= "string" or entryType == "" then
+    entryType = NormalizeEntryType(entryType)
+    if not id or not entryType then
         return false, "invalid_entry"
     end
 
@@ -329,20 +390,30 @@ function Wishlist.Describe(item)
     local api = GetAPI()
     local lookupId = item.spellId or item.entryId
     local icon = item.icon
+    local resolvedName, resolvedIcon
 
     -- Presentation is cached on the row once the client actually resolves it,
     -- because a search keystroke re-describes the whole list. Only a real
     -- resolution is cached: an id the book cannot resolve today may resolve in
     -- another game mode, and caching the placeholder would make that permanent.
-    if (not item.name or not icon) and api and lookupId then
-        local resolvedName = api.GetEntryName(lookupId)
-        local resolvedIcon = api.GetEntryIcon(lookupId)
+    if (not item.name or not icon) and api then
+        if item.entryId and item.entryType and api.ResolveEntryByInternalID then
+            local entry = api.ResolveEntryByInternalID(item.entryId)
+            if type(entry) == "table" then
+                resolvedName = api.GetEntryName(item.entryId)
+                resolvedIcon = api.GetEntryIcon(item.entryId)
+            end
+        end
+        if (not resolvedName or not resolvedIcon) and lookupId then
+            resolvedName = resolvedName or api.GetEntryName(lookupId)
+            resolvedIcon = resolvedIcon or api.GetEntryIcon(lookupId)
+        end
         if resolvedName and resolvedName ~= "Unknown"
-            and resolvedName ~= ("Spell " .. tostring(lookupId)) then
+            and resolvedName ~= ("Spell " .. tostring(lookupId or item.entryId or "?")) then
             item.name = resolvedName
             item.icon = resolvedIcon
         end
-        icon = resolvedIcon
+        icon = resolvedIcon or icon
     end
 
     return {
@@ -372,9 +443,8 @@ function Wishlist.Search(filter)
     end
 
     local rows = {}
-    local items = Wishlist.GetItems()
-    for index = 1, #items do
-        local row = Wishlist.Describe(items[index])
+    ForEachItem(Wishlist.GetItems(), function(item)
+        local row = Wishlist.Describe(item)
         if row then
             local keep = true
             if needle then
@@ -385,7 +455,7 @@ function Wishlist.Search(filter)
                 rows[#rows + 1] = row
             end
         end
-    end
+    end)
     return rows
 end
 

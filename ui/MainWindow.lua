@@ -256,19 +256,39 @@ function MainWindow.RefreshDesiredStatus(note)
     desiredStatus:SetText(text)
 end
 
--- Everything that changes when a Desired mark lands, from any source. Skipped
--- while the window is closed so a bulk desire in the Rapid window does not
--- rebuild a list nobody is looking at.
+-- Everything that changes when a Desired mark lands, from any source. The panel
+-- is refreshed whenever it exists, even if /asuite is hidden, so the next open
+-- does not replay a stale empty list.
 function MainWindow.RefreshWishlist()
-    if not frame or not frame:IsShown() then
-        return
-    end
-
     local panel = GetWishlistPanel()
     if panel and panel.Refresh then
         panel.Refresh()
     end
+
+    if not frame or not frame:IsShown() then
+        return
+    end
     MainWindow.RefreshDesiredStatus()
+end
+
+local function EnsureWishlistPanel()
+    local content = contents[TAB_WISHLIST]
+    local panel = GetWishlistPanel()
+    if not content or not panel then
+        return
+    end
+
+    if not panel.GetFrame() then
+        if panel.EnsureBuilt then
+            panel.EnsureBuilt(content, CONTENT_WIDTH)
+        elseif panel.Create then
+            panel.Create(content, CONTENT_WIDTH)
+        end
+    end
+
+    if panel.InvalidateLayout then
+        panel.InvalidateLayout()
+    end
 end
 
 local function RefreshAssistToggles()
@@ -310,8 +330,17 @@ local function SaveProfile()
         return
     end
     local Wishlist = AscensionSuite.Wishlist
-    if Wishlist and Wishlist.SaveProfile then
-        Wishlist.SaveProfile(profileBox:GetText(), true)
+    if not Wishlist or not Wishlist.SaveProfile then
+        Print("Cannot save profile — wishlist is not loaded.")
+        return
+    end
+
+    local name = profileBox:GetText()
+    local ok, reason = Wishlist.SaveProfile(name, true)
+    if ok then
+        Print(string.format("Saved Desired profile \"%s\" (%d wishlist rows).", name, Wishlist.Count()))
+    else
+        Print("Could not save profile — " .. tostring(reason or "unknown error") .. ".")
     end
 end
 
@@ -320,15 +349,25 @@ local function LoadProfile()
         return
     end
     local Wishlist = AscensionSuite.Wishlist
-    if Wishlist and Wishlist.LoadProfile then
-        Wishlist.LoadProfile(profileBox:GetText(), true)
+    if not Wishlist or not Wishlist.LoadProfile then
+        Print("Cannot load profile — wishlist is not loaded.")
+        return
     end
 
+    local name = profileBox:GetText()
+    local ok, reason = Wishlist.LoadProfile(name, true)
+    if not ok then
+        Print("Could not load profile — " .. tostring(reason or "unknown error") .. ".")
+        return
+    end
+
+    EnsureWishlistPanel()
     local panel = GetWishlistPanel()
     if panel and panel.Refresh then
         panel.Refresh()
     end
     MainWindow.RefreshDesiredStatus()
+    Print(string.format("Loaded Desired profile \"%s\" (%d wishlist rows). Use Push to Desired in Wildcard.", name, Wishlist.Count()))
 end
 
 local function StartAutoRoll()
@@ -429,6 +468,7 @@ function MainWindow.SelectTab(index)
     end
 
     if index == TAB_WISHLIST then
+        EnsureWishlistPanel()
         local panel = GetWishlistPanel()
         if panel and panel.Refresh then
             panel.Refresh()
@@ -608,15 +648,9 @@ local function EnsureFrame()
         contents[index] = content
     end
 
-    local panel = GetWishlistPanel()
-    if panel and panel.Create then
-        panel.Create(contents[TAB_WISHLIST], CONTENT_WIDTH)
-    end
-
     BuildAssistContent(contents[TAB_ASSISTS])
 
     RefreshAssistToggles()
-    MainWindow.SelectTab(activeTab)
     return frame
 end
 
@@ -632,7 +666,9 @@ end
 function MainWindow.Show()
     local win = EnsureFrame()
     win:Show()
+    MainWindow.SelectTab(activeTab)
 
+    EnsureWishlistPanel()
     local panel = GetWishlistPanel()
     if panel and panel.Refresh then
         panel.Refresh()
