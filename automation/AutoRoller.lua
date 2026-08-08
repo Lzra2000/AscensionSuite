@@ -178,6 +178,15 @@ function AutoRoller.Start()
         DesiredSync.Sync()
     end
 
+    -- A wishlist built outside Wildcard has nothing Desired behind it yet, so
+    -- push it before giving up. Only when the Desired set is empty: a player who
+    -- already narrowed Desired to one entry asked for that entry, not the list.
+    local Wishlist = AscensionSuite.Wishlist
+    if Wishlist and Wishlist.PushToDesired and Wishlist.CountDesired
+        and Wishlist.Count and Wishlist.Count() > 0 and Wishlist.CountDesired() == 0 then
+        Wishlist.PushToDesired()
+    end
+
     local canRun, reason = CanOperate()
     if not canRun then
         return false, reason

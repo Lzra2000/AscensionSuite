@@ -84,13 +84,20 @@ end
 local clock = 1000
 function GetTime() return clock end
 
+local wildcard = true
+
 local altDown = false
 function IsAltKeyDown() return altDown end
 
 local menuCloses = 0
 function CloseDropDownMenus() menuCloses = menuCloses + 1 end
 
-DEFAULT_CHAT_FRAME = { AddMessage = function() end }
+local messages = {}
+DEFAULT_CHAT_FRAME = {
+    AddMessage = function(_, text)
+        messages[#messages + 1] = tostring(text)
+    end,
+}
 
 function GetSpellInfo(spellId)
     return "Spell " .. tostring(spellId), "Rank 1", "Interface\\Icons\\Test"
@@ -127,7 +134,7 @@ local function Key(entryId, entryType)
 end
 
 C_GameMode = {
-    IsGameModeActive = function(_, mode) return mode == "WildCard" end,
+    IsGameModeActive = function(_, mode) return wildcard and mode == "WildCard" end,
 }
 
 -- Counters for the destructive calls the book hook must never make.
@@ -224,22 +231,21 @@ assert(Wishlist.CountDesired() == 0, "an untracked native mark is invisible, as 
 FireEvent("WILDCARD_DESIRED_ENTRIES_CHANGED")
 PumpUpdates()
 
-assert(Wishlist.IsTracked(2001, "Ability"), "the rescan tracks confirmed selections")
+assert(Wishlist.HasEntry(2001, "Ability"), "the rescan tracks confirmed selections")
 assert(Wishlist.CountDesired() == 1, "Auto-Roll's gate now sees the native mark")
 
-local gridIds = Wishlist.GetSpellIds()
-local foundInGrid = false
-for index = 1, #gridIds do
-    if gridIds[index] == 133 then
-        foundInGrid = true
+local foundOnList = false
+for _, row in ipairs(Wishlist.GetItems()) do
+    if row.spellId == 133 then
+        foundOnList = true
     end
 end
-assert(foundInGrid, "a tracked mark also shows up in the overlay grid")
+assert(foundOnList, "a tracked mark also shows up on the wishlist with its spell")
 
 -- Candidates that are not selected must not be tracked: GetNumFilteredDesiredEntries
 -- counts the filtered universe, not the player's selections.
-assert(not Wishlist.IsTracked(2002, "Talent"), "candidates are not selections")
-assert(not Wishlist.IsTracked(2003, "Ability"), "candidates are not selections")
+assert(not Wishlist.HasEntry(2002, "Talent"), "candidates are not selections")
+assert(not Wishlist.HasEntry(2003, "Ability"), "candidates are not selections")
 
 ------------------------------------------------------------------------
 -- Rate limiting: a bulk desire fires the change event once per entry
@@ -261,21 +267,21 @@ assert(scans > scansBefore, "the deferred rescan still runs once the interval pa
 
 WildCardRapidRollingFrame:SaveDesiredEntry(2002, "Talent")
 assert(rapidSaves == 1, "the native handler still runs")
-assert(Wishlist.IsTracked(2002, "Talent"), "SaveDesiredEntry feeds the wishlist")
+assert(Wishlist.HasEntry(2002, "Talent"), "SaveDesiredEntry feeds the wishlist")
 assert(Wishlist.CountDesired() == 2, "both marks count")
 
 WildCardRapidRollingFrame:RemoveDesiredEntry(2002, "Talent")
 assert(rapidRemoves == 1, "the native handler still runs")
-assert(not Wishlist.IsTracked(2002, "Talent"), "RemoveDesiredEntry prunes the registry")
+assert(not Wishlist.HasEntry(2002, "Talent"), "RemoveDesiredEntry prunes the registry")
 assert(Wishlist.CountDesired() == 1, "an unmarked entry stops counting")
 
 -- The hook hands over an advancement internal ID, so the spell behind it has to
 -- be looked up in that id space.
 WildCardRapidRollingFrame:SaveDesiredEntry(2004, "Ability")
-local tracked = Wishlist.GetEntries()
+local tracked = Wishlist.GetItems()
 local collided
 for index = 1, #tracked do
-    if tracked[index].id == 2004 then
+    if tracked[index].entryId == 2004 then
         collided = tracked[index]
     end
 end
@@ -297,7 +303,7 @@ local closesBefore = menuCloses
 CharacterAdvancement:ShowSpellDropDownMenu(spellButton)
 assert(menuOpens == 1, "the native dropdown still opens")
 assert(menuCloses == closesBefore, "an unmodified right-click is left alone")
-assert(not Wishlist.IsTracked(2003, "Ability"), "an unmodified right-click marks nothing")
+assert(not Wishlist.HasEntry(2003, "Ability"), "an unmodified right-click marks nothing")
 
 -- Alt + right-click marks Desired and closes the menu it just opened.
 altDown = true
@@ -305,13 +311,13 @@ CharacterAdvancement:ShowSpellDropDownMenu(spellButton)
 assert(menuOpens == 2, "the hook runs after the native handler, never instead of it")
 assert(menuCloses == closesBefore + 1, "Alt + right-click reads as a mark, not a menu")
 assert(desired[Key(2003, "Ability")] == true, "the entry is Desired in the client")
-assert(Wishlist.IsTracked(2003, "Ability"), "and tracked by the Suite")
+assert(Wishlist.HasEntry(2003, "Ability"), "and tracked by the Suite")
 assert(Wishlist.CountDesired() == 2, "Auto-Roll's gate counts the book mark")
 
 -- Alt + right-click again is the way back out.
 CharacterAdvancement:ShowSpellDropDownMenu(spellButton)
 assert(desired[Key(2003, "Ability")] == nil, "second Alt + right-click un-desires")
-assert(not Wishlist.IsTracked(2003, "Ability"), "and untracks")
+assert(not Wishlist.HasEntry(2003, "Ability"), "and untracks")
 assert(Wishlist.CountDesired() == 1, "back to the single mark")
 
 assert(lockCalls == 0, "marking Desired must never lock or unlock an entry")
@@ -325,9 +331,51 @@ assert(Wishlist.SaveProfile("native-marks", false), "save profile")
 local profile = AscensionSuiteDB.desiredProfiles["native-marks"]
 assert(#profile.entries == 1 and profile.entries[1].id == 2001, "profile records the tracked mark")
 
-AscensionSuiteDB.wishlistEntries = {}
+AscensionSuiteDB.wishlist = {}
 assert(Wishlist.LoadProfile("native-marks", true), "load profile")
-assert(Wishlist.IsTracked(2001, "Ability"), "loading a profile re-tracks its Desired set")
+assert(Wishlist.HasEntry(2001, "Ability"), "loading a profile re-tracks its Desired set")
 assert(Wishlist.CountDesired() == 1, "and Auto-Roll can verify it again")
+
+------------------------------------------------------------------------
+-- Alt + right-click outside Wildcard
+--
+-- The 0.2.1 behaviour was a refusal ("Desired marks only exist in Wildcard
+-- mode") once per click, which read as an error for what is a perfectly
+-- reasonable thing to do between Wildcard runs. It now edits the Suite
+-- wishlist and says so.
+------------------------------------------------------------------------
+
+wildcard = false
+local iceBlock = { entry = ENTRIES[2002], spellID = 116 }
+
+messages = {}
+altDown = true
+CharacterAdvancement:ShowSpellDropDownMenu(iceBlock)
+
+assert(Wishlist.HasEntry(2002, "Talent"), "a book mark outside Wildcard lands on the wishlist")
+assert(desired[Key(2002, "Talent")] == nil, "and marks nothing Desired, because Desired is Wildcard-only")
+
+for index = 1, #messages do
+    assert(not messages[index]:find("only exist in Wildcard"),
+        "the Wildcard-only refusal must not be printed for a successful wishlist mark")
+end
+assert(#messages == 1, "one line per click, not a warning plus a result")
+assert(messages[1]:find("Wishlist: Ice Block"), "the line names what was saved")
+assert(messages[1]:find("Wildcard"), "and explains the Desired sync the first time")
+
+-- Building a list is many clicks. The explanation is a hint, not a per-spell
+-- warning, so it is shown once and then dropped.
+messages = {}
+CharacterAdvancement:ShowSpellDropDownMenu({ entry = ENTRIES[2003], spellID = 118 })
+assert(#messages == 1 and messages[1]:find("Wishlist: Polymorph"), "the second mark still confirms")
+assert(not messages[1]:find("Wildcard"), "but does not repeat the hint")
+
+messages = {}
+CharacterAdvancement:ShowSpellDropDownMenu(iceBlock)
+assert(not Wishlist.HasEntry(2002, "Talent"), "Alt + right-click again removes it from the wishlist")
+assert(#messages == 1 and messages[1]:find("Removed from wishlist"), "and says so plainly")
+
+assert(lockCalls == 0, "editing the wishlist must never lock or unlock an entry")
+assert(unlearnCalls == 0, "editing the wishlist must never unlearn an entry")
 
 print("OK: AscensionSuite desired sync test passed")
