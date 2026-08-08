@@ -1472,3 +1472,347 @@ function API.AdvanceRapidRoll(skipConfirm)
     end
     return true
 end
+
+------------------------------------------------------------------------
+-- BuildCreator / BuildEditor import (read-only; no Publish / Draft purchase)
+------------------------------------------------------------------------
+
+local function BC()
+    return Namespace("C_BuildCreator")
+end
+
+local function BE()
+    return Namespace("C_BuildEditor")
+end
+
+local function BD()
+    return Namespace("C_BuildDraft")
+end
+
+function API.GetActiveBuildID()
+    local bc = BC()
+    if not bc then
+        return nil
+    end
+
+    local specId
+    local specUtil = Namespace("SpecializationUtil")
+    if specUtil and type(specUtil.GetActiveSpecialization) == "function" then
+        local ok, value = pcall(specUtil.GetActiveSpecialization)
+        if ok then
+            specId = value
+        end
+    end
+
+    local buildId = Call(bc, { "GetActiveBuild" }, specId)
+    if type(buildId) == "string" and buildId ~= "" then
+        return buildId
+    end
+    return nil
+end
+
+function API.GetDraftedBuildID()
+    local bd = BD()
+    if not bd then
+        return nil
+    end
+    local buildId = Call(bd, { "GetDraftedBuild" })
+    if type(buildId) == "string" and buildId ~= "" then
+        return buildId
+    end
+    return nil
+end
+
+function API.GetBuildByID(buildId)
+    if type(buildId) ~= "string" or buildId == "" then
+        return nil
+    end
+    local bc = BC()
+    if not bc then
+        return nil
+    end
+    return TableOrNil(Call(bc, { "GetBuild" }, buildId))
+end
+
+-- Prefer the editor's pending build, then drafted, then the active archetype.
+function API.GetImportableBuild()
+    local be = BE()
+    if be then
+        local pending = TableOrNil(Call(be, { "GetPendingBuild" }))
+        if pending and type(pending.Spells) == "table" and #pending.Spells > 0 then
+            return pending, "editor"
+        end
+    end
+
+    local draftedId = API.GetDraftedBuildID()
+    if draftedId then
+        local build = API.GetBuildByID(draftedId)
+        if build then
+            return build, "draft"
+        end
+    end
+
+    local activeId = API.GetActiveBuildID()
+    if activeId then
+        local build = API.GetBuildByID(activeId)
+        if build then
+            return build, "active"
+        end
+    end
+
+    return nil, nil
+end
+
+function API.UnpackBuildDescription(description)
+    local sections = {}
+    if type(description) ~= "string" or description == "" then
+        return sections
+    end
+
+    for section in description:gmatch("###%s*([^#]*)") do
+        local header, text = section:match("^([^\n]*)\n?(.*)\n*$")
+        if header and header ~= "" then
+            text = (text or ""):gsub("{HT}", "#")
+            text = text:match("^%s*(.-)%s*$") or text
+            sections[header] = text
+        end
+    end
+    return sections
+end
+
+local function FormatEnumLabel(value)
+    if type(value) ~= "string" or value == "" then
+        return nil
+    end
+    local label = value:gsub("_", " ")
+    label = label:gsub("(%a)([%w']*)", function(first, rest)
+        return first:upper() .. rest:lower()
+    end)
+    return label
+end
+
+function API.DescribeBuildCategory(category)
+    if category == nil then
+        return nil
+    end
+    if type(category) == "string" then
+        if _G.Enum and _G.Enum.BuildCategory and _G.Enum.BuildCategory[category] ~= nil then
+            category = _G.Enum.BuildCategory[category]
+        end
+    end
+    if type(category) == "number" and _G.Enum and type(_G.Enum.BuildCategory) == "table" then
+        for name, enumValue in pairs(_G.Enum.BuildCategory) do
+            if enumValue == category then
+                local parent = nil
+                if _G.Enum.BuildSubCategory and _G.Enum.BuildSubCategory[name] then
+                    parent = _G.Enum.BuildSubCategory[name]
+                end
+                if parent and _G.Enum.BuildSubCategory and type(_G.Enum.BuildSubCategory) == "table" then
+                    for parentName, parentValue in pairs(_G.Enum.BuildSubCategory) do
+                        if parentValue == parent then
+                            if parentName == "PvE" or parentName == "PvP" then
+                                return parentName
+                            end
+                        end
+                    end
+                end
+                if name:find("PvE") then
+                    return "PvE"
+                end
+                if name:find("PvP") then
+                    return "PvP"
+                end
+                return FormatEnumLabel(name)
+            end
+        end
+    end
+    return FormatEnumLabel(tostring(category))
+end
+
+function API.DescribeBuildDifficulty(difficulty)
+    if difficulty == nil then
+        return nil
+    end
+    if type(difficulty) == "number" and _G.Enum and type(_G.Enum.BuildDifficulty) == "table" then
+        for name, enumValue in pairs(_G.Enum.BuildDifficulty) do
+            if enumValue == difficulty then
+                return FormatEnumLabel(name)
+            end
+        end
+    end
+    if type(difficulty) == "string" then
+        return FormatEnumLabel(difficulty)
+    end
+    return tostring(difficulty)
+end
+
+function API.GetBuildSpellTags(buildId, spellId)
+    local id = tonumber(spellId)
+    if type(buildId) ~= "string" or buildId == "" or not id then
+        return {}
+    end
+    local bc = BC()
+    if not bc then
+        return {}
+    end
+    local spellData = TableOrNil(Call(bc, { "GetSpell" }, buildId, id))
+    if type(spellData) ~= "table" then
+        return {}
+    end
+    return {
+        core = spellData.IsCoreAbility == true,
+        optimal = spellData.IsOptimalAbility == true,
+        empowering = spellData.IsEmpoweringAbility == true,
+        synergistic = spellData.IsSynergisticAbility == true,
+    }
+end
+
+local function ClassSpecLabel(classValue, specValue)
+    local classLabel = classValue
+    local specLabel = specValue
+
+    local util = Namespace("CharacterAdvancementUtil")
+    if util then
+        local classFn = Method(util, { "GetClassFileByDBC" })
+        if classFn and classValue ~= nil then
+            local ok, resolved = pcall(classFn, classValue)
+            if ok and type(resolved) == "string" and resolved ~= "" then
+                classLabel = resolved
+            end
+        end
+        local specFn = Method(util, { "GetSpecFileByDBC" })
+        if specFn and specValue ~= nil then
+            local ok, resolved = pcall(specFn, specValue)
+            if ok and type(resolved) == "string" and resolved ~= "" then
+                specLabel = resolved
+            end
+        end
+    end
+
+    if type(classLabel) == "number" and _G.Enum and type(_G.Enum.Class) == "table" then
+        for name, enumValue in pairs(_G.Enum.Class) do
+            if enumValue == classLabel then
+                classLabel = FormatEnumLabel(name)
+                break
+            end
+        end
+    end
+
+    if type(specLabel) == "number" and _G.Enum and type(_G.Enum.Spec) == "table" then
+        for name, enumValue in pairs(_G.Enum.Spec) do
+            if enumValue == specLabel then
+                specLabel = FormatEnumLabel(name)
+                break
+            end
+        end
+    end
+
+    classLabel = FormatEnumLabel(tostring(classLabel or ""))
+    specLabel = FormatEnumLabel(tostring(specLabel or ""))
+
+    if specLabel and specLabel ~= "" and classLabel and classLabel ~= "" then
+        return specLabel .. " " .. classLabel
+    end
+    if classLabel and classLabel ~= "" then
+        return classLabel
+    end
+    if specLabel and specLabel ~= "" then
+        return specLabel
+    end
+    return nil
+end
+
+function API.GetSpellClassGroup(spellId)
+    local id = tonumber(spellId)
+    if not id then
+        return nil
+    end
+    local ca = CA()
+    if not ca then
+        return nil
+    end
+    local classValue, specValue = Call(ca, { "GetClassInfo" }, id)
+    return ClassSpecLabel(classValue, specValue)
+end
+
+local function EntryFromBuildSpell(build, spellRow)
+    if type(spellRow) ~= "table" then
+        return nil
+    end
+    local spellId = FirstNumber(spellRow.Spell, spellRow.spell, spellRow.SpellID, spellRow.spellID)
+    if not spellId then
+        return nil
+    end
+
+    local entry = API.ResolveEntry(spellId)
+    local entryId, entryType = EntryPair(entry)
+    if not entryId and entry then
+        entryId = FirstNumber(entry.ID, entry.Id, entry.id)
+        entryType = FirstString(entry.Type, entry.type, entry.entryType)
+    end
+    if not entryId then
+        local ca = CA()
+        if ca then
+            entryId = FirstNumber(Call(ca, { "GetInternalID" }, spellId))
+            if entryId then
+                entryType = entryType or "Ability"
+            end
+        end
+    end
+
+    local tags = API.GetBuildSpellTags(build.ID, spellId)
+    local name = FirstString(spellRow.Name, spellRow.name)
+    if not name then
+        name = API.GetEntryName(spellId)
+    end
+
+    return {
+        entryId = entryId,
+        entryType = entryType,
+        spellId = spellId,
+        name = name,
+        tags = tags,
+        classGroup = API.GetSpellClassGroup(spellId),
+        desired = tags.core == true,
+    }
+end
+
+-- Read spells from a native build table without touching Publish / purchase APIs.
+function API.CollectBuildSpellEntries(build)
+    if type(build) ~= "table" or type(build.Spells) ~= "table" then
+        return {}
+    end
+
+    local entries = {}
+    local seen = {}
+    for index = 1, #build.Spells do
+        local row = EntryFromBuildSpell(build, build.Spells[index])
+        if row then
+            local key = (row.entryType or "?") .. ":" .. tostring(row.entryId or row.spellId)
+            if not seen[key] then
+                seen[key] = true
+                entries[#entries + 1] = row
+            end
+        end
+    end
+    return entries
+end
+
+function API.CollectBuildEquipmentStubs(build)
+    if type(build) ~= "table" then
+        return { armorTypes = {}, weaponTypes = {} }
+    end
+    local armorTypes = {}
+    local weaponTypes = {}
+    if type(build.ArmorTypes) == "table" then
+        for index = 1, #build.ArmorTypes do
+            armorTypes[#armorTypes + 1] = tostring(build.ArmorTypes[index])
+        end
+    end
+    if type(build.WeaponTypes) == "table" then
+        for index = 1, #build.WeaponTypes do
+            weaponTypes[#weaponTypes + 1] = tostring(build.WeaponTypes[index])
+        end
+    end
+    return { armorTypes = armorTypes, weaponTypes = weaponTypes }
+end

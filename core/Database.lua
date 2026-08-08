@@ -11,7 +11,7 @@ local DB = {}
 AscensionSuite.Database = DB
 
 local DEFAULTS = {
-    version = 6,
+    version = 7,
     assists = {
         autoRoll = false,
         autoRollContinue = false,
@@ -238,6 +238,26 @@ local function EnsureDefaults(db)
         end
 
         db.version = 6
+    end
+
+    -- v7 adds archetype-style sections, tags, and equipment stubs on loadouts.
+    if db.version < 7 then
+        if type(db.loadouts) == "table" then
+            for _, loadout in pairs(db.loadouts) do
+                if type(loadout) == "table" then
+                    if type(loadout.sections) ~= "table" then
+                        loadout.sections = { OVERVIEW = loadout.notes or "" }
+                    end
+                    if type(loadout.equipment) ~= "table" then
+                        loadout.equipment = { armorTypes = {}, weaponTypes = {} }
+                    end
+                    if loadout.author == nil then
+                        loadout.author = loadout.character or "shared"
+                    end
+                end
+            end
+        end
+        db.version = 7
     end
 
     return db

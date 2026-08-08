@@ -3,6 +3,30 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.0 (2026-08-08) -- Archetype-style Loadouts + automate strip
+
+#### Added
+- **Loadouts tab redesign** mirroring native Ascension BuildCreator / Archetypes
+  sections: sidebar nav (Overview → Notes), header chips (author, category,
+  complexity), and an always-visible automation strip.
+- **Import Archetype…** — reads spells (+ tags) and description sections from
+  the editor pending build, drafted build, or active archetype via
+  `C_BuildCreator` / `C_BuildEditor` / `C_BuildDraft` in
+  `integration/AscensionAPI.lua` only (no Publish / Draft purchase).
+- **Spells and Talents** section with Core / Optimal / Empowering / Synergistic
+  filters, class grouping, Desired badges, and + Add Spell from the wishlist.
+- Local editable notes per non-spell section and equipment stubs on each loadout
+  (`AscensionSuiteDB.loadouts` schema v7 migration).
+- Loadouts **Start Auto-Roll** respects the Assists toggle (does not force-enable).
+
+#### Changed
+- Automation actions (Apply, Auto-Roll, Sync, Wishlist) live on the Loadouts tab
+  instead of only on Assists; Assists tab keeps the master toggles.
+
+#### Fixed
+- Loadouts panel `InvalidateLayout` re-sizes the new archetype shell widgets after
+  tab round-trips (same 0×0 class as 0.3.1).
+
 ### 0.3.1 (2026-08-08) -- Loadouts layout fix and auto-unstick assist
 
 #### Added

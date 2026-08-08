@@ -53,6 +53,10 @@ C_CharacterAdvancement = {
         return { { ID = 1133, Type = "Ability", Spell = 133, Name = "Fireball" } }
     end,
     GetKnownTalentEntries = function() return {} end,
+    GetClassInfo = function(_, spellId)
+        if spellId == 133 then return "MAGE", "Fire" end
+        if spellId == 116 then return "MAGE", "Frost" end
+    end,
 }
 
 C_Wildcard = {
@@ -182,7 +186,55 @@ AscensionSuiteDB.desiredProfiles = {
     },
 }
 AscensionSuite.Database.Init()
-assert(AscensionSuiteDB.version == 6, "migrated to v6")
+assert(AscensionSuiteDB.version == 7, "migrated to v7")
 assert(AscensionSuiteDB.loadouts["legacy-migrated"], "legacy profile became loadout")
+
+------------------------------------------------------------------------
+-- Import archetype from native build seam
+------------------------------------------------------------------------
+
+C_BuildCreator = {
+    GetActiveBuild = function() return "build-1" end,
+    GetBuild = function(_, id)
+        if id == "build-1" then
+            return {
+                ID = "build-1",
+                Name = "Imported archetype",
+                AuthorName = "Native",
+                Category = "Level60PvE",
+                Difficulty = "Expert",
+                Description = "### OVERVIEW\nImported overview\n###",
+                Spells = {
+                    { Spell = 133 },
+                    { Spell = 116 },
+                },
+                ArmorTypes = { "Plate" },
+                WeaponTypes = {},
+            }
+        end
+    end,
+    GetSpell = function(_, buildId, spellId)
+        if spellId == 133 then
+            return { IsCoreAbility = true }
+        end
+        if spellId == 116 then
+            return { IsOptimalAbility = true }
+        end
+    end,
+}
+
+C_BuildEditor = {
+    GetPendingBuild = function() return nil end,
+}
+
+local importLoadout, importId = Loadouts.Create("Import target", "", false)
+local ok, count, source = Loadouts.ImportFromArchetype(importId)
+assert(ok and count == 2, "imported two spells from archetype (got " .. tostring(count) .. ")")
+assert(source == "active", "used active build")
+importLoadout = Loadouts.Get(importId)
+assert(importLoadout.name == "Imported archetype", "name copied")
+assert(importLoadout.author == "Native", "author copied")
+assert(importLoadout.sections.OVERVIEW:match("Imported overview"), "overview section copied")
+assert(#importLoadout.equipment.armorTypes == 1, "equipment stub copied")
 
 print("OK: AscensionSuite loadouts test passed")
