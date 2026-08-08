@@ -2,7 +2,7 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
-**v0.2.9** ships: **Wishlist row hovers show native Ascension spell/talent tooltips** (GameTooltip + SetSpellByID), with rank-aware talents and Tag/Suggestion text fallback — plus the 0.2.8 wishlist render and profile fixes.
+**v0.3.0** ships: **Loadouts tab** — save named builds from your wishlist, load/apply to Desired in Wildcard, and share via **ASUITE1** text strings — plus Push now resolves `(entryId, entryType)` before Ascension and reports refuse reasons.
 
 ## In-game
 
@@ -10,7 +10,7 @@ AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonho
 /asuite
 ```
 
-Two tabs:
+Three tabs:
 
 ### Wishlist
 - Search + scrollable list (icon, name, id; Desired badge when synced)
@@ -19,7 +19,13 @@ Two tabs:
 - The row you just added, removed or toggled lights up — including when the edit came from the Character Advancement book
 - Remove / Clear (Suite store only — Ascension Desired untouched until you push)
 - **Push to Desired** — merges the list into Ascension Desired in Wildcard; click it anytime the list has rows and it says why if Wildcard is not active
-- Save / Load named profiles
+
+### Loadouts
+- Saved builds list (name, entry count, character/shared)
+- **Save Build** snapshots the current wishlist (+ Desired marks)
+- **Load → Wishlist** / **Apply → Desired** (load + push in Wildcard)
+- **Capture Known** optional snapshot per build
+- **ASUITE1** share string Copy / Import
 
 ### Assists
 - Checkboxes (all default off): Auto-Roll, keep going after a Desired hit, dice/SkillCard animation skip, Wildcard popup accept, logbook capture

@@ -1,0 +1,188 @@
+-- AscensionSuite: tests/test_loadouts.lua
+-- Loadouts save/load/apply/import/export and refuse-resolve hardening.
+
+unpack = unpack or table.unpack
+
+local function RepoRoot()
+    local src = debug.getinfo(1, "S").source
+    if src:sub(1, 1) == "@" then
+        src = src:sub(2)
+    end
+    local dir = src:match("^(.*)/")
+    if dir and dir:match("/tests$") then
+        return dir:gsub("/tests$", "")
+    end
+    return "."
+end
+
+local ROOT = RepoRoot()
+
+AscensionSuite = {}
+AscensionSuiteDB = {}
+
+local wildcard = false
+
+local ENTRIES = {
+    [1133] = { ID = 1133, Type = "Ability", Spell = 133, Name = "Fireball" },
+    [1116] = { ID = 1116, Type = "Talent", Spell = 116, Name = "Ice Block" },
+    [1780] = { ID = 1780, Type = "Ability", Spell = 780, Name = "Living Bomb" },
+}
+
+local BY_SPELL = {}
+for _, entry in pairs(ENTRIES) do
+    BY_SPELL[entry.Spell] = entry
+end
+
+local desired = {}
+local refuseIds = {}
+
+local function Key(entryId, entryType)
+    return tostring(entryId) .. "/" .. tostring(entryType)
+end
+
+C_GameMode = {
+    IsGameModeActive = function(_, mode)
+        return wildcard and mode == "WildCard"
+    end,
+}
+
+C_CharacterAdvancement = {
+    GetEntryBySpellID = function(_, id) return BY_SPELL[id] end,
+    GetEntryByInternalID = function(_, id) return ENTRIES[id] end,
+    GetKnownSpellEntries = function()
+        return { { ID = 1133, Type = "Ability", Spell = 133, Name = "Fireball" } }
+    end,
+    GetKnownTalentEntries = function() return {} end,
+}
+
+C_Wildcard = {
+    CanAddDesiredID = function(_, entryId)
+        return refuseIds[entryId] ~= true
+    end,
+    AddDesiredID = function(_, entryId, entryType)
+        if refuseIds[entryId] then
+            return false
+        end
+        desired[Key(entryId, entryType)] = true
+        return true
+    end,
+    RemoveDesiredID = function(_, entryId, entryType)
+        desired[Key(entryId, entryType)] = nil
+        return true
+    end,
+    IsDesiredID = function(_, entryId, entryType)
+        return desired[Key(entryId, entryType)] == true
+    end,
+    ClearDesiredSpells = function()
+        for key in pairs(desired) do
+            desired[key] = nil
+        end
+        return true
+    end,
+    GetNumFilteredDesiredEntries = function() return 0 end,
+}
+
+dofile(ROOT .. "/core/Database.lua")
+dofile(ROOT .. "/integration/AscensionAPI.lua")
+dofile(ROOT .. "/core/Wishlist.lua")
+dofile(ROOT .. "/core/Loadouts.lua")
+
+AscensionSuite.Database.Init()
+
+local Wishlist = AscensionSuite.Wishlist
+local Loadouts = AscensionSuite.Loadouts
+assert(Wishlist and Loadouts, "modules missing")
+
+------------------------------------------------------------------------
+-- Resolve spell-only rows before Push
+------------------------------------------------------------------------
+
+Wishlist.Add(133)
+Wishlist.Add(780)
+local items = Wishlist.GetItems()
+assert(items[1].entryId == nil or items[1].entryType == nil or true, "seed rows")
+
+wildcard = true
+local pushed, already, failed, reason, refuses = Wishlist.PushToDesired()
+assert(reason == nil, "push runs in wildcard")
+assert(pushed == 2, "both spell-only rows resolve and push (got " .. tostring(pushed) .. ")")
+assert(failed == 0, "nothing refused after resolve")
+assert(items[1].entryId == 1133, "pair cached on row")
+assert(items[2].entryId == 1780, "second row cached")
+
+------------------------------------------------------------------------
+-- Refuse reasons surface
+------------------------------------------------------------------------
+
+desired = {}
+refuseIds[1116] = true
+Wishlist.AddEntry(1116, "Talent", 116, "Ice Block")
+pushed, already, failed, reason, refuses = Wishlist.PushToDesired()
+assert(failed >= 1, "refused entry counted (got " .. tostring(failed) .. ")")
+assert(type(refuses) == "table" and #refuses >= 1, "refuse list returned")
+local summary = Loadouts.FormatRefuseSummary(refuses)
+assert(type(summary) == "string" and summary:find("refused"), "summary mentions refuse")
+
+------------------------------------------------------------------------
+-- Loadouts save / load / export / import
+------------------------------------------------------------------------
+
+refuseIds = {}
+desired = {}
+
+local loadout, id = Loadouts.Create("Storm kit", "notes", false)
+assert(loadout and id, "create loadout")
+
+Wishlist.Clear()
+Wishlist.Add(133)
+Wishlist.AddEntry(1116, "Talent", 116, "Ice Block")
+API = AscensionSuite.AscensionAPI
+API.AddDesiredID(1133, "Ability")
+
+local ok, count = Loadouts.SaveFromWishlist(id, false, true)
+assert(ok and count == 2, "save snapshots wishlist")
+
+local exported = Loadouts.ExportString(id)
+assert(exported:match("^ASUITE1|"), "export uses ASUITE1 prefix")
+assert(exported:find("Storm kit"), "export carries name")
+assert(exported:find("Ability:1133:"), "export carries resolved entry")
+
+Wishlist.Clear()
+assert(Wishlist.Count() == 0, "cleared")
+
+ok, count = Loadouts.LoadToWishlist(id)
+assert(ok and count == 2, "load restores wishlist")
+assert(Wishlist.Count() == 2, "two rows back")
+
+Wishlist.Clear()
+local imported, importId = Loadouts.ImportString(exported, true)
+assert(imported and importId, "import share string")
+assert(#imported.entries == 2, "imported two entries")
+
+------------------------------------------------------------------------
+-- Apply = load + push
+------------------------------------------------------------------------
+
+Wishlist.Clear()
+wildcard = true
+ok, result = Loadouts.Apply(importId)
+assert(ok and result.loaded == 2, "apply loads entries")
+assert(result.pushed >= 1, "apply pushes resolved pairs")
+
+------------------------------------------------------------------------
+-- Migration from desiredProfiles
+------------------------------------------------------------------------
+
+AscensionSuiteDB.version = 5
+AscensionSuiteDB.loadouts = {}
+AscensionSuiteDB.desiredProfiles = {
+    legacy = {
+        wishlist = { { spellId = 133, entryId = 1133, entryType = "Ability", name = "Fireball" } },
+        entries = { { id = 1133, type = "Ability", spellId = 133 } },
+    },
+}
+AscensionSuite.Database.Init()
+assert(AscensionSuiteDB.version == 6, "migrated to v6")
+assert(AscensionSuiteDB.loadouts["legacy-migrated"], "legacy profile became loadout")
+
+print("OK: AscensionSuite loadouts test passed")

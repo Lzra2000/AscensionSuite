@@ -257,7 +257,13 @@ assert(panel and panel.GetFrame(), "the Wishlist panel is built with the window"
 assert(#panel.GetFilteredRows() == 1, "and lists the wishlist")
 
 MainWindow.SelectTab(2)
-assert(MainWindow.GetActiveTab() == 2, "the Assists tab switches")
+assert(MainWindow.GetActiveTab() == 2, "the Loadouts tab switches")
+
+local loadoutsPanel = AscensionSuite.LoadoutsPanel
+assert(loadoutsPanel and loadoutsPanel.GetFrame(), "the Loadouts panel is built with the window")
+
+MainWindow.SelectTab(3)
+assert(MainWindow.GetActiveTab() == 3, "the Assists tab switches")
 MainWindow.SelectTab(1)
 
 MainWindow.RegisterSlash()

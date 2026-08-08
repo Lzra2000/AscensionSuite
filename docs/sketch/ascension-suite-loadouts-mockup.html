@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AscensionSuite — Loadouts tab (preview)</title>
+<style>
+  :root {
+    --page: #0b0d10;
+    --stone: #16130f;
+    --gold: #ffd100;
+    --gold-dim: #c8a03c;
+    --gold-line: #6e5a24;
+    --ink: #f4ead6;
+    --muted: #9c927f;
+    --wish: #59b6ff;
+    --good: #62d187;
+    --bad: #e2726f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 26px 30px 60px; color: var(--ink);
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    background: radial-gradient(1100px 560px at 62% -10%, #1e232c, var(--page));
+  }
+  h1 { margin: 0 0 6px; font-size: 1.25rem; }
+  .lead { color: var(--muted); max-width: 72rem; line-height: 1.55; margin: 0 0 22px; font-size: 0.9rem; }
+  code { color: #edcd82; }
+  .stage { display: flex; gap: 26px; align-items: flex-start; flex-wrap: wrap; }
+
+  .dialog {
+    position: relative; width: 720px; background:
+      linear-gradient(180deg, rgba(60,48,28,.35), rgba(0,0,0,0)) , var(--stone);
+    border: 2px solid var(--gold-line);
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px #0b0906, 0 18px 44px rgba(0,0,0,.65), inset 0 0 60px rgba(0,0,0,.55);
+    padding: 16px 18px 16px;
+  }
+  .dialog::before {
+    content: ""; position: absolute; inset: 5px; border: 1px solid #3d3320; pointer-events: none;
+  }
+  .titlebar { display: flex; align-items: baseline; gap: 10px; margin: 0 0 2px; }
+  .titlebar h2 {
+    margin: 0; font-size: 1.02rem; color: var(--gold); letter-spacing: .3px;
+    text-shadow: 0 1px 0 #000;
+  }
+  .ver { color: var(--muted); font-size: .74rem; }
+  .close {
+    position: absolute; top: 8px; right: 10px; width: 22px; height: 22px; line-height: 20px;
+    text-align: center; color: #f0d9a0; border: 1px solid var(--gold-line);
+    background: #241d12; border-radius: 50%; font-size: .8rem;
+  }
+
+  .tabs { display: flex; gap: 4px; margin: 12px 0 0; padding-left: 4px; }
+  .tab {
+    padding: 6px 16px 7px; font-size: .82rem; color: #cdbf9d;
+    background: linear-gradient(180deg, #241d12, #17130c);
+    border: 1px solid #4c3f22; border-bottom: none; border-radius: 5px 5px 0 0;
+  }
+  .tab.on {
+    color: var(--gold); background: linear-gradient(180deg, #3b2f18, #241c10);
+    border-color: var(--gold-line); box-shadow: inset 0 1px 0 rgba(255,209,0,.25);
+  }
+  .tabline { height: 1px; background: var(--gold-line); margin-bottom: 12px; }
+
+  .split { display: flex; gap: 12px; }
+  .col-list { width: 220px; flex: none; }
+  .col-detail { flex: 1; min-width: 0; }
+
+  .label { font-size: .72rem; color: var(--muted); margin: 0 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .loadout-list {
+    border: 1px solid #43381f; background: #0c0a07; height: 280px; overflow: hidden;
+  }
+  .lo {
+    display: flex; flex-direction: column; gap: 1px;
+    padding: 6px 8px; border-bottom: 1px solid #2a2416; cursor: default;
+  }
+  .lo.on { background: rgba(255,209,0,.12); border-left: 2px solid var(--gold); }
+  .lo .name { font-size: .86rem; color: var(--ink); }
+  .lo .meta { font-size: .72rem; color: var(--muted); }
+  .lo .meta b { color: var(--wish); font-weight: 600; }
+
+  .head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .head h3 { margin: 0; font-size: 1rem; color: var(--gold); }
+  .head .count { margin-left: auto; font-size: .78rem; color: var(--muted); }
+  .head .count b { color: var(--wish); }
+
+  .notes {
+    font-size: .78rem; color: var(--muted); margin: 0 0 8px; line-height: 1.4;
+    min-height: 2.2em;
+  }
+
+  .entry-list {
+    border: 1px solid #43381f; background: #0c0a07; height: 168px; overflow: hidden; margin-bottom: 8px;
+  }
+  .row {
+    display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 6px;
+    font-size: .8rem;
+  }
+  .row:nth-child(odd) { background: rgba(255,255,255,.022); }
+  .ico { width: 18px; height: 18px; border: 1px solid #6b5a30; border-radius: 2px; flex: none; }
+  .ico.f { background: linear-gradient(135deg,#8a3a12,#e0872c); }
+  .ico.i { background: linear-gradient(135deg,#1d4f7a,#7fd0f5); }
+  .ico.a { background: linear-gradient(135deg,#3b2160,#b184ec); }
+  .name { flex: 1; color: #f0e6cc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tag { font-size: .68rem; color: #8a9bb8; width: 52px; text-align: right; }
+  .id { font-size: .68rem; color: #6f6754; width: 58px; text-align: right; font-variant-numeric: tabular-nums; }
+  .badge {
+    font-size: .66rem; color: #59b6ff; width: 48px; text-align: right;
+  }
+
+  .btnrow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .btn {
+    padding: 5px 12px; font: inherit; font-size: .78rem; color: #f0d9a0;
+    background: linear-gradient(180deg, #6a2a22, #3d1510);
+    border: 1px solid #8a4030; border-radius: 3px; cursor: default;
+  }
+  .btn.gold {
+    background: linear-gradient(180deg, #5a4518, #2e230c);
+    border-color: var(--gold-line); color: var(--gold);
+  }
+  .btn.quiet {
+    background: linear-gradient(180deg, #2a2418, #16130c);
+    border-color: #4c3f22; color: #cdbf9d;
+  }
+  .btn:disabled, .btn.off { opacity: .45; }
+
+  .status {
+    margin-top: 8px; font-size: .76rem; color: var(--muted); line-height: 1.4;
+    min-height: 2.4em;
+  }
+  .status .ok { color: var(--good); }
+  .status .bad { color: var(--bad); }
+
+  .export {
+    margin-top: 10px; border: 1px solid #43381f; background: #0a0906;
+    padding: 8px; border-radius: 3px;
+  }
+  .export .label { margin-bottom: 4px; }
+  .export textarea {
+    width: 100%; height: 52px; resize: none; font: inherit; font-size: .72rem;
+    background: #080706; border: 1px solid #3a3220; color: #c8b896; padding: 6px;
+  }
+
+  .aside {
+    width: 280px; font-size: .82rem; color: var(--muted); line-height: 1.5;
+  }
+  .aside h3 { color: var(--gold-dim); font-size: .9rem; margin: 0 0 8px; }
+  .aside ul { margin: 0; padding-left: 1.1rem; }
+  .aside li { margin-bottom: 6px; }
+  .aside .note {
+    margin-top: 14px; padding: 10px; border: 1px solid #43381f; background: #12100c;
+    border-radius: 3px; font-size: .78rem;
+  }
+</style>
+</head>
+<body>
+  <h1>AscensionSuite — Loadouts tab (preview)</h1>
+  <p class="lead">
+    Proposed third tab: named <strong>Loadouts</strong> (Save Build / Load / Apply / Export),
+    inspired by the <em>build-as-data</em> idea in
+    <a href="https://github.com/Yshaana/AscensionCrafter" style="color:#edcd82">AscensionCrafter</a>
+    — but in-game only, no offline DBC corpus and no copied code.
+    Confirm this look before any Lua lands.
+  </p>
+
+  <div class="stage">
+    <div class="dialog">
+      <div class="close">×</div>
+      <div class="titlebar">
+        <h2>AscensionSuite</h2>
+        <span class="ver">v0.3.0 preview</span>
+      </div>
+
+      <div class="tabs">
+        <div class="tab">Wishlist</div>
+        <div class="tab on">Loadouts</div>
+        <div class="tab">Assists</div>
+      </div>
+      <div class="tabline"></div>
+
+      <div class="split">
+        <div class="col-list">
+          <div class="label">Saved builds</div>
+          <div class="loadout-list">
+            <div class="lo on">
+              <span class="name">Stormstrike leveling</span>
+              <span class="meta"><b>12</b> entries · Lazra</span>
+            </div>
+            <div class="lo">
+              <span class="name">Test</span>
+              <span class="meta"><b>2</b> entries · Lazra</span>
+            </div>
+            <div class="lo">
+              <span class="name">Fel cleave WIP</span>
+              <span class="meta"><b>18</b> entries · shared</span>
+            </div>
+          </div>
+          <div class="btnrow">
+            <button class="btn gold">New</button>
+            <button class="btn quiet">Delete</button>
+          </div>
+        </div>
+
+        <div class="col-detail">
+          <div class="head">
+            <h3>Stormstrike leveling</h3>
+            <span class="count"><b>12</b> / 25 · 3 Desired</span>
+          </div>
+          <p class="notes">Leveling kit — push after Wildcard opens. Notes optional.</p>
+
+          <div class="label">Entries in this build</div>
+          <div class="entry-list">
+            <div class="row">
+              <span class="ico f"></span>
+              <span class="name">Fire Storm</span>
+              <span class="tag">Ability</span>
+              <span class="id">e:10482</span>
+              <span class="badge">Desired</span>
+            </div>
+            <div class="row">
+              <span class="ico a"></span>
+              <span class="name">Arcane Ward</span>
+              <span class="tag">Ability</span>
+              <span class="id">e:9211</span>
+              <span class="badge"></span>
+            </div>
+            <div class="row">
+              <span class="ico i"></span>
+              <span class="name">Deadliness</span>
+              <span class="tag">Talent</span>
+              <span class="id">e:2201</span>
+              <span class="badge">Desired</span>
+            </div>
+            <div class="row">
+              <span class="ico f"></span>
+              <span class="name">Empowered Stormstrike</span>
+              <span class="tag">Talent</span>
+              <span class="id">e:4412</span>
+              <span class="badge"></span>
+            </div>
+            <div class="row">
+              <span class="ico i"></span>
+              <span class="name">Elemental Devastation</span>
+              <span class="tag">Talent</span>
+              <span class="id">e:3188</span>
+              <span class="badge"></span>
+            </div>
+          </div>
+
+          <div class="btnrow">
+            <button class="btn gold">Save Build</button>
+            <button class="btn">Load → Wishlist</button>
+            <button class="btn">Apply → Desired</button>
+            <button class="btn quiet">Capture Known</button>
+          </div>
+
+          <div class="status">
+            <span class="ok">Saved.</span>
+            Apply resolves <code>entryId + entryType</code> before calling Ascension —
+            so Push no longer dies with “2 refused” when you only have a spell id.
+          </div>
+
+          <div class="export">
+            <div class="label">Share string (copy / paste)</div>
+            <textarea readonly>ASUITE1|Stormstrike leveling|12|Ability:10482:Fire Storm;Ability:9211:Arcane Ward;…</textarea>
+            <div class="btnrow">
+              <button class="btn quiet">Copy</button>
+              <button class="btn quiet">Import…</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="aside">
+      <h3>Scope (this preview)</h3>
+      <ul>
+        <li><strong>Loadout</strong> = named set of CA entries (Ability / Talent) with resolved ids, names, icons</li>
+        <li><strong>Save Build</strong> snapshots current Wishlist (+ optional Known marks)</li>
+        <li><strong>Load</strong> replaces Suite Wishlist from that build</li>
+        <li><strong>Apply</strong> = Load + Push to Desired (Wildcard), with refuse reasons in status</li>
+        <li><strong>Export / Import</strong> shareable text blob (Suite format, not AscensionCrafter ACE)</li>
+      </ul>
+      <div class="note">
+        <strong>Not in v1:</strong> DBC dump, combat-log session capture, Hero Architect import,
+        gear/stats theorycraft — those stay AscensionCrafter’s job. Suite stays on Rapid Desired.
+      </div>
+      <div class="note" style="margin-top:8px">
+        Screenshot bug addressed in the same release: Wishlist Push used raw spell ids
+        that Ascension refused — Loadouts + Push will store/resolve the real
+        <code>(entryId, entryType)</code> pair first.
+      </div>
+    </aside>
+  </div>
+</body>
+</html>

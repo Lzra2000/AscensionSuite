@@ -417,7 +417,7 @@ local function PushToDesired()
         return
     end
 
-    local pushed, already, failed, reason = Wishlist.PushToDesired()
+    local pushed, already, failed, reason, refuses = Wishlist.PushToDesired()
     if reason == "not_wildcard" then
         WishlistPanel.Refresh("Desired sync needs Wildcard mode. Your wishlist is saved and waiting.")
         return
@@ -429,7 +429,14 @@ local function PushToDesired()
 
     local note = string.format("Pushed %d to Desired (%d already there", pushed, already)
     if failed > 0 then
-        note = note .. string.format(", %d refused by Ascension", failed)
+        note = note .. string.format(", %d refused", failed)
+        local Loadouts = AscensionSuite.Loadouts
+        if Loadouts and Loadouts.FormatRefuseSummary and type(refuses) == "table" and #refuses > 0 then
+            local detail = Loadouts.FormatRefuseSummary(refuses)
+            if detail then
+                note = note .. ": " .. detail
+            end
+        end
     end
     WishlistPanel.Refresh(note .. ").")
 end
