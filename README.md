@@ -2,7 +2,7 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
-**v0.2.5** ships: **Wishlist tab** in `/asuite` (works outside Wildcard), Rapid **Continue unstick**, filter-proof Desired sync, an opt-in **keep going after a Desired hit** assist, roll logbook, and guarded assists — all assists default **off**.
+**v0.2.6** ships: **Wishlist tab** in `/asuite` (works outside Wildcard), Rapid **Continue unstick**, filter-proof Desired sync, an opt-in **keep going after a Desired hit** assist, roll logbook, and guarded assists — all assists default **off**.
 
 ## In-game
 
@@ -69,7 +69,7 @@ Draft / Hall of Fame / store automation stay out of scope. See `SECURITY.md`.
 ```bash
 sh scripts/check.sh
 sh scripts/build-dist.sh
-sh scripts/release.sh 0.2.5
+sh scripts/release.sh 0.2.6
 ```
 
 `build-dist.sh` cross-checks every TOC-listed Lua file against the built archive, so a payload directory missing from the zip fails the build. Roll starters (`RollAbilities`, `StartRapidRolling`, …) and `C_*` globals are allowed **only** in `integration/AscensionAPI.lua`; `scripts/check.sh` enforces both. `tests/test_load.lua` fails a release whose version is not the same in `AscensionSuite.toc`, `core/Bootstrap.lua`, the newest `CHANGELOG.md` heading and this README.

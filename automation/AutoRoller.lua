@@ -108,6 +108,10 @@ function AutoRoller.GetLastError()
     return lastError
 end
 
+function AutoRoller.ClearLastError()
+    lastError = nil
+end
+
 -- How many Desired entries this run has landed. Non-zero only matters for the
 -- continue assist, which is the only way a single run sees more than one.
 function AutoRoller.GetDesiredHits()

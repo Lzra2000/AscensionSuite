@@ -52,6 +52,17 @@ local function Print(message)
     end
 end
 
+-- WotLK 3.3.5a CheckButton:GetChecked() returns 1 / nil, not true / false.
+-- Comparing with == true wrote every toggle as off while the widget stayed
+-- visually checked — Auto-Roll looked enabled and still reported "assist off".
+local function CheckButtonIsOn(check)
+    if type(check) ~= "table" or type(check.GetChecked) ~= "function" then
+        return false
+    end
+    local value = check:GetChecked()
+    return value == 1 or value == true
+end
+
 local function CreateCheckbox(parent, label, assistKey, yOffset)
     local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     check:SetPoint("TOPLEFT", 0, yOffset)
@@ -64,12 +75,18 @@ local function CreateCheckbox(parent, label, assistKey, yOffset)
 
     check:SetScript("OnClick", function(self)
         local assists = GetAssists()
-        assists[assistKey] = self:GetChecked() == true
+        local on = CheckButtonIsOn(self)
+        assists[assistKey] = on
 
-        if assistKey == "autoRoll" and not assists.autoRoll then
+        if assistKey == "autoRoll" then
             local AutoRoller = AscensionSuite.AutoRoller
-            if AutoRoller and AutoRoller.Stop then
-                AutoRoller.Stop("assist_off")
+            if not on then
+                if AutoRoller and AutoRoller.Stop then
+                    AutoRoller.Stop("assist_off")
+                end
+            elseif AutoRoller and AutoRoller.ClearLastError then
+                -- Drop a stale "assist switched off" line from the previous toggle.
+                AutoRoller.ClearLastError()
             end
         end
 
@@ -81,6 +98,7 @@ local function CreateCheckbox(parent, label, assistKey, yOffset)
         end
 
         MainWindow.RefreshAutoRoll()
+        MainWindow.RefreshLogbook()
     end)
 
     assistChecks[assistKey] = check
@@ -114,12 +132,18 @@ function MainWindow.DescribeStopReason(reason)
     return STOP_REASONS[reason] or tostring(reason)
 end
 
+-- Exposed for tests: WotLK GetChecked returns 1, not true.
+function MainWindow.CheckButtonIsOn(check)
+    return CheckButtonIsOn(check)
+end
+
 function MainWindow.RefreshAutoRoll()
     if not frame then
         return
     end
 
     local assists = GetAssists()
+    local autoRollOn = assists.autoRoll == true
     local AutoRoller = AscensionSuite.AutoRoller
     local running = AutoRoller and AutoRoller.IsRunning and AutoRoller.IsRunning()
     local hits = 0
@@ -135,17 +159,30 @@ function MainWindow.RefreshAutoRoll()
                 autoRollStatus:SetText("Auto-Roll: running")
             end
             autoRollStatus:SetTextColor(0.43, 0.81, 0.54, 1)
+        elseif not autoRollOn then
+            autoRollStatus:SetText("Auto-Roll: off (tick the checkbox, then Start)")
+            autoRollStatus:SetTextColor(0.54, 0.60, 0.67, 1)
         elseif AutoRoller and AutoRoller.GetLastError and AutoRoller.GetLastError() then
-            autoRollStatus:SetText("Auto-Roll stopped - " .. MainWindow.DescribeStopReason(AutoRoller.GetLastError()))
-            autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
+            local err = AutoRoller.GetLastError()
+            -- Stale assist_off after the box was turned back on must not stick.
+            if err == "assist_off" then
+                if AutoRoller.ClearLastError then
+                    AutoRoller.ClearLastError()
+                end
+                autoRollStatus:SetText("Auto-Roll: ready — press Start")
+                autoRollStatus:SetTextColor(0.54, 0.60, 0.67, 1)
+            else
+                autoRollStatus:SetText("Auto-Roll stopped - " .. MainWindow.DescribeStopReason(err))
+                autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
+            end
         else
-            autoRollStatus:SetText("Auto-Roll: idle")
+            autoRollStatus:SetText("Auto-Roll: ready — press Start")
             autoRollStatus:SetTextColor(0.54, 0.60, 0.67, 1)
         end
     end
 
     if startButton then
-        startButton:SetEnabled(assists.autoRoll == true and not running)
+        startButton:SetEnabled(autoRollOn and not running)
     end
     if stopButton then
         stopButton:SetEnabled(running == true)
@@ -184,7 +221,12 @@ function MainWindow.RefreshLogbook()
     end
 
     if #lines == 0 then
-        logHost:SetText("Logbook empty (enable capture assist)")
+        local assists = GetAssists()
+        if assists.captureRolls == true then
+            logHost:SetText("Logbook empty — waiting for the next roll")
+        else
+            logHost:SetText("Logbook empty — tick Capture rolls above")
+        end
     else
         logHost:SetText(table.concat(lines, "\n"))
     end
@@ -203,10 +245,13 @@ function MainWindow.RefreshDesiredStatus(note)
         return
     end
 
-    local text = string.format("Desired: %d of %d on the wishlist",
-        Wishlist.CountDesired(), Wishlist.Count())
+    local desired = Wishlist.CountDesired()
+    local total = Wishlist.Count()
+    local text = string.format("Desired: %d of %d on the wishlist", desired, total)
     if note then
         text = text .. "  |  " .. note
+    elseif total > 0 and desired == 0 then
+        text = text .. "  |  open Wishlist tab → Push to Desired (Wildcard)"
     end
     desiredStatus:SetText(text)
 end
@@ -293,7 +338,14 @@ local function StartAutoRoll()
         -- indistinguishable from the button not having been pressed.
         local ok, reason = AutoRoller.Start()
         if not ok and autoRollStatus then
-            autoRollStatus:SetText("Auto-Roll did not start - " .. MainWindow.DescribeStopReason(reason))
+            local detail = MainWindow.DescribeStopReason(reason)
+            if reason == "no_desired_targets" then
+                local Wishlist = AscensionSuite.Wishlist
+                if Wishlist and Wishlist.Count and Wishlist.Count() > 0 then
+                    detail = detail .. " — Wishlist tab → Push to Desired"
+                end
+            end
+            autoRollStatus:SetText("Auto-Roll did not start - " .. detail)
             autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
             MainWindow.RefreshDesiredStatus()
             return
