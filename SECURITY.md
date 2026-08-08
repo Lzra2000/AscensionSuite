@@ -16,7 +16,7 @@ AscensionSuite treats **player-initiated** Ascension actions as sacred. The addo
 | **Hall of Fate** | No auto-claim HoF rewards |
 | **Store / merchant** | No auto-purchase or currency spend |
 
-## Opt-in assists (v0.2.0)
+## Opt-in assists (v0.2.1)
 
 Mutating assists default **off** and must:
 
@@ -36,14 +36,32 @@ they are excluded from the allowlist by design and covered by `tests/test_popups
 `UNLOCK_SPEC_CONFIRM`, `DRAFT_UNLEARN_CONFIRM`, `UNLEARN_SKILL`, `UNLEARN_SKILLID`,
 `RECOVER_WILDCARD_ROLL_CONFIRM`.
 
+## Marking Desired from Ascension's own UI
+
+`integration/DesiredSync.lua` hooks the client so a mark the player makes in the
+native windows reaches the wishlist. It stays inside the same boundary:
+
+1. Every hook is a **post-hook** (`hooksecurefunc`) — the client's own handler
+   always runs first and is never replaced.
+2. Tracking is **bookkeeping only**. Learning that an entry is Desired writes to
+   `AscensionSuiteDB` and takes no game action.
+3. The one hook that acts, **Alt + right-click** on a Character Advancement spell
+   button, only adds or removes a Desired mark and only when the player holds the
+   modifier. It never learns, unlearns, locks or unlocks; `tests/test_desired_sync.lua`
+   asserts an unmodified right-click still just opens Ascension's dropdown.
+4. Alt + **right**-click specifically, because `CASpellButtonBaseMixin:OnClick`
+   already spends plain Alt-click on unlearn and Shift-click on learn. Reusing
+   either would change what an existing input does.
+
 ### Known client limitation
 
 The client exposes no API to count or enumerate Desired **selections** — only
 `IsDesiredID(id, type)` per entry, and `GetNumFilteredDesiredEntries()`, which is
 the size of the filtered *candidate* list and must never be used as a
-"player has targets" gate. Auto-Roll can therefore only verify the entries the
-addon itself tracks; Desired marks made directly in the native Rapid window are
-invisible to it and are treated as "no targets".
+"player has targets" gate. Auto-Roll can therefore only verify entries the addon
+holds an (id, type) pair for. Since v0.2.1 those pairs are collected from the
+native windows too, but the rescan's universe is the Rapid window's **filtered**
+candidate list, so a narrowed search box can still hide a selection from it.
 
 ## Data
 
