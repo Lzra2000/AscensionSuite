@@ -2,7 +2,7 @@
 ## Title: AscensionSuite
 ## Notes: Native Rapid Rolling assists, wishlist Desired sync, and roll logbook.
 ## Author: Lzra2000
-## Version: 0.2.0
+## Version: 0.2.1
 ## SavedVariables: AscensionSuiteDB
 
 core\Bootstrap.lua

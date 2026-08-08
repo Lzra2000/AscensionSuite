@@ -173,23 +173,24 @@ C_Wildcard = {
     CanRollAbilities = function() return false end,
 }
 
-local files = {
-    "core/Bootstrap.lua",
-    "core/Database.lua",
-    "core/Wishlist.lua",
-    "core/Logbook.lua",
-    "integration/AscensionAPI.lua",
-    "automation/AutoRoller.lua",
-    "automation/AnimationSkip.lua",
-    "automation/PopupAssist.lua",
-    "ui/SpellCell.lua",
-    "ui/MainWindow.lua",
-}
+-- Load exactly what the TOC loads, in TOC order, so this test cannot drift from
+-- the shipped addon.
+local files = {}
+local toc = assert(io.open(ROOT .. "/AscensionSuite.toc", "r"), "AscensionSuite.toc missing")
+for line in toc:lines() do
+    line = line:gsub("^%s+", ""):gsub("%s+$", "")
+    if line ~= "" and line:sub(1, 1) ~= "#" and line:lower():match("%.lua$") then
+        files[#files + 1] = line:gsub("\\", "/")
+    end
+end
+toc:close()
+
+assert(#files > 0, "AscensionSuite.toc lists no Lua files")
 
 for index = 1, #files do
     local path = ROOT .. "/" .. files[index]
     local chunk, err = loadfile(path)
-    assert(chunk, err)
+    assert(chunk, files[index] .. ": " .. tostring(err))
     chunk(ADDON_NAME)
 end
 
