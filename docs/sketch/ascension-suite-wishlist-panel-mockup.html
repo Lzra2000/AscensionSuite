@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AscensionSuite 0.2.2 — Wishlist panel</title>
+<style>
+  :root {
+    --page: #0b0d10;
+    --stone: #16130f;
+    --stone-2: #1d1a14;
+    --panel: #12100c;
+    --gold: #ffd100;
+    --gold-dim: #c8a03c;
+    --gold-line: #6e5a24;
+    --ink: #f4ead6;
+    --muted: #9c927f;
+    --wish: #59b6ff;
+    --good: #62d187;
+    --bad: #e2726f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 26px 30px 60px; color: var(--ink);
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    background: radial-gradient(1100px 560px at 62% -10%, #1e232c, var(--page));
+  }
+  h1 { margin: 0 0 6px; font-size: 1.25rem; color: var(--ink); }
+  .lead { color: var(--muted); max-width: 66rem; line-height: 1.55; margin: 0 0 22px; font-size: 0.9rem; }
+  code { color: #edcd82; }
+  .stage { display: flex; gap: 26px; align-items: flex-start; flex-wrap: wrap; }
+
+  /* ---- WotLK DialogFrame chrome -------------------------------------- */
+  .dialog {
+    position: relative; width: 680px; background:
+      linear-gradient(180deg, rgba(60,48,28,.35), rgba(0,0,0,0)) , var(--stone);
+    border: 2px solid var(--gold-line);
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px #0b0906, 0 18px 44px rgba(0,0,0,.65), inset 0 0 60px rgba(0,0,0,.55);
+    padding: 16px 18px 16px;
+  }
+  .dialog::before {
+    /* inner bevel line, the way UI-DialogBox-Border reads at 32px edge */
+    content: ""; position: absolute; inset: 5px; border: 1px solid #3d3320; pointer-events: none;
+  }
+  .titlebar { display: flex; align-items: baseline; gap: 10px; margin: 0 0 2px; }
+  .titlebar h2 {
+    margin: 0; font-size: 1.02rem; color: var(--gold); letter-spacing: .3px;
+    text-shadow: 0 1px 0 #000;
+  }
+  .ver { color: var(--muted); font-size: .74rem; }
+  .close {
+    position: absolute; top: 8px; right: 10px; width: 22px; height: 22px; line-height: 20px;
+    text-align: center; color: #f0d9a0; border: 1px solid var(--gold-line);
+    background: #241d12; border-radius: 50%; font-size: .8rem;
+  }
+
+  /* ---- tabs ----------------------------------------------------------- */
+  .tabs { display: flex; gap: 4px; margin: 12px 0 0; padding-left: 4px; }
+  .tab {
+    padding: 6px 18px 7px; font-size: .82rem; color: #cdbf9d;
+    background: linear-gradient(180deg, #241d12, #17130c);
+    border: 1px solid #4c3f22; border-bottom: none; border-radius: 5px 5px 0 0;
+  }
+  .tab.on {
+    color: var(--gold); background: linear-gradient(180deg, #3b2f18, #241c10);
+    border-color: var(--gold-line); box-shadow: inset 0 1px 0 rgba(255,209,0,.25);
+  }
+  .tabline { height: 1px; background: var(--gold-line); margin-bottom: 14px; }
+
+  /* ---- panel body ----------------------------------------------------- */
+  .head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .head h3 { margin: 0; font-size: 1rem; color: var(--gold); }
+  .head .count { margin-left: auto; font-size: .78rem; color: var(--muted); }
+  .head .count b { color: var(--wish); font-weight: 600; }
+
+  .searchrow { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .input {
+    background: #0a0906; border: 1px solid #4c3f22; color: var(--ink);
+    padding: 5px 9px; font: inherit; font-size: .82rem; border-radius: 3px;
+  }
+  .input.search { flex: 1; }
+  .input::placeholder { color: #6f6754; }
+
+  .list {
+    border: 1px solid #43381f; background: #0c0a07; padding: 3px;
+    height: 236px; overflow: hidden; position: relative;
+  }
+  .row {
+    display: flex; align-items: center; gap: 9px; height: 28px; padding: 0 6px;
+    font-size: .84rem; border: 1px solid transparent;
+  }
+  .row:nth-child(odd) { background: rgba(255,255,255,.022); }
+  .row.hi { background: rgba(255,209,0,.10); border-color: #5d4c22; }
+  .ico { width: 20px; height: 20px; flex: none; border: 1px solid #6b5a30; background: #2c2a24; border-radius: 2px; }
+  .ico.f { background: linear-gradient(135deg,#8a3a12,#e0872c); }
+  .ico.i { background: linear-gradient(135deg,#1d4f7a,#7fd0f5); }
+  .ico.n { background: linear-gradient(135deg,#264d1e,#7cc45a); }
+  .ico.a { background: linear-gradient(135deg,#3b2160,#b184ec); }
+  .ico.s { background: linear-gradient(135deg,#5d1c1c,#d05252); }
+  .ico.q { background: #2c2a24; color: #6f6754; font-size: .7rem; text-align: center; line-height: 20px; }
+  .nm { flex: 1; color: var(--ink); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .nm.unres { color: var(--muted); font-style: italic; }
+  .sid { color: #8c8471; font-size: .75rem; width: 54px; text-align: right; }
+  .badge {
+    font-size: .66rem; letter-spacing: .4px; padding: 1px 6px; border-radius: 2px;
+    border: 1px solid var(--wish); color: var(--wish); background: rgba(89,182,255,.10);
+    width: 62px; text-align: center;
+  }
+  .badge.off { border-color: transparent; color: transparent; background: none; }
+  .rm {
+    width: 18px; height: 18px; line-height: 16px; text-align: center; font-size: .7rem;
+    color: #c9b489; border: 1px solid #4c3f22; background: #1b1610; border-radius: 2px;
+  }
+  .scroll { position: absolute; right: 3px; top: 4px; bottom: 4px; width: 7px; background: #0a0806; border: 1px solid #3b3220; }
+  .scroll i { position: absolute; left: 0; right: 0; top: 6%; height: 46%; background: #5a4a25; display: block; }
+
+  .addrow { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .addrow .lbl { font-size: .78rem; color: var(--muted); }
+  .btn {
+    border: 1px solid #6b5a30; color: #f0e2c0; padding: 5px 13px; font: inherit; font-size: .8rem;
+    background: linear-gradient(180deg, #33291a, #1c1710); border-radius: 3px; cursor: pointer;
+  }
+  .btn.gold { border-color: var(--gold-dim); color: #ffe89a; }
+  .btn.dis { opacity: .42; }
+  .btn.go { border-color: #4e7f54; color: var(--good); }
+  .btn.stop { border-color: #7f4c4c; color: var(--bad); }
+  .spacer { flex: 1; }
+
+  .pushrow {
+    margin-top: 12px; padding: 9px 11px; border: 1px solid #43381f; background: #100e0a;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .status { font-size: .8rem; color: var(--muted); line-height: 1.35; }
+  .status b { color: var(--good); font-weight: 600; }
+  .status.warn b { color: var(--gold); }
+  .foot {
+    margin-top: 12px; padding-top: 8px; border-top: 1px solid #33291a;
+    color: var(--muted); font-size: .76rem;
+  }
+
+  /* ---- assists tab card ------------------------------------------------ */
+  .side { width: 380px; }
+  .dialog.small { width: 380px; }
+  .chk { display: block; margin: 6px 0; font-size: .82rem; color: #ded2b6; }
+  .chk input { margin-right: 7px; }
+  .subhead { color: var(--gold-dim); font-size: .76rem; text-transform: uppercase; letter-spacing: .6px; margin: 14px 0 6px; }
+  .log { border: 1px solid #43381f; background: #0c0a07; padding: 7px 9px; font-size: .76rem; color: #b9ae95; line-height: 1.5; }
+
+  .chat {
+    margin-top: 20px; width: 100%; max-width: 1090px; border: 1px solid #2b2a26; background: #08090b;
+    padding: 10px 12px; font-size: .82rem; line-height: 1.6;
+  }
+  .chat .who { color: #6ba8e8; }
+  .chat .old { color: #e2726f; text-decoration: line-through; opacity: .75; }
+  .chat .new { color: #dfe6ef; }
+  .note { margin-top: 22px; max-width: 1090px; color: var(--muted); font-size: .85rem; line-height: 1.6; }
+  .note h4 { color: var(--gold-dim); margin: 16px 0 6px; font-size: .82rem; text-transform: uppercase; letter-spacing: .5px; }
+  .note li { margin: 4px 0; }
+</style>
+</head>
+<body>
+  <h1>AscensionSuite 0.2.2 — the Wishlist panel</h1>
+  <p class="lead">
+    <code>/asuite</code> gets a two-tab split. <strong>Wishlist</strong> is the hero panel: a real, scrollable,
+    searchable list the player owns and edits <em>at any time</em>, in or out of Wildcard.
+    <strong>Assists</strong> keeps everything that was already there. Ascension's own Rapid Rolling board is
+    still the board — nothing here rebuilds the Desired · Roll · Known columns.
+  </p>
+
+  <div class="stage">
+    <!-- ================= Wishlist tab ================= -->
+    <div class="dialog">
+      <span class="close">✕</span>
+      <div class="titlebar">
+        <h2>AscensionSuite</h2>
+        <span class="ver">v0.2.2</span>
+      </div>
+
+      <div class="tabs">
+        <span class="tab on">Wishlist</span>
+        <span class="tab">Assists</span>
+      </div>
+      <div class="tabline"></div>
+
+      <div class="head">
+        <h3>Wishlist</h3>
+        <span class="count">14 entries · <b>3</b> Desired</span>
+      </div>
+
+      <div class="searchrow">
+        <input class="input search" placeholder="Search name or id…" value="" />
+        <button class="btn">Clear</button>
+      </div>
+
+      <div class="list">
+        <div class="scroll"><i></i></div>
+        <div class="row hi"><span class="ico f"></span><span class="nm">Fireball</span><span class="sid">133</span><span class="badge">Desired</span><span class="rm">✕</span></div>
+        <div class="row"><span class="ico i"></span><span class="nm">Ice Block</span><span class="sid">45438</span><span class="badge off">Desired</span><span class="rm">✕</span></div>
+        <div class="row hi"><span class="ico n"></span><span class="nm">Living Bomb</span><span class="sid">44457</span><span class="badge">Desired</span><span class="rm">✕</span></div>
+        <div class="row"><span class="ico a"></span><span class="nm">Arcane Missiles</span><span class="sid">5143</span><span class="badge off">Desired</span><span class="rm">✕</span></div>
+        <div class="row hi"><span class="ico s"></span><span class="nm">Molten Armor</span><span class="sid">30482</span><span class="badge">Desired</span><span class="rm">✕</span></div>
+        <div class="row"><span class="ico i"></span><span class="nm">Frost Nova</span><span class="sid">122</span><span class="badge off">Desired</span><span class="rm">✕</span></div>
+        <div class="row"><span class="ico n"></span><span class="nm">Polymorph</span><span class="sid">118</span><span class="badge off">Desired</span><span class="rm">✕</span></div>
+        <div class="row"><span class="ico q">?</span><span class="nm unres">Entry 71042 (not in this client's book)</span><span class="sid">71042</span><span class="badge off">Desired</span><span class="rm">✕</span></div>
+      </div>
+
+      <div class="addrow">
+        <span class="lbl">Spell / entry id</span>
+        <input class="input" style="width:96px" value="" placeholder="133" />
+        <button class="btn gold">Add</button>
+        <span class="spacer"></span>
+        <button class="btn">Clear list</button>
+      </div>
+
+      <div class="pushrow">
+        <button class="btn gold">Push to Desired</button>
+        <span class="status"><b>Wildcard active</b> — 3 of 14 already Desired. Push marks the rest for Auto-Roll.</span>
+      </div>
+
+      <div class="foot">
+        Click a row to toggle Desired · <strong>Alt&nbsp;+&nbsp;right-click</strong> a spell in the Character
+        Advancement book to add or remove it here · ✕ removes it from the Suite wishlist only.
+      </div>
+    </div>
+
+    <!-- ================= Assists tab + out-of-Wildcard state ================= -->
+    <div class="side">
+      <div class="dialog small">
+        <span class="close">✕</span>
+        <div class="titlebar"><h2>AscensionSuite</h2><span class="ver">v0.2.2</span></div>
+        <div class="tabs">
+          <span class="tab">Wishlist</span>
+          <span class="tab on">Assists</span>
+        </div>
+        <div class="tabline"></div>
+
+        <label class="chk"><input type="checkbox" /> Auto-Roll while leveling (Desired only)</label>
+        <label class="chk"><input type="checkbox" /> Instant skip WildCardDice animation</label>
+        <label class="chk"><input type="checkbox" /> Instant skip SkillCard flipbook</label>
+        <label class="chk"><input type="checkbox" /> Accept Wildcard confirm popups</label>
+        <label class="chk"><input type="checkbox" /> Capture rolls into Logbook</label>
+
+        <div class="addrow" style="margin-top:12px">
+          <button class="btn go dis">Start</button>
+          <button class="btn stop dis">Stop</button>
+          <span class="status" style="margin-left:6px">Auto-Roll: idle</span>
+        </div>
+
+        <div class="subhead">Desired profile</div>
+        <div class="addrow" style="margin-top:0">
+          <input class="input" style="width:130px" value="my-hero" />
+          <button class="btn">Save</button>
+          <button class="btn">Load</button>
+          <span class="spacer"></span>
+          <button class="btn">Sync from Rapid</button>
+        </div>
+
+        <div class="subhead">Logbook (recent)</div>
+        <div class="log">
+          [Ability] Living Bomb (44457)<br />
+          [Talent] Burnout rank 2/3 (44450)<br />
+          [Ability] Frost Nova (122)
+        </div>
+      </div>
+
+      <div class="dialog small" style="margin-top:18px">
+        <div class="titlebar"><h2>Wishlist — outside Wildcard</h2></div>
+        <div class="tabline" style="margin-top:10px"></div>
+        <div class="pushrow" style="margin-top:0">
+          <button class="btn dis">Push to Desired</button>
+          <span class="status warn"><b>Not in Wildcard</b> — the wishlist is saved. Desired sync happens when you enter Wildcard mode.</span>
+        </div>
+        <div class="foot" style="border:none; padding-top:10px">
+          Every row still adds, removes, searches and persists. Only the Desired push is gated,
+          because Desired is a Wildcard-only concept in the client.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="chat">
+    <div><span class="who">AscensionSuite</span> <span class="old">Desired marks only exist in Wildcard mode.</span> &nbsp;— gone</div>
+    <div><span class="who">AscensionSuite</span> <span class="new">Wishlist: Fireball — saved to the Suite wishlist. Desired sync happens in Wildcard mode.</span> &nbsp;(hint shown once per session)</div>
+    <div><span class="who">AscensionSuite</span> <span class="new">Wishlist: Ice Block</span></div>
+    <div><span class="who">AscensionSuite</span> <span class="new">Removed from wishlist: Ice Block</span></div>
+  </div>
+
+  <div class="note">
+    <h4>What drives the layout</h4>
+    <ul>
+      <li><strong>Tabs, not a second window.</strong> One <code>/asuite</code> frame keeps the DialogFrame gold
+        chrome and the existing drag/close behaviour; the Assists tab is the old overlay, unchanged.</li>
+      <li><strong>The list is the hero.</strong> Eight visible 28px rows on a FauxScrollFrame instead of the
+        fixed two-row 8×2 icon grid, so a wishlist built by Alt + right-clicking through the book is readable
+        rather than counted in a <code>+N more</code> line.</li>
+      <li><strong>Icon / name / tooltip come from <code>AscensionAPI</code> 1:1</strong> and fall back to
+        <code>GetSpellInfo</code>. An id the client cannot resolve still lists — greyed, question-mark icon —
+        rather than being rejected, because an unresolvable id in one mode can resolve in another.</li>
+      <li><strong>The Desired badge is live, not stored.</strong> It is one <code>IsDesiredID</code> probe per
+        visible row, so it tells the truth even after the player edits Desired in Ascension's own window.</li>
+      <li><strong>Push to Desired is the only Wildcard-gated control.</strong> Everything else works anywhere,
+        which is the whole point of the change.</li>
+    </ul>
+  </div>
+</body>
+</html>

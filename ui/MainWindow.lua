@@ -1,5 +1,6 @@
 -- AscensionSuite: ui/MainWindow.lua
--- Thin assist overlay: toggles, wishlist sync, profiles, logbook. Native Rapid UI stays authoritative.
+-- The /asuite window: a Wishlist tab (the panel the player edits) and an Assists
+-- tab (toggles, Auto-Roll, profiles, logbook). Native Rapid UI stays authoritative.
 
 local AscensionSuite = _G.AscensionSuite
 if type(AscensionSuite) ~= "table" then
@@ -11,20 +12,21 @@ local MainWindow = {}
 AscensionSuite.MainWindow = MainWindow
 
 local FRAME_NAME = "AscensionSuiteMainWindow"
-local GRID_COLUMNS = 8
--- The grid is a fixed two rows. Marking Desired in Ascension's own windows can
--- fill it far faster than typing ids ever did, so the rest is counted instead.
-local GRID_ROWS = 2
-local CELL_GAP = 10
+local FRAME_WIDTH = 680
+local FRAME_HEIGHT = 524
+local CONTENT_WIDTH = 640
+local CONTENT_TOP = -88
 local LOG_LINES = 6
 
+local TAB_WISHLIST = 1
+local TAB_ASSISTS = 2
+
 local frame
-local inputBox
+local tabs = {}
+local contents = {}
+local activeTab = TAB_WISHLIST
 local profileBox
-local gridHost
-local gridOverflow
 local logHost
-local cells = {}
 local assistChecks = {}
 local autoRollStatus
 local desiredStatus
@@ -39,18 +41,15 @@ local function GetAssists()
     return {}
 end
 
-local function ParseInput(text)
-    local id = tonumber(text)
-    if not id then
-        return nil
-    end
-    return math.floor(id)
+local function GetWishlistPanel()
+    return AscensionSuite.WishlistPanel
 end
 
 local function CreateCheckbox(parent, label, assistKey, yOffset)
     local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-    check:SetPoint("TOPLEFT", 20, yOffset)
-    check:SetSize(24, 24)
+    check:SetPoint("TOPLEFT", 0, yOffset)
+    check:SetWidth(24)
+    check:SetHeight(24)
 
     local text = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     text:SetPoint("LEFT", check, "RIGHT", 4, 0)
@@ -83,7 +82,7 @@ end
 
 local STOP_REASONS = {
     assist_off = "assist switched off",
-    no_desired_targets = "mark a wishlist spell Desired first",
+    no_desired_targets = "nothing on the wishlist is Desired yet",
     level_out_of_range = "only runs while leveling 1-60",
     not_wildcard = "not in Wildcard mode",
     rapid_not_ready = "no roll available right now",
@@ -117,7 +116,7 @@ function MainWindow.RefreshAutoRoll()
             autoRollStatus:SetText("Auto-Roll: running")
             autoRollStatus:SetTextColor(0.43, 0.81, 0.54, 1)
         elseif AutoRoller and AutoRoller.GetLastError and AutoRoller.GetLastError() then
-            autoRollStatus:SetText("Auto-Roll stopped — " .. MainWindow.DescribeStopReason(AutoRoller.GetLastError()))
+            autoRollStatus:SetText("Auto-Roll stopped - " .. MainWindow.DescribeStopReason(AutoRoller.GetLastError()))
             autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
         else
             autoRollStatus:SetText("Auto-Roll: idle")
@@ -171,88 +170,39 @@ function MainWindow.RefreshLogbook()
     end
 end
 
--- "Desired" is what the client confirms right now; "tracked" is every entry the
--- addon holds an (id, type) pair for. They differ on purpose: only the tracked
--- ones can be verified at all, and Auto-Roll gates on the confirmed subset.
+-- "Desired" is what the client confirms right now; the wishlist is the whole
+-- list. They differ on purpose: outside Wildcard nothing is Desired at all, and
+-- Auto-Roll gates on the confirmed subset.
 function MainWindow.RefreshDesiredStatus(note)
     if not desiredStatus then
         return
     end
 
     local Wishlist = AscensionSuite.Wishlist
-    if not Wishlist or not Wishlist.CollectTracked then
+    if not Wishlist or not Wishlist.Count then
         return
     end
 
-    local text = string.format("Desired: %d of %d tracked",
-        Wishlist.CountDesired(), #Wishlist.CollectTracked())
+    local text = string.format("Desired: %d of %d on the wishlist",
+        Wishlist.CountDesired(), Wishlist.Count())
     if note then
         text = text .. "  |  " .. note
     end
     desiredStatus:SetText(text)
 end
 
-function MainWindow.RefreshGrid()
-    if not gridHost then
-        return
-    end
-
-    local SpellCell = AscensionSuite.SpellCell
-    local Wishlist = AscensionSuite.Wishlist
-    if not SpellCell or not SpellCell.Create or not Wishlist then
-        return
-    end
-
-    local spellIds = Wishlist.GetSpellIds()
-    local hidden = math.max(0, #spellIds - GRID_COLUMNS * GRID_ROWS)
-    local needed = #spellIds - hidden
-    while #cells < needed do
-        local index = #cells + 1
-        local cell = SpellCell.Create(gridHost, FRAME_NAME .. "Cell" .. index)
-        cell:SetOnChanged(function()
-            MainWindow.RefreshGrid()
-            MainWindow.RefreshDesiredStatus()
-        end)
-        cells[index] = cell
-    end
-
-    local x, y = 0, 0
-    for index = 1, needed do
-        local cell = cells[index]
-        cell:ClearAllPoints()
-        cell:SetPoint("TOPLEFT", gridHost, "TOPLEFT", x, -y)
-        cell:SetSpell(spellIds[index])
-        cell:Show()
-
-        x = x + cell:GetWidth() + CELL_GAP
-        if index % GRID_COLUMNS == 0 then
-            x = 0
-            y = y + cell:GetHeight() + CELL_GAP
-        end
-    end
-
-    for index = needed + 1, #cells do
-        cells[index]:Hide()
-    end
-
-    if gridOverflow then
-        if hidden > 0 then
-            gridOverflow:SetText(string.format("+ %d more not shown", hidden))
-            gridOverflow:Show()
-        else
-            gridOverflow:Hide()
-        end
-    end
-end
-
 -- Everything that changes when a Desired mark lands, from any source. Skipped
--- while the overlay is closed so a bulk desire in the Rapid window does not
--- rebuild a grid nobody is looking at.
+-- while the window is closed so a bulk desire in the Rapid window does not
+-- rebuild a list nobody is looking at.
 function MainWindow.RefreshWishlist()
     if not frame or not frame:IsShown() then
         return
     end
-    MainWindow.RefreshGrid()
+
+    local panel = GetWishlistPanel()
+    if panel and panel.Refresh then
+        panel.Refresh()
+    end
     MainWindow.RefreshDesiredStatus()
 end
 
@@ -262,26 +212,6 @@ local function RefreshAssistToggles()
         check:SetChecked(assists[key] == true)
     end
     MainWindow.RefreshAutoRoll()
-end
-
-local function AddSpellFromInput()
-    if not inputBox then
-        return
-    end
-
-    local spellId = ParseInput(inputBox:GetText())
-    if not spellId then
-        return
-    end
-
-    local Wishlist = AscensionSuite.Wishlist
-    if Wishlist and Wishlist.AddToDesired then
-        Wishlist.AddToDesired(spellId)
-    end
-
-    inputBox:SetText("")
-    MainWindow.RefreshGrid()
-    MainWindow.RefreshDesiredStatus()
 end
 
 local function SyncDesiredFromNative()
@@ -300,7 +230,10 @@ local function SyncDesiredFromNative()
         note = string.format("+%d from Rapid", added)
     end
 
-    MainWindow.RefreshGrid()
+    local panel = GetWishlistPanel()
+    if panel and panel.Refresh then
+        panel.Refresh()
+    end
     MainWindow.RefreshDesiredStatus(note)
 end
 
@@ -322,7 +255,11 @@ local function LoadProfile()
     if Wishlist and Wishlist.LoadProfile then
         Wishlist.LoadProfile(profileBox:GetText(), true)
     end
-    MainWindow.RefreshGrid()
+
+    local panel = GetWishlistPanel()
+    if panel and panel.Refresh then
+        panel.Refresh()
+    end
     MainWindow.RefreshDesiredStatus()
 end
 
@@ -332,6 +269,7 @@ local function StartAutoRoll()
         AutoRoller.Start()
     end
     MainWindow.RefreshAutoRoll()
+    MainWindow.RefreshDesiredStatus()
 end
 
 local function StopAutoRoll()
@@ -365,13 +303,159 @@ local function UnstickRapid()
     MainWindow.RefreshAutoRoll()
 end
 
+------------------------------------------------------------------------
+-- Tabs
+------------------------------------------------------------------------
+
+function MainWindow.SelectTab(index)
+    if index ~= TAB_WISHLIST and index ~= TAB_ASSISTS then
+        return
+    end
+    activeTab = index
+
+    -- PanelTemplates draws the selected/deselected tab art. It is guarded rather
+    -- than assumed: if the client's FrameXML disagrees about the signature the
+    -- window must still open, so the content swap below is done by hand either way.
+    if frame and type(_G.PanelTemplates_SetTab) == "function" then
+        pcall(_G.PanelTemplates_SetTab, frame, index)
+    end
+
+    for tabIndex = 1, #contents do
+        local content = contents[tabIndex]
+        if content then
+            if tabIndex == index then
+                content:Show()
+            else
+                content:Hide()
+            end
+        end
+    end
+
+    if index == TAB_WISHLIST then
+        local panel = GetWishlistPanel()
+        if panel and panel.Refresh then
+            panel.Refresh()
+        end
+    else
+        MainWindow.RefreshDesiredStatus()
+        MainWindow.RefreshLogbook()
+        MainWindow.RefreshAutoRoll()
+    end
+end
+
+function MainWindow.GetActiveTab()
+    return activeTab
+end
+
+local function CreateTab(parent, index, label)
+    local tab = CreateFrame("Button", FRAME_NAME .. "Tab" .. index, parent, "CharacterFrameTabButtonTemplate")
+    tab:SetID(index)
+    tab:SetText(label)
+    tab:SetScript("OnClick", function(self)
+        MainWindow.SelectTab(self:GetID())
+    end)
+
+    if type(_G.PanelTemplates_TabResize) == "function" then
+        pcall(_G.PanelTemplates_TabResize, tab, 0)
+    end
+
+    tabs[index] = tab
+    return tab
+end
+
+------------------------------------------------------------------------
+-- Construction
+------------------------------------------------------------------------
+
+local function BuildAssistContent(content)
+    CreateCheckbox(content, "Auto-Roll while leveling (Desired targets only)", "autoRoll", -4)
+    CreateCheckbox(content, "Instant skip WildCardDice animation", "instantDiceSkip", -28)
+    CreateCheckbox(content, "Instant skip SkillCard flipbook", "instantSkillCardSkip", -52)
+    CreateCheckbox(content, "Accept Wildcard confirm popups", "acceptWildcardPopups", -76)
+    CreateCheckbox(content, "Capture rolls into Logbook", "captureRolls", -100)
+
+    startButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    startButton:SetWidth(90)
+    startButton:SetHeight(22)
+    startButton:SetPoint("TOPRIGHT", -90, -4)
+    startButton:SetText("Start")
+    startButton:SetScript("OnClick", StartAutoRoll)
+
+    stopButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    stopButton:SetWidth(90)
+    stopButton:SetHeight(22)
+    stopButton:SetPoint("LEFT", startButton, "RIGHT", 8, 0)
+    stopButton:SetText("Stop")
+    stopButton:SetScript("OnClick", StopAutoRoll)
+
+    local unstickButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    unstickButton:SetWidth(90)
+    unstickButton:SetHeight(22)
+    unstickButton:SetPoint("TOPRIGHT", stopButton, "BOTTOMRIGHT", 0, -28)
+    unstickButton:SetText("Unstick")
+    unstickButton:SetScript("OnClick", UnstickRapid)
+
+    autoRollStatus = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    autoRollStatus:SetPoint("TOPRIGHT", unstickButton, "BOTTOMRIGHT", 0, -8)
+    autoRollStatus:SetWidth(240)
+    autoRollStatus:SetJustifyH("RIGHT")
+
+    local profileLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    profileLabel:SetPoint("TOPLEFT", 0, -140)
+    profileLabel:SetText("Desired profile")
+
+    profileBox = CreateFrame("EditBox", FRAME_NAME .. "Profile", content, "InputBoxTemplate")
+    profileBox:SetWidth(140)
+    profileBox:SetHeight(22)
+    profileBox:SetPoint("TOPLEFT", 8, -158)
+    profileBox:SetAutoFocus(false)
+    profileBox:SetMaxLetters(32)
+    profileBox:SetText("my-hero")
+
+    local saveButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    saveButton:SetWidth(64)
+    saveButton:SetHeight(22)
+    saveButton:SetPoint("LEFT", profileBox, "RIGHT", 12, 0)
+    saveButton:SetText("Save")
+    saveButton:SetScript("OnClick", SaveProfile)
+
+    local loadButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    loadButton:SetWidth(64)
+    loadButton:SetHeight(22)
+    loadButton:SetPoint("LEFT", saveButton, "RIGHT", 8, 0)
+    loadButton:SetText("Load")
+    loadButton:SetScript("OnClick", LoadProfile)
+
+    local syncButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    syncButton:SetWidth(140)
+    syncButton:SetHeight(22)
+    syncButton:SetPoint("TOPRIGHT", 0, -158)
+    syncButton:SetText("Sync from Rapid")
+    syncButton:SetScript("OnClick", SyncDesiredFromNative)
+
+    desiredStatus = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    desiredStatus:SetPoint("TOPLEFT", 0, -192)
+    desiredStatus:SetWidth(CONTENT_WIDTH)
+    desiredStatus:SetJustifyH("LEFT")
+
+    local logLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    logLabel:SetPoint("TOPLEFT", 0, -222)
+    logLabel:SetText("Logbook (recent)")
+
+    logHost = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    logHost:SetPoint("TOPLEFT", 0, -240)
+    logHost:SetWidth(CONTENT_WIDTH)
+    logHost:SetJustifyH("LEFT")
+end
+
 local function EnsureFrame()
     if frame then
         return frame
     end
 
     frame = CreateFrame("Frame", FRAME_NAME, UIParent)
-    frame:SetSize(720, 568)
+    frame:SetWidth(FRAME_WIDTH)
+    frame:SetHeight(FRAME_HEIGHT)
     frame:SetPoint("CENTER")
     frame:SetMovable(true)
     frame:EnableMouse(true)
@@ -387,133 +471,54 @@ local function EnsureFrame()
     end)
     frame:Hide()
 
-    local backdrop = {
+    frame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true,
         tileSize = 32,
         edgeSize = 32,
         insets = { left = 11, right = 12, top = 12, bottom = 11 },
-    }
-    frame:SetBackdrop(backdrop)
+    })
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 24, -18)
-    title:SetText("AscensionSuite assists")
+    title:SetPoint("TOPLEFT", 20, -18)
+    title:SetText("AscensionSuite")
+
+    local version = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    version:SetPoint("LEFT", title, "RIGHT", 8, 0)
+    version:SetText("v" .. tostring(AscensionSuite.VERSION or "?"))
 
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -4, -4)
 
-    local subtitle = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    subtitle:SetPoint("TOPLEFT", 24, -42)
-    subtitle:SetWidth(420)
-    subtitle:SetJustifyH("LEFT")
-    subtitle:SetText("Native Rapid Rolling is the board. Suite syncs Desired, captures rolls, and optional assists.")
+    local wishlistTab = CreateTab(frame, TAB_WISHLIST, "Wishlist")
+    wishlistTab:SetPoint("TOPLEFT", 14, -46)
 
-    CreateCheckbox(frame, "Auto-Roll while leveling (Desired targets only)", "autoRoll", -70)
-    CreateCheckbox(frame, "Instant skip WildCardDice animation", "instantDiceSkip", -94)
-    CreateCheckbox(frame, "Instant skip SkillCard flipbook", "instantSkillCardSkip", -118)
-    CreateCheckbox(frame, "Accept Wildcard confirm popups", "acceptWildcardPopups", -142)
-    CreateCheckbox(frame, "Capture rolls into Logbook", "captureRolls", -166)
+    local assistTab = CreateTab(frame, TAB_ASSISTS, "Assists")
+    assistTab:SetPoint("LEFT", wishlistTab, "RIGHT", -14, 0)
 
-    startButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    startButton:SetSize(90, 22)
-    startButton:SetPoint("TOPLEFT", 280, -72)
-    startButton:SetText("Start")
-    startButton:SetScript("OnClick", StartAutoRoll)
+    if type(_G.PanelTemplates_SetNumTabs) == "function" then
+        pcall(_G.PanelTemplates_SetNumTabs, frame, 2)
+    end
 
-    stopButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    stopButton:SetSize(90, 22)
-    stopButton:SetPoint("TOPLEFT", startButton, "BOTTOMLEFT", 0, -6)
-    stopButton:SetText("Stop")
-    stopButton:SetScript("OnClick", StopAutoRoll)
+    for index = 1, 2 do
+        local content = CreateFrame("Frame", FRAME_NAME .. "Content" .. index, frame)
+        content:SetPoint("TOPLEFT", 20, CONTENT_TOP)
+        content:SetWidth(CONTENT_WIDTH)
+        content:SetHeight(FRAME_HEIGHT + CONTENT_TOP - 20)
+        content:Hide()
+        contents[index] = content
+    end
 
-    local unstickButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    unstickButton:SetSize(90, 22)
-    unstickButton:SetPoint("TOPLEFT", stopButton, "BOTTOMLEFT", 0, -6)
-    unstickButton:SetText("Unstick")
-    unstickButton:SetScript("OnClick", UnstickRapid)
+    local panel = GetWishlistPanel()
+    if panel and panel.Create then
+        panel.Create(contents[TAB_WISHLIST], CONTENT_WIDTH)
+    end
 
-    autoRollStatus = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    autoRollStatus:SetPoint("TOPLEFT", unstickButton, "BOTTOMLEFT", 0, -6)
-    autoRollStatus:SetWidth(180)
-    autoRollStatus:SetJustifyH("LEFT")
-
-    profileBox = CreateFrame("EditBox", FRAME_NAME .. "Profile", frame, "InputBoxTemplate")
-    profileBox:SetSize(120, 24)
-    profileBox:SetPoint("TOPRIGHT", -52, -20)
-    profileBox:SetAutoFocus(false)
-    profileBox:SetMaxLetters(32)
-    profileBox:SetText("my-hero")
-
-    local saveButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    saveButton:SetSize(56, 22)
-    saveButton:SetPoint("TOPRIGHT", profileBox, "BOTTOMRIGHT", 0, -6)
-    saveButton:SetText("Save")
-    saveButton:SetScript("OnClick", SaveProfile)
-
-    local loadButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    loadButton:SetSize(56, 22)
-    loadButton:SetPoint("RIGHT", saveButton, "LEFT", -8, 0)
-    loadButton:SetText("Load")
-    loadButton:SetScript("OnClick", LoadProfile)
-
-    inputBox = CreateFrame("EditBox", FRAME_NAME .. "Input", frame, "InputBoxTemplate")
-    inputBox:SetSize(120, 24)
-    inputBox:SetPoint("TOPLEFT", 24, -200)
-    inputBox:SetAutoFocus(false)
-    inputBox:SetNumeric(true)
-    inputBox:SetMaxLetters(8)
-
-    local inputLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    inputLabel:SetPoint("BOTTOMLEFT", inputBox, "TOPLEFT", 0, 2)
-    inputLabel:SetText("Spell / entry id → Ascension Desired")
-
-    local addButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    addButton:SetSize(72, 22)
-    addButton:SetPoint("LEFT", inputBox, "RIGHT", 12, 0)
-    addButton:SetText("Add")
-    addButton:SetScript("OnClick", AddSpellFromInput)
-
-    inputBox:SetScript("OnEnterPressed", function(self)
-        AddSpellFromInput()
-        self:ClearFocus()
-    end)
-
-    desiredStatus = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    desiredStatus:SetPoint("TOPLEFT", 24, -236)
-    desiredStatus:SetWidth(420)
-    desiredStatus:SetJustifyH("LEFT")
-
-    local syncButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    syncButton:SetSize(120, 22)
-    syncButton:SetPoint("TOPLEFT", 452, -232)
-    syncButton:SetText("Sync from Rapid")
-    syncButton:SetScript("OnClick", SyncDesiredFromNative)
-
-    gridHost = CreateFrame("Frame", nil, frame)
-    gridHost:SetPoint("TOPLEFT", 24, -262)
-    gridHost:SetSize(420, 148)
-
-    gridOverflow = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    gridOverflow:SetPoint("TOPLEFT", 24, -416)
-    gridOverflow:SetJustifyH("LEFT")
-    gridOverflow:Hide()
-
-    local logLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    logLabel:SetPoint("TOPLEFT", 24, -436)
-    logLabel:SetText("Logbook (recent)")
-
-    logHost = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    logHost:SetPoint("TOPLEFT", 24, -452)
-    logHost:SetWidth(660)
-    logHost:SetJustifyH("LEFT")
-
-    local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    hint:SetPoint("BOTTOM", 0, 12)
-    hint:SetText("Click a cell to toggle Desired · Alt + right-click a spell in the Character Advancement book · /asuite")
+    BuildAssistContent(contents[TAB_ASSISTS])
 
     RefreshAssistToggles()
+    MainWindow.SelectTab(activeTab)
     return frame
 end
 
@@ -528,11 +533,16 @@ end
 
 function MainWindow.Show()
     local win = EnsureFrame()
-    MainWindow.RefreshGrid()
+    win:Show()
+
+    local panel = GetWishlistPanel()
+    if panel and panel.Refresh then
+        panel.Refresh()
+    end
     MainWindow.RefreshDesiredStatus()
     MainWindow.RefreshLogbook()
     MainWindow.RefreshAutoRoll()
-    win:Show()
+    return win
 end
 
 function MainWindow.Hide()

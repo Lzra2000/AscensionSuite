@@ -11,7 +11,7 @@ local DB = {}
 AscensionSuite.Database = DB
 
 local DEFAULTS = {
-    version = 4,
+    version = 5,
     assists = {
         autoRoll = false,
         instantDiceSkip = false,
@@ -19,8 +19,7 @@ local DEFAULTS = {
         acceptWildcardPopups = false,
         captureRolls = false,
     },
-    wishlistSpellIds = {},
-    wishlistEntries = {},
+    wishlist = {},
     desiredProfiles = {},
     logbook = {},
 }
@@ -56,12 +55,8 @@ local function EnsureDefaults(db)
         end
     end
 
-    if type(db.wishlistSpellIds) ~= "table" then
-        db.wishlistSpellIds = {}
-    end
-
-    if type(db.wishlistEntries) ~= "table" then
-        db.wishlistEntries = {}
+    if type(db.wishlist) ~= "table" then
+        db.wishlist = {}
     end
 
     if type(db.desiredProfiles) ~= "table" then
@@ -74,6 +69,9 @@ local function EnsureDefaults(db)
 
     -- Migrate v2 marks/profiles into wishlist spell ids only (best-effort).
     if db.version < 3 then
+        if type(db.wishlistSpellIds) ~= "table" then
+            db.wishlistSpellIds = {}
+        end
         if type(db.proofSpellIds) == "table" and #db.wishlistSpellIds == 0 then
             for index = 1, #db.proofSpellIds do
                 db.wishlistSpellIds[#db.wishlistSpellIds + 1] = db.proofSpellIds[index]
@@ -108,6 +106,50 @@ local function EnsureDefaults(db)
         db.version = 4
     end
 
+    -- v5 folds the two v4 stores into one player-owned wishlist. The spell id
+    -- grid and the tracked (id, type) registry were always two views of the same
+    -- list, and a row can now carry both halves. Entry pairs go in first so the
+    -- spell ids they already resolve to do not create duplicate rows.
+    if db.version < 5 then
+        local seenPair, seenSpell = {}, {}
+
+        if type(db.wishlistEntries) == "table" then
+            for index = 1, #db.wishlistEntries do
+                local row = db.wishlistEntries[index]
+                if type(row) == "table" and tonumber(row.id) and type(row.type) == "string" then
+                    local key = row.type .. ":" .. tostring(row.id)
+                    if not seenPair[key] then
+                        seenPair[key] = true
+                        local spellId = tonumber(row.spellId)
+                        if spellId then
+                            seenSpell[spellId] = true
+                        end
+                        db.wishlist[#db.wishlist + 1] = {
+                            spellId = spellId,
+                            entryId = tonumber(row.id),
+                            entryType = row.type,
+                            name = row.name,
+                        }
+                    end
+                end
+            end
+        end
+
+        if type(db.wishlistSpellIds) == "table" then
+            for index = 1, #db.wishlistSpellIds do
+                local spellId = tonumber(db.wishlistSpellIds[index])
+                if spellId and not seenSpell[spellId] then
+                    seenSpell[spellId] = true
+                    db.wishlist[#db.wishlist + 1] = { spellId = spellId }
+                end
+            end
+        end
+
+        db.wishlistEntries = nil
+        db.wishlistSpellIds = nil
+        db.version = 5
+    end
+
     return db
 end
 
@@ -127,12 +169,8 @@ function DB.GetAssists()
     return DB.Get().assists
 end
 
-function DB.GetWishlistSpellIds()
-    return DB.Get().wishlistSpellIds
-end
-
-function DB.SetWishlistSpellIds(spellIds)
-    DB.Get().wishlistSpellIds = spellIds
+function DB.GetWishlist()
+    return DB.Get().wishlist
 end
 
 function DB.GetLogbook()

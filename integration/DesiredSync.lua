@@ -1,11 +1,11 @@
 -- AscensionSuite: integration/DesiredSync.lua
 -- Keep the Suite wishlist in step with the Desired marks the player makes in
--- Ascension's own windows, and offer one way to make a mark from the
+-- Ascension's own windows, and offer one way to edit the wishlist from the
 -- Character Advancement book.
 --
 -- Everything the client exposes about Desired is a per-entry IsDesiredID probe:
 -- there is no count and no listing of selections. So the addon has to learn each
--- (id, type) pair as it goes. Three sources feed the tracked registry:
+-- (id, type) pair as it goes. Three sources feed the wishlist:
 --
 --   1. WildCardRapidRollingFrame:SaveDesiredEntry / :RemoveDesiredEntry -- the
 --      funnel every Desired toggle in the native Rapid window goes through,
@@ -14,6 +14,11 @@
 --      candidate list and keeps the rows IsDesiredID confirms, which recovers
 --      marks made before the addon was watching.
 --   3. Alt + right-click on a Character Advancement spell button.
+--
+-- Only (1) and (2) are Wildcard-only, because they are Wildcard windows. (3)
+-- always edits the Suite wishlist and additionally toggles Desired when Wildcard
+-- happens to be active, so a player building a list between Wildcard runs is
+-- never turned away.
 
 local AscensionSuite = _G.AscensionSuite
 if type(AscensionSuite) ~= "table" then
@@ -35,6 +40,7 @@ local watcher
 local scanner
 local pendingScan = false
 local lastScan = 0
+local localHintShown = false
 
 local function GetAPI()
     return AscensionSuite.AscensionAPI
@@ -73,11 +79,11 @@ end
 
 function DesiredSync.Track(entryId, entryType, spellId, name)
     local Wishlist = GetWishlist()
-    if not Wishlist or not Wishlist.TrackEntry then
+    if not Wishlist or not Wishlist.AddEntry then
         return false
     end
 
-    local ok, isNew = Wishlist.TrackEntry(entryId, entryType, spellId, name)
+    local ok, isNew = Wishlist.AddEntry(entryId, entryType, spellId, name)
     if ok and isNew then
         RefreshOverlay()
     end
@@ -86,11 +92,11 @@ end
 
 function DesiredSync.Untrack(entryId, entryType)
     local Wishlist = GetWishlist()
-    if not Wishlist or not Wishlist.UntrackEntry then
+    if not Wishlist or not Wishlist.RemoveEntry then
         return false
     end
 
-    local removed = Wishlist.UntrackEntry(entryId, entryType)
+    local removed = Wishlist.RemoveEntry(entryId, entryType)
     if removed then
         RefreshOverlay()
     end
@@ -140,47 +146,60 @@ local function QueueScan()
 end
 
 ------------------------------------------------------------------------
--- Marking from the Character Advancement book
+-- Editing the wishlist from the Character Advancement book
 ------------------------------------------------------------------------
 
--- Toggles one advancement entry's Desired state and mirrors the result into the
--- tracked registry. Returns the new state so callers can phrase their feedback.
+-- Toggles one advancement entry on the Suite wishlist, and toggles Ascension
+-- Desired alongside it when Wildcard mode is active. The wishlist half always
+-- succeeds -- that is the whole point: Desired is a Wildcard-only concept, the
+-- wishlist is not, and a player curating a list outside Wildcard was previously
+-- told their click did nothing.
+--
+-- The second return says which of the two happened, so the caller can phrase
+-- feedback without re-deriving the game mode:
+--   "added" / "removed"             -- wishlist and Desired both changed
+--   "added_local" / "removed_local" -- wishlist only
 function DesiredSync.ToggleDesired(entryId, entryType, spellId, name)
     local api = GetAPI()
+    local Wishlist = GetWishlist()
     local id = tonumber(entryId)
-    if not api or not id or type(entryType) ~= "string" or entryType == "" then
+    if not id or type(entryType) ~= "string" or entryType == "" then
         return false, "invalid_entry"
     end
-
-    if not api.IsWildcardModeActive() then
-        return false, "not_wildcard"
+    if not Wishlist then
+        return false, "no_wishlist"
     end
 
     -- Name lookups go through the spell id when there is one: GetEntryName
     -- resolves spell-first, so handing it an internal id can name the wrong entry.
     local label = name
-    if not label and spellId then
+    if not label and spellId and api then
         label = api.GetEntryName(spellId)
     end
     label = label or ("entry " .. tostring(id))
 
-    if api.IsDesiredID(id, entryType) then
-        api.RemoveDesiredID(id, entryType)
+    local wildcard = api ~= nil and api.IsWildcardModeActive() == true
+
+    if Wishlist.HasEntry(id, entryType) then
+        local unmarked = false
+        if wildcard and api.IsDesiredID(id, entryType) then
+            unmarked = api.RemoveDesiredID(id, entryType) ~= false
+        end
         DesiredSync.Untrack(id, entryType)
-        return true, "removed", label
+        return true, unmarked and "removed" or "removed_local", label
     end
 
-    if not api.CanAddDesiredID(id, entryType) then
-        return false, "cannot_add", label
-    end
-
-    local ok, reason = api.AddDesiredID(id, entryType)
-    if not ok then
-        return false, reason or "add_failed", label
+    local marked = false
+    if wildcard then
+        if api.IsDesiredID(id, entryType) then
+            marked = true
+        elseif api.CanAddDesiredID(id, entryType) then
+            marked = api.AddDesiredID(id, entryType) == true
+        end
     end
 
     DesiredSync.Track(id, entryType, spellId, name)
-    return true, "added", label
+    return true, marked and "added" or "added_local", label
 end
 
 -- Ascension routes every right-click on a CA spell button -- book grid, talent
@@ -221,12 +240,23 @@ function DesiredSync.OnSpellDropDown(spellButton)
 
     if ok and result == "added" then
         Print("Desired: " .. label)
+    elseif ok and result == "added_local" then
+        -- A wishlist mark outside Wildcard is a success, not a refusal. Say what
+        -- Desired has to do with it once and then stay out of the way, so
+        -- building a list is not one warning line per spell.
+        if localHintShown then
+            Print("Wishlist: " .. label)
+        else
+            localHintShown = true
+            Print("Wishlist: " .. label
+                .. " -- saved to the Suite wishlist. Desired sync happens in Wildcard mode.")
+        end
     elseif ok and result == "removed" then
         Print("No longer Desired: " .. label)
-    elseif result == "not_wildcard" then
-        Print("Desired marks only exist in Wildcard mode.")
+    elseif ok and result == "removed_local" then
+        Print("Removed from wishlist: " .. label)
     else
-        Print("Cannot mark " .. label .. " Desired (" .. tostring(result) .. ").")
+        Print("Cannot add " .. label .. " to the wishlist (" .. tostring(result) .. ").")
     end
 
     return ok
