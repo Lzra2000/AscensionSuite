@@ -1304,6 +1304,26 @@ function API.IsRapidRollingAdvanceBlocked(state)
     return false, nil
 end
 
+-- Gray Continue / die stuck on "?" — not a healthy in-flight reveal and not an
+-- actionable Continue or terminal result. Used by the opt-in auto-unstick assist
+-- and distinct from a normal Revealing phase that IsInFlight covers.
+function API.IsRapidRollingContinueStuck(state)
+    if not API.IsWildcardModeActive() then
+        return false
+    end
+    if not API.IsRapidRollingFrameShown() then
+        return false
+    end
+    state = state or API.GetRapidRollingState()
+    if IsInFlight(state) then
+        return false
+    end
+    if IsAwaitingContinue(state) or IsTerminal(state) then
+        return false
+    end
+    return API.IsRapidRollingDiceActive(state) == true
+end
+
 -- Break out of a stranded Rapid session (gray Continue / die stuck on ?).
 -- Cancels the server session, clears local pendingReveal, hides the die, and puts
 -- the Rapid window back in a state where its own Roll button works again.

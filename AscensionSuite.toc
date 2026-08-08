@@ -2,7 +2,7 @@
 ## Title: AscensionSuite
 ## Notes: Wishlist panel, native Rapid Rolling assists, Desired sync, and roll logbook.
 ## Author: Lzra2000
-## Version: 0.3.0
+## Version: 0.3.1
 ## SavedVariables: AscensionSuiteDB
 
 core\Bootstrap.lua
@@ -13,6 +13,7 @@ core\Logbook.lua
 integration\AscensionAPI.lua
 integration\DesiredSync.lua
 automation\AutoRoller.lua
+automation\AutoUnstick.lua
 automation\AnimationSkip.lua
 automation\PopupAssist.lua
 ui\WishlistPanel.lua

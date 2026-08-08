@@ -623,12 +623,53 @@ function LoadoutsPanel.Create(parent, width)
     return LoadoutsPanel.EnsureBuilt(parent, width)
 end
 
+-- Re-anchor after the /asuite window becomes visible. Widgets built while the tab
+-- content was hidden can layout at 0x0 on 3.3.5a until the parent chain shows.
 function LoadoutsPanel.InvalidateLayout()
     if not panel or not panelParent then
         return
     end
+
     panel:ClearAllPoints()
     panel:SetAllPoints(panelParent)
+
+    if not panelWidth then
+        return
+    end
+
+    local detailWidth = panelWidth - LIST_WIDTH - 12
+
+    if listFrame then
+        listFrame:SetWidth(LIST_WIDTH)
+        local rowWidth = LIST_WIDTH - LIST_INSET - SCROLLBAR_WIDTH
+        for index = 1, VISIBLE_ROWS do
+            local row = listRows[index]
+            if row then
+                row:SetWidth(rowWidth)
+            end
+        end
+    end
+
+    if entryListFrame then
+        entryListFrame:SetWidth(detailWidth)
+        local rowWidth = detailWidth - LIST_INSET - SCROLLBAR_WIDTH
+        for index = 1, VISIBLE_ROWS do
+            local row = entryRows[index]
+            if row then
+                row:SetWidth(rowWidth)
+            end
+        end
+    end
+
+    if notesLabel and notesLabel.SetWidth then
+        notesLabel:SetWidth(detailWidth)
+    end
+    if statusLabel and statusLabel.SetWidth then
+        statusLabel:SetWidth(detailWidth)
+    end
+    if shareBox and shareBox.SetWidth then
+        shareBox:SetWidth(detailWidth)
+    end
 end
 
 function LoadoutsPanel.GetFrame()

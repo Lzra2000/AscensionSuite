@@ -131,6 +131,9 @@ CreateFrame = function(kind, name, parent, template)
     frame._name = name
     frame._parent = parent
     frame._template = template
+    if name then
+        _G[name] = frame
+    end
     return frame
 end
 
@@ -241,6 +244,7 @@ assert(GameTooltip._spellId == 133, "ShowEntryTooltip uses SetSpellByID")
 AscensionSuite.Database.Init()
 assert(AscensionSuiteDB.assists.autoRoll == false, "autoRoll must default false")
 assert(AscensionSuiteDB.assists.captureRolls == false, "captureRolls must default false")
+assert(AscensionSuiteDB.assists.autoUnstick == false, "autoUnstick must default false")
 
 -- The window builds both tabs on first open, so this also smoke-tests every
 -- widget the Wishlist panel creates.
@@ -261,6 +265,12 @@ assert(MainWindow.GetActiveTab() == 2, "the Loadouts tab switches")
 
 local loadoutsPanel = AscensionSuite.LoadoutsPanel
 assert(loadoutsPanel and loadoutsPanel.GetFrame(), "the Loadouts panel is built with the window")
+if loadoutsPanel.InvalidateLayout then
+    loadoutsPanel.InvalidateLayout()
+end
+local listRow = _G.AscensionSuiteLoadoutsPanelListRow1
+assert(listRow and listRow.GetWidth and listRow:GetWidth() > 0,
+    "loadouts list rows keep non-zero width after layout invalidation")
 
 MainWindow.SelectTab(3)
 assert(MainWindow.GetActiveTab() == 3, "the Assists tab switches")

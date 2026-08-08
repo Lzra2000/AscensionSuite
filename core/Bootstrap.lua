@@ -10,7 +10,7 @@ if type(AscensionSuite) ~= "table" then
 end
 
 AscensionSuite.NAME = addonName
-AscensionSuite.VERSION = "0.3.0"
+AscensionSuite.VERSION = "0.3.1"
 
 local function OnAddonLoaded(name)
     if name ~= addonName then
@@ -45,6 +45,11 @@ local function OnAddonLoaded(name)
     local AutoRoller = AscensionSuite.AutoRoller
     if AutoRoller and AutoRoller.Init then
         AutoRoller.Init()
+    end
+
+    local AutoUnstick = AscensionSuite.AutoUnstick
+    if AutoUnstick and AutoUnstick.Init then
+        AutoUnstick.Init()
     end
 
     local MainWindow = AscensionSuite.MainWindow

@@ -115,6 +115,7 @@ assert(assists.instantDiceSkip == false, "dice skip default off")
 assert(assists.instantSkillCardSkip == false, "skillcard skip default off")
 assert(assists.acceptWildcardPopups == false, "popup accept default off")
 assert(assists.captureRolls == false, "capture default off")
+assert(assists.autoUnstick == false, "autoUnstick default off")
 
 local AutoRoller = AscensionSuite.AutoRoller
 local Wishlist = AscensionSuite.Wishlist
