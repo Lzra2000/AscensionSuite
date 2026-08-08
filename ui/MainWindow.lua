@@ -86,6 +86,8 @@ local STOP_REASONS = {
     session_complete = "rapid session finished",
     user_stop = "stopped by you",
     native_roll_error = "Ascension's Roll button raised an error",
+    native_error = "Ascension refused the roll - see its error message",
+    stalled = "rapid session stopped making progress",
 }
 
 function MainWindow.DescribeStopReason(reason)

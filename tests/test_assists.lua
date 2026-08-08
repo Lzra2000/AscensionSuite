@@ -58,6 +58,10 @@ local desired = {}
 local rollCalls = 0
 local rollResult = { false, "forced_error" }
 
+-- Drives the rapid session phase the addon polls; nil means "no live session",
+-- which is the plain leveling dice case the early assertions run under.
+local rapidPhase = nil
+
 C_GameMode = {
     IsGameModeActive = function(_, mode) return mode == "WildCard" end,
 }
@@ -89,6 +93,9 @@ C_Wildcard = {
     RollAbilities = function()
         rollCalls = rollCalls + 1
         return rollResult[1], rollResult[2]
+    end,
+    GetRapidRollingState = function()
+        return { Phase = rapidPhase }
     end,
 }
 
@@ -183,5 +190,57 @@ assert(rollCalls == rollsBefore, "must not also call RollAbilities directly")
 
 AutoRoller.Stop("test_done")
 assert(AutoRoller.IsRunning() == false, "stopped")
+
+-- Ascension's Roll button reports a rejected roll by showing its own error frame
+-- and returning nothing, so Auto-Roll has to read that surface. Without this it
+-- would keep asking for a roll the client has already refused.
+local errorShown = false
+_G.WildCardRapidRollingFrame.RollingFrame = {
+    ErrorFrame = {
+        IsShown = function() return errorShown end,
+    },
+}
+
+ok = AutoRoller.Start()
+assert(ok == true, "restart to exercise the native error surface")
+
+errorShown = true
+local nativeBefore = nativeRollCalls
+RunTick()
+assert(AutoRoller.IsRunning() == false, "must halt while Ascension is showing a roll error")
+assert(AutoRoller.GetLastError() == "native_error",
+    "reports the native refusal, got " .. tostring(AutoRoller.GetLastError()))
+assert(nativeRollCalls == nativeBefore, "must not request another roll after a refusal")
+
+errorShown = false
+
+-- Each RunTick advances the loop by 10 seconds, so three ticks on one unchanged
+-- phase crosses the stall window while two do not.
+rapidPhase = "WaitingForRoll"
+
+-- A session moving through phases is healthy and must not be interrupted.
+ok = AutoRoller.Start()
+assert(ok == true, "restart for the phase-progress case")
+RunTick()
+rapidPhase = "Revealing"
+RunTick()
+rapidPhase = "AwaitingContinue"
+RunTick()
+assert(AutoRoller.IsRunning() == true, "phase progress must not trip the stall guard")
+
+-- A phase that never moves does get cut off.
+AutoRoller.Stop("test_reset")
+rapidPhase = "WaitingForRoll"
+ok = AutoRoller.Start()
+assert(ok == true, "restart for the stall case")
+
+RunTick()
+assert(AutoRoller.IsRunning() == true, "first tick only records the phase")
+RunTick()
+assert(AutoRoller.IsRunning() == true, "10s on one phase is not yet a stall")
+RunTick()
+assert(AutoRoller.IsRunning() == false, "must stop once a phase is stuck past the stall window")
+assert(AutoRoller.GetLastError() == "stalled",
+    "reports the stall, got " .. tostring(AutoRoller.GetLastError()))
 
 print("OK: AscensionSuite assists test passed")

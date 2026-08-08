@@ -12,9 +12,17 @@ AscensionSuite.AutoRoller = AutoRoller
 
 local TICK_SECONDS = 0.35
 
+-- A rapid session whose phase has not moved for this long is stuck behind
+-- something the assist cannot clear. Ascension's Roll button reports failures by
+-- showing its own error frame and returns nothing, so without this backstop a
+-- rejected roll would be retried every tick forever.
+local STALL_SECONDS = 15
+
 local frame
 local running = false
 local lastError
+local lastPhase
+local stalledFor = 0
 
 local function GetAPI()
     return AscensionSuite.AscensionAPI
@@ -92,7 +100,13 @@ function AutoRoller.Stop(reason)
     end
 end
 
-local function Tick()
+local function CurrentPhase()
+    local api = GetAPI()
+    local state = api and api.GetRapidRollingState()
+    return state and state.Phase or nil
+end
+
+local function Tick(delta)
     if not running then
         return
     end
@@ -104,6 +118,26 @@ local function Tick()
     end
 
     local api = GetAPI()
+
+    -- Check what the previous roll did before asking for another one: a shown
+    -- error frame is the only trace the native Roll path leaves behind.
+    if api.IsRapidRollingErrorShown and api.IsRapidRollingErrorShown() then
+        AutoRoller.Stop("native_error")
+        return
+    end
+
+    local phase = CurrentPhase()
+    if phase ~= nil and phase == lastPhase then
+        stalledFor = stalledFor + (delta or TICK_SECONDS)
+        if stalledFor >= STALL_SECONDS then
+            AutoRoller.Stop("stalled")
+            return
+        end
+    else
+        lastPhase = phase
+        stalledFor = 0
+    end
+
     local ok, err = api.AdvanceRapidRoll(true)
     if not ok then
         if err == "roll_in_flight" or err == "session_complete" then
@@ -127,12 +161,15 @@ function AutoRoller.Start()
 
     running = true
     lastError = nil
+    lastPhase = nil
+    stalledFor = 0
     local elapsed = 0
     frame:SetScript("OnUpdate", function(_, delta)
         elapsed = elapsed + delta
         if elapsed >= TICK_SECONDS then
+            local sinceLastTick = elapsed
             elapsed = 0
-            Tick()
+            Tick(sinceLastTick)
         end
     end)
 

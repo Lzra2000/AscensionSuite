@@ -763,6 +763,22 @@ function API.IsRapidRollingFrameShown()
     return frame and frame.IsShown and frame:IsShown()
 end
 
+-- The native Roll button reports failures by showing RollingFrame.ErrorFrame and
+-- returns nothing, so this is the only way a caller can see that a roll was
+-- rejected (out of scrolls, unspent talent essence, ...). Ascension hides the
+-- frame again for reasons it considers benign, so a shown frame means a real
+-- error the player has to resolve.
+function API.IsRapidRollingErrorShown()
+    local frame = RapidRollingFrame()
+    local rolling = frame and frame.RollingFrame
+    local errorFrame = rolling and rolling.ErrorFrame
+    if type(errorFrame) ~= "table" or type(errorFrame.IsShown) ~= "function" then
+        return false
+    end
+    local ok, shown = pcall(errorFrame.IsShown, errorFrame)
+    return ok and shown == true
+end
+
 local function IsAwaitingContinue(state)
     return state and RAPID_CONTINUE_PHASES[state.Phase]
 end
