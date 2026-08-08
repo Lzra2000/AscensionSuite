@@ -239,6 +239,60 @@ local function ResolveRow(item)
     return nil, nil, item, "unresolved"
 end
 
+function Loadouts.ResolveEntryRow(row)
+    if type(row) ~= "table" then
+        return nil, nil, "invalid_row"
+    end
+    local entryId, entryType, _, err = ResolveRow(row)
+    if entryId and entryType then
+        row.entryId = entryId
+        row.entryType = entryType
+    end
+    return entryId, entryType, err
+end
+
+local function PushRowsToDesired(rows)
+    local api = GetAPI()
+    if not api then
+        return 0, 0, 0, "no_api", {}
+    end
+    if not api.IsWildcardModeActive() then
+        return 0, 0, 0, "not_wildcard", {}
+    end
+
+    local pushed, already, failed = 0, 0, 0
+    local refuses = {}
+    if type(rows) ~= "table" then
+        return pushed, already, failed, nil, refuses
+    end
+
+    for index = 1, #rows do
+        local row = rows[index]
+        if type(row) == "table" then
+            local label = row.name or tostring(row.spellId or row.entryId or "?")
+            local entryId, entryType, resolveErr = Loadouts.ResolveEntryRow(row)
+            if not entryId then
+                failed = failed + 1
+                refuses[#refuses + 1] = { name = label, reason = resolveErr or "unresolved" }
+            elseif api.IsDesiredID(entryId, entryType) then
+                already = already + 1
+            elseif not api.CanAddDesiredID(entryId, entryType) then
+                failed = failed + 1
+                refuses[#refuses + 1] = { name = label, reason = "refused" }
+            else
+                local added, addReason = api.AddDesiredID(entryId, entryType)
+                if added then
+                    pushed = pushed + 1
+                else
+                    failed = failed + 1
+                    refuses[#refuses + 1] = { name = label, reason = addReason or "add_failed" }
+                end
+            end
+        end
+    end
+    return pushed, already, failed, nil, refuses
+end
+
 local function WishlistRowToEntry(item, markDesired)
     local entryId, entryType, resolved, _ = ResolveRow(item)
     local row = {
@@ -646,6 +700,7 @@ function Loadouts.LoadToWishlist(id)
     for index = 1, #loadout.entries do
         local row = loadout.entries[index]
         if type(row) == "table" then
+            Loadouts.ResolveEntryRow(row)
             local entryId = NormalizeId(row.entryId)
             local entryType = NormalizeEntryType(row.entryType)
             if entryId and entryType and Wishlist.AddEntry then
@@ -657,6 +712,11 @@ function Loadouts.LoadToWishlist(id)
                 local ok = Wishlist.Add(row.spellId)
                 if ok then
                     added = added + 1
+                    local items = Wishlist.GetItems()
+                    local item = items[#items]
+                    if type(item) == "table" then
+                        Loadouts.ResolveEntryRow(item)
+                    end
                 end
             end
         end
@@ -664,18 +724,29 @@ function Loadouts.LoadToWishlist(id)
     return true, added
 end
 
-function Loadouts.Apply(id)
+function Loadouts.PushToDesired(id, filters)
+    local loadout = Loadouts.Get(id)
+    if not loadout or type(loadout.entries) ~= "table" then
+        return 0, 0, 0, "not_found", {}
+    end
+
+    local rows = {}
+    for index = 1, #loadout.entries do
+        local row = loadout.entries[index]
+        if type(row) == "table" and EntryPassesFilters(row, filters) then
+            rows[#rows + 1] = row
+        end
+    end
+    return PushRowsToDesired(rows)
+end
+
+function Loadouts.Apply(id, filters)
     local ok, count = Loadouts.LoadToWishlist(id)
     if not ok then
         return false, count, nil
     end
 
-    local Wishlist = GetWishlist()
-    if not Wishlist or not Wishlist.PushToDesired then
-        return false, "no_wishlist", nil
-    end
-
-    local pushed, already, failed, gate, refuses = Wishlist.PushToDesired()
+    local pushed, already, failed, gate, refuses = Loadouts.PushToDesired(id, filters)
     local result = {
         loaded = count,
         pushed = pushed,
@@ -765,7 +836,7 @@ local function EscapeShareName(name)
     if type(name) ~= "string" then
         return "?"
     end
-    return name:gsub(";", ",")
+    return name:gsub(";", ","):gsub(":", ",")
 end
 
 function Loadouts.ExportString(id)
@@ -779,8 +850,8 @@ function Loadouts.ExportString(id)
     for index = 1, #entries do
         local row = entries[index]
         if type(row) == "table" then
-            local entryType = NormalizeEntryType(row.entryType) or "Ability"
-            local entryId = NormalizeId(row.entryId)
+            local entryId, entryType = Loadouts.ResolveEntryRow(row)
+            entryType = NormalizeEntryType(entryType) or "Ability"
             if entryId then
                 local name = EscapeShareName(row.name or ("e" .. tostring(entryId)))
                 parts[#parts + 1] = entryType .. ":" .. tostring(entryId) .. ":" .. name
@@ -790,9 +861,6 @@ function Loadouts.ExportString(id)
 
     local name = loadout.name or "build"
     local body = table.concat(parts, ";")
-    if body == "" then
-        body = ""
-    end
     return SHARE_PREFIX .. "|" .. name .. "|" .. tostring(#parts) .. "|" .. body
 end
 
@@ -803,14 +871,23 @@ local function ParseShareEntry(token)
     local entryType, entryId, name = token:match("^([^:]+):(%d+):(.+)$")
     entryType = NormalizeEntryType(entryType)
     entryId = NormalizeId(entryId)
-    if not entryType or not entryId then
-        return nil
+    if entryType and entryId then
+        return {
+            entryType = entryType,
+            entryId = entryId,
+            name = name,
+        }
     end
-    return {
-        entryType = entryType,
-        entryId = entryId,
-        name = name,
-    }
+    -- Legacy spellId:name tokens (pre-0.4.2 exports missing Type).
+    local spellId, legacyName = token:match("^(%d+):(.+)$")
+    spellId = NormalizeId(spellId)
+    if spellId and legacyName and legacyName ~= "" then
+        return {
+            spellId = spellId,
+            name = legacyName,
+        }
+    end
+    return nil
 end
 
 function Loadouts.ImportString(text, shared)

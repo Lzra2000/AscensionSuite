@@ -26,6 +26,7 @@ local ENTRIES = {
     [1133] = { ID = 1133, Type = "Ability", Spell = 133, Name = "Fireball" },
     [1116] = { ID = 1116, Type = "Talent", Spell = 116, Name = "Ice Block" },
     [1780] = { ID = 1780, Type = "Ability", Spell = 780, Name = "Living Bomb" },
+    [8264] = { ID = 8264, Type = "Talent", Spell = 8264, Name = "Gavel of Wrath" },
 }
 
 local BY_SPELL = {}
@@ -49,6 +50,11 @@ C_GameMode = {
 C_CharacterAdvancement = {
     GetEntryBySpellID = function(_, id) return BY_SPELL[id] end,
     GetEntryByInternalID = function(_, id) return ENTRIES[id] end,
+    GetInternalID = function(_, spellId)
+        if spellId == 116 then return 1116 end
+        if spellId == 8264 then return 8264 end
+        return nil
+    end,
     GetKnownSpellEntries = function()
         return { { ID = 1133, Type = "Ability", Spell = 133, Name = "Fireball" } }
     end,
@@ -172,6 +178,36 @@ wildcard = true
 ok, result = Loadouts.Apply(importId)
 assert(ok and result.loaded == 2, "apply loads entries")
 assert(result.pushed >= 1, "apply pushes resolved pairs")
+
+------------------------------------------------------------------------
+-- Stale spell-as-entryId pairs re-resolve spell-first
+------------------------------------------------------------------------
+
+local staleLoadout, staleId = Loadouts.Create("Stale pair", "", false)
+staleLoadout.entries = {
+    { entryId = 8264, entryType = "Ability", spellId = 8264, name = "Gavel of Wrath" },
+}
+wildcard = true
+desired = {}
+local pushedStale, _, failedStale = Loadouts.PushToDesired(staleId)
+assert(pushedStale == 1, "talent row with wrong type still pushes (got " .. tostring(pushedStale) .. ")")
+assert(failedStale == 0, "stale Ability type does not refuse talent")
+assert(desired["8264/Talent"] == true, "correct Talent pair marked Desired")
+
+------------------------------------------------------------------------
+-- Export resolves spell-only rows and keeps ASUITE1 prefix
+------------------------------------------------------------------------
+
+local exportLoadout, exportId = Loadouts.Create("Export test", "", false)
+exportLoadout.entries = {
+    { spellId = 133, name = "Fireball" },
+}
+local exportText = Loadouts.ExportString(exportId)
+assert(exportText:match("^ASUITE1|"), "export keeps prefix")
+assert(exportText:find("Ability:1133:"), "spell-only row resolves before export")
+
+local legacyImported = Loadouts.ImportString("ASUITE1|legacy|1|8264:Gavel of Wrath", true)
+assert(legacyImported and #legacyImported.entries == 1, "legacy spellId:name imports")
 
 ------------------------------------------------------------------------
 -- Migration from desiredProfiles

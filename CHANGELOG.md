@@ -3,6 +3,22 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.2 (2026-08-08) -- Loadouts Apply/Desired + share string + section UI
+
+#### Fixed
+- **Apply → Desired** resolves each loadout row spell-first (matching native Rapid
+  Rolling) instead of trusting a stale `(entryId, entryType)` cached from import.
+  Push now runs from the loadout's Spells list (respecting active tag filters) and
+  stops blanket "N refused" when talents were mis-typed as Ability.
+- **Start Auto-Roll** on the Loadouts tab runs Apply first (load wishlist + push
+  filtered spells to Desired) when a build is selected, so one click works after
+  assists are on.
+- **ASUITE1** export resolves rows before encoding (`Type:entryId:name`), escapes
+  colons in names, scrolls the share box to the start, and imports legacy
+  `spellId:name` tokens.
+- **Overview / Notes sections** hide the Spells filter bar and + Add Spell chrome;
+  notes edit anchors under the section title instead of the hidden filter row.
+
 ### 0.4.1 (2026-08-08) -- Tooltip tonumber crash fix
 
 #### Fixed

@@ -1752,18 +1752,22 @@ local function EntryFromBuildSpell(build, spellRow)
         return nil
     end
 
-    local entry = API.ResolveEntry(spellId)
+    -- Match native RapidRollingSpells: spell-first lookup yields the correct Type.
+    local entry = API.GetEntryBySpellID(spellId) or API.ResolveEntry(spellId)
     local entryId, entryType = EntryPair(entry)
-    if not entryId and entry then
-        entryId = FirstNumber(entry.ID, entry.Id, entry.id)
-        entryType = FirstString(entry.Type, entry.type, entry.entryType)
-    end
     if not entryId then
         local ca = CA()
         if ca then
             entryId = FirstNumber(Call(ca, { "GetInternalID" }, spellId))
             if entryId then
-                entryType = entryType or "Ability"
+                local internalEntry = API.GetEntryByInternalID(entryId)
+                local internalId, internalType = EntryPair(internalEntry)
+                if internalId and internalType then
+                    entryId = internalId
+                    entryType = internalType
+                else
+                    entryType = entryType or "Ability"
+                end
             end
         end
     end
