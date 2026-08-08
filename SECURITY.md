@@ -21,11 +21,29 @@ AscensionSuite treats **player-initiated** Ascension actions as sacred. The addo
 Mutating assists default **off** and must:
 
 1. Route **only** through `AscensionAPI`, behind **`C_GameMode` / Wildcard gates**.
-2. Target **Ascension Desired** (player-selected) entry sets only — no broad reroll loops.
+2. Target **Ascension Desired** (player-selected) entry sets only — no broad reroll loops. Auto-Roll refuses to start until at least one tracked wishlist entry is verified Desired via `IsDesiredID`, because rolling with nothing Desired is a reroll loop until scrolls run out.
 3. Expose a visible **Stop** control while Auto-Roll is running.
-4. **Halt** on `nil` or error API results — never swallow failures in a tight loop.
-5. Limit popup accept to an **allowlist**: `CONFIRM_WILDCARD_MASS_ROLL`, `CONFIRM_WILDCARD_LEVELING`, `CONFIRM_UNLEARN_S`.
-6. Animation skip may **force-finish / hide** flipbooks only — it must **never** start a roll by skipping alone.
+4. **Halt** on `nil` or error API results — never swallow failures in a tight loop. Ascension's own Roll button reports failures by showing `RollingFrame.ErrorFrame` and returning nothing, so Auto-Roll also stops when that frame is up, and stops on a rapid session whose phase has not moved for 15s. A refused roll must never be retried on a timer.
+5. Limit popup accept to an **allowlist** of roll confirmations: `CONFIRM_WILDCARD_MASS_ROLL`, `CONFIRM_WILDCARD_LEVELING`. Accept **button 1 only**.
+6. Animation skip may only change Ascension's own **playback speed** and finish an already-playing animation group. It must not call the client's `OnFinished*` handlers itself (they drive the dice state machine and would run transitions twice), and must **never** start a roll by skipping alone.
+
+### Never auto-accepted
+
+Accepting these destroys or unprotects spells rather than confirming a roll, so
+they are excluded from the allowlist by design and covered by `tests/test_popups.lua`:
+
+`CONFIRM_UNLEARN_S`, `CONFIRM_UNLEARN_ALL_S`, `UNLOCK_SPELL_CONFIRM`,
+`UNLOCK_SPEC_CONFIRM`, `DRAFT_UNLEARN_CONFIRM`, `UNLEARN_SKILL`, `UNLEARN_SKILLID`,
+`RECOVER_WILDCARD_ROLL_CONFIRM`.
+
+### Known client limitation
+
+The client exposes no API to count or enumerate Desired **selections** — only
+`IsDesiredID(id, type)` per entry, and `GetNumFilteredDesiredEntries()`, which is
+the size of the filtered *candidate* list and must never be used as a
+"player has targets" gate. Auto-Roll can therefore only verify the entries the
+addon itself tracks; Desired marks made directly in the native Rapid window are
+invisible to it and are treated as "no targets".
 
 ## Data
 

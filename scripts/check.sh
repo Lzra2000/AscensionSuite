@@ -23,6 +23,7 @@ echo ""
 echo "== C_* outside integration/AscensionAPI.lua =="
 SEAM="integration/AscensionAPI.lua"
 STRAY=$(grep -rn -E '\bC_[A-Za-z]+[.:]' . --include='*.lua' \
+    --exclude-dir=dist --exclude-dir=.git \
     | grep -v "^\./${SEAM}:" \
     | grep -v -E '^[^:]+:[0-9]+:[[:space:]]*--' || true)
 
@@ -37,6 +38,7 @@ echo ""
 echo "== Roll starters outside seam (only integration/AscensionAPI.lua) =="
 ROLL_STRAY=$(grep -rn -E '\b(RollAbilities|RerollAbilities|StartRapidRolling|ContinueRapidRolling|CancelRapidRolling)\s*\(' . \
     --include='*.lua' \
+    --exclude-dir=dist --exclude-dir=.git \
     | grep -v "^\./${SEAM}:" \
     | grep -v -E '^[^:]+:[0-9]+:[[:space:]]*--' || true)
 
@@ -48,36 +50,22 @@ else
 fi
 
 echo ""
-if [ -f tests/test_load.lua ]; then
-    echo "== test_load.lua =="
-    if lua5.1 tests/test_load.lua; then
-        echo "  OK: test_load.lua"
+echo "== tests =="
+RAN=0
+for test in tests/test_*.lua; do
+    [ -f "$test" ] || continue
+    RAN=$((RAN + 1))
+    if lua5.1 "$test"; then
+        echo "  OK:   $test"
     else
-        echo "  FAIL: test_load.lua"
+        echo "  FAIL: $test"
         FAILED=1
     fi
-fi
+done
 
-echo ""
-if [ -f tests/test_wishlist.lua ]; then
-    echo "== test_wishlist.lua =="
-    if lua5.1 tests/test_wishlist.lua; then
-        echo "  OK: test_wishlist.lua"
-    else
-        echo "  FAIL: test_wishlist.lua"
-        FAILED=1
-    fi
-fi
-
-echo ""
-if [ -f tests/test_assists.lua ]; then
-    echo "== test_assists.lua =="
-    if lua5.1 tests/test_assists.lua; then
-        echo "  OK: test_assists.lua"
-    else
-        echo "  FAIL: test_assists.lua"
-        FAILED=1
-    fi
+if [ "$RAN" -eq 0 ]; then
+    echo "  FAIL: no tests found in tests/"
+    FAILED=1
 fi
 
 echo ""

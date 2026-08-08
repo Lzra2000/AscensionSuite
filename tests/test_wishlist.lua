@@ -82,9 +82,15 @@ AscensionSuite.Database.Init()
 local Wishlist = AscensionSuite.Wishlist
 assert(Wishlist, "Wishlist module missing")
 
+assert(Wishlist.CountDesired() == 0, "nothing desired yet")
+
 assert(Wishlist.AddToDesired(133), "add fireball")
 assert(Wishlist.IsDesired(133), "fireball desired")
+assert(Wishlist.CountDesired() == 1, "one tracked entry is desired")
+
+-- Tracking an id alone does not mark it Desired in Ascension.
 assert(Wishlist.TrackSpellId(1680), "track id")
+assert(Wishlist.CountDesired() == 1, "tracking is not desiring")
 
 assert(Wishlist.SaveProfile("test-hero", true), "save profile")
 local profile = AscensionSuiteDB.desiredProfiles["test-hero"]
@@ -95,8 +101,11 @@ local API = AscensionSuite.AscensionAPI
 assert(API.ClearDesiredSpells(), "clear desired via seam")
 assert(not Wishlist.IsDesired(133), "cleared desired state")
 
+assert(Wishlist.CountDesired() == 0, "clear removes desired state")
+
 assert(Wishlist.LoadProfile("test-hero", true), "load profile")
 assert(Wishlist.IsDesired(133), "fireball desired after load")
+assert(Wishlist.CountDesired() == 1, "load restores desired state")
 assert(#Wishlist.GetSpellIds() >= 1, "spell ids restored")
 
 print("OK: AscensionSuite wishlist test passed")

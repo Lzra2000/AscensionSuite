@@ -144,6 +144,28 @@ function Wishlist.IsDesired(spellOrEntryId)
     return api.IsDesiredID(entryId, entryType)
 end
 
+-- How many tracked wishlist entries are currently marked Desired in Ascension.
+-- This is the only Desired set the addon can enumerate: the client offers
+-- IsDesiredID per entry but no count or listing of Desired selections, so
+-- entries the player marked directly in the native Rapid window are invisible
+-- here and are reported as zero.
+function Wishlist.CountDesired()
+    local api = GetAPI()
+    if not api then
+        return 0
+    end
+
+    local count = 0
+    local spellIds = Wishlist.GetSpellIds()
+    for index = 1, #spellIds do
+        local entryId, entryType = ResolveEntryPair(spellIds[index])
+        if entryId and entryType and api.IsDesiredID(entryId, entryType) then
+            count = count + 1
+        end
+    end
+    return count
+end
+
 function Wishlist.SaveProfile(name, includeKnownSnapshot)
     if type(name) ~= "string" then
         return false, "invalid name"
@@ -159,11 +181,15 @@ function Wishlist.SaveProfile(name, includeKnownSnapshot)
         return false, "no_api"
     end
 
+    -- entries is the Desired set to restore; spellIds is the whole tracked
+    -- wishlist. Keeping them apart matters because tracking a spell in the grid
+    -- is not the same as marking it Desired, and loading a profile must not
+    -- desire everything the player merely kept an eye on.
     local entries = {}
     local spellIds = Wishlist.GetSpellIds()
     for index = 1, #spellIds do
         local entryId, entryType = ResolveEntryPair(spellIds[index])
-        if entryId and entryType then
+        if entryId and entryType and api.IsDesiredID(entryId, entryType) then
             entries[#entries + 1] = {
                 id = entryId,
                 type = entryType,

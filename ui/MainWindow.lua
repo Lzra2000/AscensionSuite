@@ -54,17 +54,47 @@ local function CreateCheckbox(parent, label, assistKey, yOffset)
     check:SetScript("OnClick", function(self)
         local assists = GetAssists()
         assists[assistKey] = self:GetChecked() == true
+
         if assistKey == "autoRoll" and not assists.autoRoll then
             local AutoRoller = AscensionSuite.AutoRoller
             if AutoRoller and AutoRoller.Stop then
                 AutoRoller.Stop("assist_off")
             end
         end
+
+        if assistKey == "instantDiceSkip" or assistKey == "instantSkillCardSkip" then
+            local AnimationSkip = AscensionSuite.AnimationSkip
+            if AnimationSkip and AnimationSkip.Refresh then
+                AnimationSkip.Refresh()
+            end
+        end
+
         MainWindow.RefreshAutoRoll()
     end)
 
     assistChecks[assistKey] = check
     return check
+end
+
+local STOP_REASONS = {
+    assist_off = "assist switched off",
+    no_desired_targets = "mark a wishlist spell Desired first",
+    level_out_of_range = "only runs while leveling 1-60",
+    not_wildcard = "not in Wildcard mode",
+    rapid_not_ready = "no roll available right now",
+    roll_in_flight = "waiting on the current roll",
+    session_complete = "rapid session finished",
+    user_stop = "stopped by you",
+    native_roll_error = "Ascension's Roll button raised an error",
+    native_error = "Ascension refused the roll - see its error message",
+    stalled = "rapid session stopped making progress",
+}
+
+function MainWindow.DescribeStopReason(reason)
+    if reason == nil then
+        return "unknown reason"
+    end
+    return STOP_REASONS[reason] or tostring(reason)
 end
 
 function MainWindow.RefreshAutoRoll()
@@ -81,7 +111,7 @@ function MainWindow.RefreshAutoRoll()
             autoRollStatus:SetText("Auto-Roll: running")
             autoRollStatus:SetTextColor(0.43, 0.81, 0.54, 1)
         elseif AutoRoller and AutoRoller.GetLastError and AutoRoller.GetLastError() then
-            autoRollStatus:SetText("Auto-Roll stopped: " .. tostring(AutoRoller.GetLastError()))
+            autoRollStatus:SetText("Auto-Roll stopped — " .. MainWindow.DescribeStopReason(AutoRoller.GetLastError()))
             autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
         else
             autoRollStatus:SetText("Auto-Roll: idle")
@@ -113,9 +143,17 @@ function MainWindow.RefreshLogbook()
     for index = start, #entries do
         local row = entries[index]
         if row then
-            lines[#lines + 1] = string.format("[%s] %s (%s)",
+            local rank = ""
+            if row.rank and row.maxRank and row.maxRank > 1 then
+                rank = string.format(" rank %d/%d", row.rank, row.maxRank)
+            elseif row.rank and row.rank > 1 then
+                rank = string.format(" rank %d", row.rank)
+            end
+
+            lines[#lines + 1] = string.format("[%s] %s%s (%s)",
                 row.entryType or "?",
                 row.name or "?",
+                rank,
                 tostring(row.spellId or row.entryId or "?"))
         end
     end
