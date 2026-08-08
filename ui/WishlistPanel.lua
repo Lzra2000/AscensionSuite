@@ -21,6 +21,11 @@ local LIST_INSET = 4
 local SCROLLBAR_WIDTH = 24
 local PLACEHOLDER_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
+-- How long a row stays lit after it was just added or toggled. Long enough to
+-- catch the eye when the click happened in another window (Alt + right-click in
+-- the Character Advancement book), short enough not to look like state.
+local TOUCH_SECONDS = 4
+
 local panel
 local searchBox
 local addBox
@@ -31,8 +36,11 @@ local clearButton
 local countLabel
 local statusLabel
 local emptyLabel
+local touchTicker
 local rows = {}
 local filtered = {}
+local touchedKey
+local touchedUntil
 
 local function GetAPI()
     return AscensionSuite.AscensionAPI
@@ -47,11 +55,74 @@ local function IsWildcard()
     return api ~= nil and api.IsWildcardModeActive() == true
 end
 
+local function Now()
+    if type(_G.GetTime) == "function" then
+        return _G.GetTime()
+    end
+    return nil
+end
+
 local function ScrollOffset()
     if scrollFrame and type(_G.FauxScrollFrame_GetOffset) == "function" then
         return tonumber(_G.FauxScrollFrame_GetOffset(scrollFrame)) or 0
     end
     return 0
+end
+
+------------------------------------------------------------------------
+-- "That click landed" feedback
+--
+-- A wishlist edit can come from three places and only one of them is this panel,
+-- so the row itself is where the confirmation belongs: Alt + right-click in the
+-- book has no chat line to spare per spell, and nothing may be drawn on
+-- Ascension's own widgets.
+------------------------------------------------------------------------
+
+local function RowKey(entryId, entryType, spellId)
+    local id = tonumber(entryId)
+    if id and type(entryType) == "string" and entryType ~= "" then
+        return entryType .. ":" .. tostring(id)
+    end
+    local spell = tonumber(spellId)
+    if spell then
+        return "spell:" .. tostring(spell)
+    end
+    return nil
+end
+
+local function ItemKey(item)
+    if type(item) ~= "table" then
+        return nil
+    end
+    return RowKey(item.entryId, item.entryType, item.spellId)
+end
+
+-- No clock means no way to put the highlight out again, so it is never lit: a row
+-- stuck lit forever would read as state rather than as feedback.
+local function TouchExpired()
+    if not touchedKey or not touchedUntil then
+        return true
+    end
+    local now = Now()
+    return now == nil or now >= touchedUntil
+end
+
+-- Marks the row for an entry as just-touched. Safe to call before the panel has
+-- been built: the next Refresh picks it up, and an expired touch is dropped.
+function WishlistPanel.NoteTouched(entryId, entryType, spellId)
+    local key = RowKey(entryId, entryType, spellId)
+    if not key then
+        return false
+    end
+
+    touchedKey = key
+    local now = Now()
+    touchedUntil = now and (now + TOUCH_SECONDS) or nil
+
+    if touchTicker then
+        touchTicker:Show()
+    end
+    return true
 end
 
 ------------------------------------------------------------------------
@@ -109,6 +180,7 @@ local function OnRowClick(row)
 
     if api.IsDesiredID(entryId, entryType) then
         api.RemoveDesiredID(entryId, entryType)
+        WishlistPanel.NoteTouched(entryId, entryType, item.spellId)
         WishlistPanel.Refresh()
         return
     end
@@ -119,6 +191,7 @@ local function OnRowClick(row)
     end
 
     api.AddDesiredID(entryId, entryType)
+    WishlistPanel.NoteTouched(entryId, entryType, item.spellId)
     WishlistPanel.Refresh()
 end
 
@@ -144,6 +217,12 @@ local function CreateRow(parent, index)
     stripe:SetAllPoints()
     stripe:SetTexture(1, 1, 1, 0.03)
     row._stripe = stripe
+
+    local touch = row:CreateTexture(nil, "BORDER")
+    touch:SetAllPoints()
+    touch:SetTexture(1, 0.82, 0.2, 0.22)
+    touch:Hide()
+    row._touch = touch
 
     local highlight = row:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetAllPoints()
@@ -225,6 +304,12 @@ local function FillRow(row, entry, position)
         row._stripe:Hide()
     end
 
+    if touchedKey and not TouchExpired() and ItemKey(entry.item) == touchedKey then
+        row._touch:Show()
+    else
+        row._touch:Hide()
+    end
+
     row:Show()
 end
 
@@ -252,6 +337,17 @@ local function AddFromInput()
         WishlistPanel.Refresh("Could not add " .. tostring(id) .. ".")
         return
     end
+
+    -- A search box still holding an unrelated word would hide the row that was
+    -- just added, which reads as "Add did nothing".
+    if searchBox and searchBox:GetText() ~= "" then
+        searchBox:SetText("")
+    end
+
+    local api = GetAPI()
+    WishlistPanel.NoteTouched(api and api.GetEntryInternalID and api.GetEntryInternalID(id) or nil,
+        api and api.GetEntryType and api.GetEntryType(id) or nil, id)
+
     if result == "exists" then
         WishlistPanel.Refresh("Already on the wishlist.")
         return
@@ -302,11 +398,39 @@ local function DefaultStatus(total, desired)
     if total == 0 then
         return "Wildcard active - add entries above, then push them to Desired.", true
     end
+    if desired >= total then
+        return string.format("Wildcard active - all %d entries are Desired. Auto-Roll has targets.", total), true
+    end
     return string.format(
         "Wildcard active - %d of %d already Desired. Push marks the rest for Auto-Roll.", desired, total), true
 end
 
+-- Why Push is greyed out, in the same words the button's tooltip uses. Returning
+-- nil means it is live.
+function WishlistPanel.GetPushBlockReason()
+    local Wishlist = GetWishlist()
+    if not Wishlist then
+        return "The wishlist is not loaded yet."
+    end
+    if not IsWildcard() then
+        return "Desired only exists in Wildcard mode. Your list is saved until you get there."
+    end
+    if Wishlist.Count() == 0 then
+        return "There is nothing on the wishlist to push."
+    end
+    return nil
+end
+
+-- note is optional. It is typed rather than trusted because FrameXML hands the
+-- update callback its own frame -- FauxScrollFrame_OnVerticalScroll calls
+-- updateFunction(self) -- and a frame reaching SetText raises a Lua error, which
+-- is what used to happen the moment a wishlist grew past eight rows and the
+-- player scrolled it.
 function WishlistPanel.Refresh(note)
+    if type(note) ~= "string" then
+        note = nil
+    end
+
     if not panel then
         return
     end
@@ -314,6 +438,11 @@ function WishlistPanel.Refresh(note)
     local Wishlist = GetWishlist()
     if not Wishlist then
         return
+    end
+
+    if TouchExpired() then
+        touchedKey = nil
+        touchedUntil = nil
     end
 
     local total = Wishlist.Count()
@@ -328,7 +457,21 @@ function WishlistPanel.Refresh(note)
         _G.FauxScrollFrame_Update(scrollFrame, #filtered, VISIBLE_ROWS, ROW_HEIGHT)
     end
 
+    -- Typing into the search box shortens the list without moving the scroll
+    -- offset, so an offset left over from a longer list would render eight empty
+    -- rows over matches that are right there.
     local offset = ScrollOffset()
+    local maxOffset = #filtered - VISIBLE_ROWS
+    if maxOffset < 0 then
+        maxOffset = 0
+    end
+    if offset > maxOffset then
+        offset = maxOffset
+        if scrollFrame and type(_G.FauxScrollFrame_SetOffset) == "function" then
+            _G.FauxScrollFrame_SetOffset(scrollFrame, offset)
+        end
+    end
+
     for index = 1, VISIBLE_ROWS do
         local row = rows[index]
         local entry = filtered[index + offset]
@@ -451,9 +594,13 @@ function WishlistPanel.Create(parent, width)
     scrollFrame = CreateFrame("ScrollFrame", FRAME_NAME .. "Scroll", listFrame, "FauxScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", LIST_INSET, -LIST_INSET)
     scrollFrame:SetPoint("BOTTOMRIGHT", -SCROLLBAR_WIDTH, LIST_INSET)
+    -- The updater is wrapped rather than passed straight through: FrameXML calls
+    -- it as updateFunction(self), and Refresh's first argument is the status note.
     scrollFrame:SetScript("OnVerticalScroll", function(self, offset)
         if type(_G.FauxScrollFrame_OnVerticalScroll) == "function" then
-            _G.FauxScrollFrame_OnVerticalScroll(self, offset, ROW_HEIGHT, WishlistPanel.Refresh)
+            _G.FauxScrollFrame_OnVerticalScroll(self, offset, ROW_HEIGHT, function()
+                WishlistPanel.Refresh()
+            end)
         end
     end)
 
@@ -508,6 +655,29 @@ function WishlistPanel.Create(parent, width)
     pushButton:SetPoint("TOPLEFT", listFrame, "BOTTOMLEFT", 0, -44)
     pushButton:SetText("Push to Desired")
     pushButton:SetScript("OnClick", PushToDesired)
+    -- A disabled button with no explanation is the most common "the addon is
+    -- broken" report, and a disabled button still gets OnEnter.
+    pushButton:SetScript("OnEnter", function(self)
+        if not GameTooltip then
+            return
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:ClearLines()
+        GameTooltip:SetText("Push to Desired", 1, 0.82, 0.3)
+        local blocked = WishlistPanel.GetPushBlockReason()
+        if blocked then
+            GameTooltip:AddLine(blocked, 0.88, 0.44, 0.44, true)
+        else
+            GameTooltip:AddLine("Marks every wishlist entry Desired in Ascension. "
+                .. "Marks you already made are left alone.", 1, 1, 1, true)
+        end
+        GameTooltip:Show()
+    end)
+    pushButton:SetScript("OnLeave", function()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
 
     statusLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     statusLabel:SetPoint("LEFT", pushButton, "RIGHT", 12, 0)
@@ -519,7 +689,23 @@ function WishlistPanel.Create(parent, width)
     hint:SetWidth(contentWidth)
     hint:SetJustifyH("LEFT")
     hint:SetText("Click a row to toggle Desired \194\183 Alt + right-click a spell in the Character Advancement "
-        .. "book to add or remove it here \194\183 x removes it from the Suite wishlist only.")
+        .. "book to add or remove it here (the row lights up) \194\183 x removes it from the Suite wishlist only.")
+
+    -- Only runs while a row is lit, and its whole job is to put the highlight out
+    -- again once nobody is looking at a fresh edit any more.
+    touchTicker = CreateFrame("Frame", nil, panel)
+    touchTicker:Hide()
+    touchTicker:SetScript("OnUpdate", function(self)
+        if not TouchExpired() then
+            return
+        end
+        self:Hide()
+        if touchedKey then
+            touchedKey = nil
+            touchedUntil = nil
+            WishlistPanel.Refresh()
+        end
+    end)
 
     WishlistPanel.Refresh()
     return panel

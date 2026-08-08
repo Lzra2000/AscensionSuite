@@ -18,11 +18,19 @@ local TICK_SECONDS = 0.35
 -- rejected roll would be retried every tick forever.
 local STALL_SECONDS = 15
 
+-- Hard ceiling on the opt-in continue assist. It should end by running the Desired
+-- set empty, but a client that keeps reporting an entry as Desired after learning
+-- it would otherwise be an unbounded roll loop, which the assist boundary rules out.
+local MAX_CHAINED_SESSIONS = 25
+
 local frame
 local running = false
 local lastError
 local lastPhase
 local stalledFor = 0
+local desiredHits = 0
+local chainPending = false
+local learnedThisRun = {}
 
 local function GetAPI()
     return AscensionSuite.AscensionAPI
@@ -59,7 +67,19 @@ local function HasDesiredTargets()
     return Wishlist.CountDesired() > 0
 end
 
-local function CanOperate()
+-- Opt-in, default off. With it on, a Desired hit closes its session through the
+-- native path and the assist opens the next one instead of handing control back;
+-- with it off (the default since 0.2.1) it stops and waits for another Start.
+local function ContinueAfterHit()
+    local assists = GetAssists()
+    return assists ~= nil and assists.autoRollContinue == true
+end
+
+-- skipTargets exists because the Desired set empties at the moment the last entry
+-- is learned, and a tick that finds it empty still has a finished session in front
+-- of it to close out. Gating on targets before that would leave the player looking
+-- at a COMPLETE button nobody pressed.
+local function CanOperate(skipTargets)
     local assists = GetAssists()
     if not assists or assists.autoRoll ~= true then
         return false, "assist_off"
@@ -71,7 +91,7 @@ local function CanOperate()
     if not api or not api.IsWildcardModeActive() then
         return false, "not_wildcard"
     end
-    if not HasDesiredTargets() then
+    if not skipTargets and not HasDesiredTargets() then
         return false, "no_desired_targets"
     end
     if not api.IsRapidRollingFrameShown() and not api.CanRollAbilities() then
@@ -86,6 +106,12 @@ end
 
 function AutoRoller.GetLastError()
     return lastError
+end
+
+-- How many Desired entries this run has landed. Non-zero only matters for the
+-- continue assist, which is the only way a single run sees more than one.
+function AutoRoller.GetDesiredHits()
+    return desiredHits
 end
 
 function AutoRoller.Stop(reason)
@@ -111,7 +137,7 @@ local function Tick(delta)
         return
     end
 
-    local canRun, reason = CanOperate()
+    local canRun, reason = CanOperate(true)
     if not canRun then
         AutoRoller.Stop(reason)
         return
@@ -126,20 +152,12 @@ local function Tick(delta)
         return
     end
 
-    -- A Desired entry landed: it is already learned, and the session's own
-    -- buttons are now COMPLETE, Lock and Unlearn. Close the session out through
-    -- the native path and hand control back rather than opening a fresh one --
-    -- the player asked for this entry, not for the scrolls after it.
-    if api.IsRapidRollingDesiredHit and api.IsRapidRollingDesiredHit() then
-        api.AdvanceRapidRoll(true)
-        AutoRoller.Stop("desired_learned")
-        return
-    end
-
     local phase = CurrentPhase()
     -- Also stall when the advance is blocked with no usable Phase (die stuck on
     -- "?" / pendingReveal): that is the gray-Continue hang. Phase progress still
-    -- resets the clock so a healthy in-flight reveal is not recovered early.
+    -- resets the clock so a healthy in-flight reveal is not recovered early. It
+    -- runs before the Desired-hit branch so that a stop code which never clears
+    -- is recovered rather than waited on forever.
     local blocked = false
     if api.IsRapidRollingAdvanceBlocked then
         blocked = api.IsRapidRollingAdvanceBlocked() == true
@@ -156,6 +174,64 @@ local function Tick(delta)
     else
         lastPhase = phase
         stalledFor = 0
+    end
+
+    -- A Desired entry landed: it is already learned, and the session's own
+    -- buttons are now COMPLETE, Lock and Unlearn, none of which an assist may
+    -- press. Either way the session is closed out through Ascension's own Roll
+    -- button; the only question is whether the next one is opened.
+    if api.IsRapidRollingDesiredHit and api.IsRapidRollingDesiredHit() then
+        -- The stop code outlives the session it describes by a tick or two, so
+        -- without this the same hit would be "closed" over and over.
+        if chainPending then
+            return
+        end
+
+        -- Read before the close: the state that names the learned entry is the
+        -- one the close throws away.
+        local learnedId = api.GetRapidRollingLearnedEntryID and api.GetRapidRollingLearnedEntryID()
+
+        api.AdvanceRapidRoll(true)
+        desiredHits = desiredHits + 1
+
+        if not ContinueAfterHit() then
+            AutoRoller.Stop("desired_learned")
+            return
+        end
+
+        -- An entry the client still reports as Desired after learning it would
+        -- make the chain roll for something it already has.
+        if learnedId then
+            if learnedThisRun[learnedId] then
+                AutoRoller.Stop("desired_repeat")
+                return
+            end
+            learnedThisRun[learnedId] = true
+        end
+
+        if desiredHits >= MAX_CHAINED_SESSIONS then
+            AutoRoller.Stop("chain_limit")
+            return
+        end
+
+        chainPending = true
+        lastPhase = nil
+        stalledFor = 0
+
+        local MainWindow = AscensionSuite.MainWindow
+        if MainWindow and MainWindow.RefreshAutoRoll then
+            MainWindow.RefreshAutoRoll()
+        end
+        return
+    end
+    chainPending = false
+
+    -- Rolling with nothing Desired left is the reroll loop the assist boundary
+    -- rules out, so this is where a chained run finishes. It reads as a finish
+    -- rather than the "you have no targets" refusal because it is one.
+    if not HasDesiredTargets() then
+        AutoRoller.Stop(desiredHits > 0 and "desired_list_done" or "no_desired_targets")
+        return
     end
 
     local ok, err = api.AdvanceRapidRoll(true)
@@ -178,12 +254,13 @@ function AutoRoller.Start()
         DesiredSync.Sync()
     end
 
-    -- A wishlist built outside Wildcard has nothing Desired behind it yet, so
-    -- push it before giving up. Only when the Desired set is empty: a player who
-    -- already narrowed Desired to one entry asked for that entry, not the list.
+    -- Merge the wishlist into Desired. PushToDesired only ever adds -- it does not
+    -- clear, and it skips whatever is Desired already -- so a player who marked a
+    -- few entries by hand keeps every one of them and gains the rest of the list.
+    -- Until 0.2.5 this ran only when Desired was completely empty, which meant one
+    -- hand-made mark was enough to make Start silently ignore the whole wishlist.
     local Wishlist = AscensionSuite.Wishlist
-    if Wishlist and Wishlist.PushToDesired and Wishlist.CountDesired
-        and Wishlist.Count and Wishlist.Count() > 0 and Wishlist.CountDesired() == 0 then
+    if Wishlist and Wishlist.PushToDesired and Wishlist.Count and Wishlist.Count() > 0 then
         Wishlist.PushToDesired()
     end
 
@@ -200,6 +277,9 @@ function AutoRoller.Start()
     lastError = nil
     lastPhase = nil
     stalledFor = 0
+    desiredHits = 0
+    chainPending = false
+    learnedThisRun = {}
     local elapsed = 0
     frame:SetScript("OnUpdate", function(_, delta)
         elapsed = elapsed + delta
@@ -213,6 +293,11 @@ function AutoRoller.Start()
     local MainWindow = AscensionSuite.MainWindow
     if MainWindow and MainWindow.RefreshAutoRoll then
         MainWindow.RefreshAutoRoll()
+    end
+    -- The push above may have marked rows Desired; the panel's badges are stale
+    -- until something re-reads them.
+    if MainWindow and MainWindow.RefreshWishlist then
+        MainWindow.RefreshWishlist()
     end
     return true
 end

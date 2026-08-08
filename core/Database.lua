@@ -14,6 +14,7 @@ local DEFAULTS = {
     version = 5,
     assists = {
         autoRoll = false,
+        autoRollContinue = false,
         instantDiceSkip = false,
         instantSkillCardSkip = false,
         acceptWildcardPopups = false,

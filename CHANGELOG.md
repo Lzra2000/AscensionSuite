@@ -3,6 +3,79 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.2.5 (2026-08-08) -- Sync stops missing marks, Auto-Roll stops asking
+
+A polish pass over the three places the Suite quietly did less than it looked
+like it was doing: syncing from Rapid only saw what the search box allowed,
+Start only pushed the wishlist into an empty Desired set, and scrolling a
+wishlist past eight rows raised a Lua error.
+
+#### Fixed
+- **Sync from Rapid sees every Desired mark.** The scan universe was the Rapid
+  window's *filtered* candidate list, so anything typed in the Desired search box
+  hid selections from it -- syncing with `fire` in the box found only the Desired
+  marks whose names contain "fire", and reported the rest as "nothing new". The
+  scan now widens that list for its own duration through Ascension's own
+  `DesiredSearch` funnel and restores the player's search afterwards; the search
+  box itself is never written to, so Ascension's saved filter state is untouched.
+  It also sweeps `RapidRollDesired`, Ascension's own record of every Desired
+  toggle, which finds marks the candidate list cannot show at all. Every pair from
+  either source is still confirmed with `IsDesiredID` before it counts. The status
+  line says when the search had to be widened.
+- **Auto-Roll Start merges the wishlist into Desired.** It used to push only when
+  Desired was *completely* empty, so a single mark made by hand in the Rapid
+  window was enough for Start to ignore the entire wishlist and report having no
+  targets. `PushToDesired` only ever adds -- it never clears and it skips whatever
+  is Desired already -- so the push is now unconditional and hand-made marks are
+  left exactly as they were.
+- **Scrolling a wishlist past eight rows no longer raises.** FrameXML calls a faux
+  scroll frame's update function as `updateFunction(self)`, and the panel passed
+  `WishlistPanel.Refresh` straight in, so the scroll frame arrived where the status
+  note goes and `FontString:SetText` was handed a table.
+- **Searching after scrolling shows the matches.** A scroll offset left over from a
+  longer list is clamped, instead of rendering eight empty rows over results that
+  are right there.
+- **Unstick puts the Rapid window back the way it found it.** `Roll()` disables the
+  Roll button and unregisters `TOKEN_UPDATED` on its way into a session; recovery
+  restored neither, so a session that stranded left the button dead and the scroll
+  counters frozen until the window was reopened. It now re-registers the event,
+  clears the stale error frame, re-enables the button when the client agrees a roll
+  can start, and raises `completingSession` before the cancel exactly as Ascension's
+  own terminal path does -- so cancelling no longer surfaces `ROLL_ABILITIES_NO_ROLL`
+  as a red error. It confirms in chat, where a player looking at the Rapid window
+  will actually see it.
+- **A refused Start says so.** Pressing Start when Auto-Roll cannot run left the
+  status line reading "idle", which is indistinguishable from the button not having
+  been pressed.
+
+#### Added
+- **`autoRollContinue`** (default **off**, like every assist): after a Desired entry
+  lands, close the session through Ascension's own Roll button and open the next one
+  rather than handing control back. It ends when the wishlist has nothing Desired
+  left, when the player stops it, on any error -- and on two ceilings that exist so a
+  client which keeps calling a learned entry Desired cannot turn this into a reroll
+  loop: the same entry landing twice, and 25 chained sessions. Leaving it off keeps
+  0.2.1's stop-per-hit behaviour, which is still the default.
+- **Row highlight** on the Wishlist panel for whatever was just added, removed or
+  toggled -- including from **Alt + right-click** in the Character Advancement book,
+  which happens with the Suite window behind it. Nothing is drawn on Ascension's own
+  widgets.
+- **Push to Desired explains itself** when it is greyed out, on hover.
+- The wishlist redraws when `Ascension_CharacterAdvancement` or `Ascension_WildCard`
+  loads, so a row added by id while the book was unloaded fills in its name and icon
+  rather than sitting on a placeholder until something else happens to refresh it.
+- `AscensionAPI.WidenDesiredCandidates`, `CollectSavedRapidSelections`,
+  `CollectAllDesiredSelections`, `GetRapidRollingLearnedEntryID`.
+- `AutoRoller.GetDesiredHits`, `WishlistPanel.NoteTouched`,
+  `WishlistPanel.GetPushBlockReason`.
+- `tests/test_sync_filter.lua`, `tests/test_autoroll_continue.lua`. `test_load.lua`
+  now fails a release that bumps the TOC, `Bootstrap.VERSION`, the CHANGELOG heading
+  and the README out of step with each other.
+
+#### Changed
+- Adding an id while the search box is narrowed clears the search, so the row that
+  was just added is visible rather than filtered out of its own confirmation.
+
 ### 0.2.4 (2026-08-08) -- First-click removal, and the install steps back in the README
 
 #### Fixed
