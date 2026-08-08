@@ -131,6 +131,38 @@ local function FirstNumber(...)
     return nil
 end
 
+-- Advancement entries carry Spells as a per-rank array (entry.Spells[rank]);
+-- Ascension's own list items read Spells[1] as the representative spell, so a
+-- lookup that only knows about a scalar Spell field misses most entries.
+local function EntrySpellID(entry)
+    if type(entry) ~= "table" then
+        return nil
+    end
+
+    local spellId = FirstNumber(entry.Spell, entry.spell, entry.SpellID, entry.spellID, entry.SpellId)
+    if spellId then
+        return spellId
+    end
+
+    local spells = entry.Spells or entry.spells
+    if type(spells) == "table" then
+        return FirstNumber(spells[1])
+    end
+    return nil
+end
+
+local function EntryPair(entry)
+    if type(entry) ~= "table" then
+        return nil, nil
+    end
+    local entryId = FirstNumber(entry.ID, entry.Id, entry.id, entry.internalID, entry.InternalID)
+    local entryType = FirstString(entry.Type, entry.type, entry.entryType, entry.EntryType)
+    if not entryId or not entryType then
+        return nil, nil
+    end
+    return entryId, entryType
+end
+
 local function RequireWildcard()
     if not API.IsWildcardModeActive() then
         return false, "not_wildcard_mode"
@@ -323,14 +355,18 @@ function API.GetEntryName(spellOrEntryId)
 end
 
 function API.GetEntrySpellID(spellOrEntryId)
-    local entry = API.ResolveEntry(spellOrEntryId)
-    if entry then
-        local spellId = FirstNumber(entry.Spell, entry.spell, entry.SpellID, entry.spellID, entry.SpellId)
-        if spellId then
-            return spellId
-        end
+    local spellId = EntrySpellID(API.ResolveEntry(spellOrEntryId))
+    if spellId then
+        return spellId
     end
     return tonumber(spellOrEntryId)
+end
+
+-- Same lookup for a caller that already knows it holds an internal ID. Spell IDs
+-- and internal IDs are separate id spaces, so resolving one as the other can land
+-- on an unrelated entry whose id happens to collide.
+function API.GetEntrySpellIDByInternalID(internalId)
+    return EntrySpellID(API.ResolveEntryByInternalID(internalId))
 end
 
 function API.GetEntryTooltipLines(spellOrEntryId)
@@ -456,7 +492,8 @@ end
 -- Size of the Desired *candidate* list after the Rapid window's search/filter,
 -- not the number of entries the player marked Desired. The client exposes no
 -- count or enumeration of actual Desired selections, only IsDesiredID per entry,
--- so never use this as a "player has targets" gate.
+-- so never use this as a "player has targets" gate. It is still useful as the
+-- scan universe for CollectDesiredSelections.
 function API.GetNumFilteredDesiredEntries()
     local wc = WC()
     if not wc then
@@ -467,6 +504,52 @@ function API.GetNumFilteredDesiredEntries()
         return count
     end
     return 0
+end
+
+-- One candidate row of the Rapid window's Desired list, in filter order. This is
+-- the same call Ascension's own RapidRollDesiredSpellListItemMixin:GetEntry uses.
+function API.GetFilteredDesiredEntryAtIndex(index)
+    local position = tonumber(index)
+    if not position then
+        return nil
+    end
+    local wc = WC()
+    if not wc then
+        return nil
+    end
+    return TableOrNil(Call(wc, { "GetFilteredDesiredEntryAtIndex" }, position))
+end
+
+-- Walk the candidate list and keep the rows IsDesiredID confirms are actually
+-- selected. This is the closest thing to enumerating Desired selections the
+-- client allows, and it only sees what the current Rapid search/filter admits:
+-- a narrowed filter hides selections rather than deselecting them.
+function API.CollectDesiredSelections(maxScan)
+    local selections = {}
+    local total = API.GetNumFilteredDesiredEntries()
+    if total <= 0 then
+        return selections, 0
+    end
+
+    local limit = tonumber(maxScan)
+    if limit and limit < total then
+        total = limit
+    end
+
+    for index = 1, total do
+        local entry = API.GetFilteredDesiredEntryAtIndex(index)
+        local entryId, entryType = EntryPair(entry)
+        if entryId and entryType and API.IsDesiredID(entryId, entryType) then
+            selections[#selections + 1] = {
+                id = entryId,
+                type = entryType,
+                spellId = EntrySpellID(entry),
+                name = FirstString(entry.Name, entry.name),
+            }
+        end
+    end
+
+    return selections, total
 end
 
 -- Whether Rapid Rolling is usable at all for the active spec / game mode.
@@ -748,6 +831,23 @@ function API.GetRapidRollingState()
         return state
     end
     return nil
+end
+
+-- Why the current rapid session stopped, e.g.
+-- STOP_RAPID_ROLLING_DESIRED_ENTRY_LEARNED or STOP_RAPID_ROLLING_COUNT_DEPLETED.
+function API.GetRapidRollingStopCode()
+    local state = API.GetRapidRollingState()
+    if not state then
+        return nil
+    end
+    return FirstString(state.StopCode)
+end
+
+-- The session ended because a Desired entry was rolled: the entry is already
+-- learned, the native Roll button now reads COMPLETE, and the only other buttons
+-- on offer are Lock and Unlearn, which no assist may press.
+function API.IsRapidRollingDesiredHit()
+    return API.GetRapidRollingStopCode() == "STOP_RAPID_ROLLING_DESIRED_ENTRY_LEARNED"
 end
 
 function API.IsAwaitingRapidRollingTalentUpgradeRoll()

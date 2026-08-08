@@ -61,6 +61,7 @@ local rollResult = { false, "forced_error" }
 -- Drives the rapid session phase the addon polls; nil means "no live session",
 -- which is the plain leveling dice case the early assertions run under.
 local rapidPhase = nil
+local rapidStopCode = nil
 
 C_GameMode = {
     IsGameModeActive = function(_, mode) return mode == "WildCard" end,
@@ -95,7 +96,7 @@ C_Wildcard = {
         return rollResult[1], rollResult[2]
     end,
     GetRapidRollingState = function()
-        return { Phase = rapidPhase }
+        return { Phase = rapidPhase, StopCode = rapidStopCode }
     end,
 }
 
@@ -242,5 +243,26 @@ RunTick()
 assert(AutoRoller.IsRunning() == false, "must stop once a phase is stuck past the stall window")
 assert(AutoRoller.GetLastError() == "stalled",
     "reports the stall, got " .. tostring(AutoRoller.GetLastError()))
+
+-- A Desired entry landing ends the session. The entry is already learned and the
+-- only remaining buttons are Lock and Unlearn, so the assist closes the session
+-- out through Ascension's own Roll button and hands control back instead of
+-- opening a fresh one and spending the next scroll.
+rapidPhase = "Completed"
+rapidStopCode = "STOP_RAPID_ROLLING_DESIRED_ENTRY_LEARNED"
+
+ok = AutoRoller.Start()
+assert(ok == true, "restart for the Desired-hit case")
+
+local nativeBeforeHit = nativeRollCalls
+RunTick()
+assert(AutoRoller.IsRunning() == false, "must stop once a Desired entry has been rolled")
+assert(AutoRoller.GetLastError() == "desired_learned",
+    "reports the Desired hit, got " .. tostring(AutoRoller.GetLastError()))
+assert(nativeRollCalls == nativeBeforeHit + 1,
+    "completes the session through the native button exactly once")
+
+RunTick()
+assert(nativeRollCalls == nativeBeforeHit + 1, "and never rolls again on its own")
 
 print("OK: AscensionSuite assists test passed")

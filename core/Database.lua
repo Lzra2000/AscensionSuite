@@ -11,7 +11,7 @@ local DB = {}
 AscensionSuite.Database = DB
 
 local DEFAULTS = {
-    version = 3,
+    version = 4,
     assists = {
         autoRoll = false,
         instantDiceSkip = false,
@@ -20,6 +20,7 @@ local DEFAULTS = {
         captureRolls = false,
     },
     wishlistSpellIds = {},
+    wishlistEntries = {},
     desiredProfiles = {},
     logbook = {},
 }
@@ -59,6 +60,10 @@ local function EnsureDefaults(db)
         db.wishlistSpellIds = {}
     end
 
+    if type(db.wishlistEntries) ~= "table" then
+        db.wishlistEntries = {}
+    end
+
     if type(db.desiredProfiles) ~= "table" then
         db.desiredProfiles = {}
     end
@@ -95,6 +100,12 @@ local function EnsureDefaults(db)
         db.profiles = nil
         db.proofSpellIds = nil
         db.version = 3
+    end
+
+    -- v4 adds the tracked Desired entry registry. Nothing to carry over: a
+    -- v3 save has only spell ids, which CollectTracked still resolves.
+    if db.version < 4 then
+        db.version = 4
     end
 
     return db

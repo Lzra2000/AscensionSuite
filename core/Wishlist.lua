@@ -10,6 +10,11 @@ end
 local Wishlist = {}
 AscensionSuite.Wishlist = Wishlist
 
+-- Both stores are bounded so a long session of marking and unmarking in the
+-- native Rapid window cannot grow SavedVariables without limit.
+local MAX_TRACKED_ENTRIES = 300
+local MAX_TRACKED_SPELL_IDS = 200
+
 local function GetDB()
     local DB = AscensionSuite.Database
     if DB and DB.Get then
@@ -83,12 +88,166 @@ function Wishlist.TrackSpellId(spellId)
         end
     end
     spellIds[#spellIds + 1] = id
+    while #spellIds > MAX_TRACKED_SPELL_IDS do
+        table.remove(spellIds, 1)
+    end
 
     local DB = AscensionSuite.Database
     if DB and DB.SetWishlistSpellIds then
         DB.SetWishlistSpellIds(spellIds)
     end
     return true
+end
+
+------------------------------------------------------------------------
+-- Tracked Desired entries
+--
+-- The spell-id grid is the player's own watch list. This second store is the
+-- registry of advancement entries the addon has *seen* marked Desired, whether
+-- that happened in the overlay, in Ascension's Rapid window, or in the
+-- Character Advancement book. It exists because the client offers IsDesiredID
+-- per entry and nothing that enumerates selections, so Auto-Roll can only
+-- verify targets it already knows an (id, type) pair for.
+------------------------------------------------------------------------
+
+function Wishlist.GetEntries()
+    local data = GetDB()
+    if type(data.wishlistEntries) ~= "table" then
+        data.wishlistEntries = {}
+    end
+    return data.wishlistEntries
+end
+
+local function FindEntryIndex(entries, entryId, entryType)
+    for index = 1, #entries do
+        local row = entries[index]
+        if type(row) == "table" and row.id == entryId and row.type == entryType then
+            return index
+        end
+    end
+    return nil
+end
+
+-- Records an (id, type) pair as a wishlist target and mirrors its spell into the
+-- grid so a mark made in a native window shows up in the overlay too. Tracking
+-- says nothing about whether the entry is Desired right now; CountDesired asks
+-- the client about that every time.
+function Wishlist.TrackEntry(entryId, entryType, spellId, name)
+    local id = tonumber(entryId)
+    if not id or type(entryType) ~= "string" or entryType == "" then
+        return false, "invalid_entry"
+    end
+
+    -- The id is always an advancement internal ID here, so it has to be resolved
+    -- in that id space: a spell-first lookup can land on an unrelated entry whose
+    -- spell ID collides with this internal ID.
+    local api = GetAPI()
+    local resolvedSpellId = NormalizeSpellId(spellId)
+    if not resolvedSpellId and api and api.GetEntrySpellIDByInternalID then
+        resolvedSpellId = NormalizeSpellId(api.GetEntrySpellIDByInternalID(id))
+    end
+
+    local entries = Wishlist.GetEntries()
+    local index = FindEntryIndex(entries, id, entryType)
+    local isNew = index == nil
+
+    if isNew then
+        entries[#entries + 1] = {
+            id = id,
+            type = entryType,
+            spellId = resolvedSpellId,
+            name = name,
+        }
+        while #entries > MAX_TRACKED_ENTRIES do
+            table.remove(entries, 1)
+        end
+    else
+        local row = entries[index]
+        row.spellId = row.spellId or resolvedSpellId
+        row.name = row.name or name
+    end
+
+    if resolvedSpellId then
+        Wishlist.TrackSpellId(resolvedSpellId)
+    end
+    return true, isNew
+end
+
+function Wishlist.UntrackEntry(entryId, entryType)
+    local id = tonumber(entryId)
+    if not id or type(entryType) ~= "string" then
+        return false
+    end
+
+    local entries = Wishlist.GetEntries()
+    local index = FindEntryIndex(entries, id, entryType)
+    if not index then
+        return false
+    end
+
+    -- Only the Desired registry is pruned. The spell stays in the grid so a
+    -- cell the player toggled off is still there to toggle back on.
+    table.remove(entries, index)
+    return true
+end
+
+function Wishlist.IsTracked(entryId, entryType)
+    return FindEntryIndex(Wishlist.GetEntries(), tonumber(entryId), entryType) ~= nil
+end
+
+-- Every (id, type) pair the addon can ask IsDesiredID about: the tracked entry
+-- registry first, then whatever the grid's spell ids still resolve to.
+function Wishlist.CollectTracked()
+    local rows = {}
+    local seen = {}
+
+    local entries = Wishlist.GetEntries()
+    for index = 1, #entries do
+        local row = entries[index]
+        if type(row) == "table" and row.id and row.type then
+            local key = row.type .. ":" .. tostring(row.id)
+            if not seen[key] then
+                seen[key] = true
+                rows[#rows + 1] = { id = row.id, type = row.type, spellId = row.spellId, name = row.name }
+            end
+        end
+    end
+
+    local spellIds = Wishlist.GetSpellIds()
+    for index = 1, #spellIds do
+        local entryId, entryType = ResolveEntryPair(spellIds[index])
+        if entryId and entryType then
+            local key = entryType .. ":" .. tostring(entryId)
+            if not seen[key] then
+                seen[key] = true
+                rows[#rows + 1] = { id = entryId, type = entryType, spellId = spellIds[index] }
+            end
+        end
+    end
+
+    return rows
+end
+
+-- Pulls Desired selections the player made in a native window into the tracked
+-- registry. The scan universe is the Rapid window's filtered candidate list, so
+-- a narrow search box hides selections from it; each candidate is confirmed with
+-- IsDesiredID rather than assumed to be selected.
+function Wishlist.SyncFromNative()
+    local api = GetAPI()
+    if not api or not api.CollectDesiredSelections then
+        return 0, 0
+    end
+
+    local selections, scanned = api.CollectDesiredSelections()
+    local added = 0
+    for index = 1, #selections do
+        local row = selections[index]
+        local ok, isNew = Wishlist.TrackEntry(row.id, row.type, row.spellId, row.name)
+        if ok and isNew then
+            added = added + 1
+        end
+    end
+    return added, scanned or 0
 end
 
 function Wishlist.AddToDesired(spellOrEntryId)
@@ -112,9 +271,7 @@ function Wishlist.AddToDesired(spellOrEntryId)
     end
 
     local spellId = api.GetEntrySpellID(spellOrEntryId) or tonumber(spellOrEntryId)
-    if spellId then
-        Wishlist.TrackSpellId(spellId)
-    end
+    Wishlist.TrackEntry(entryId, entryType, spellId)
     return true
 end
 
@@ -128,7 +285,10 @@ function Wishlist.RemoveFromDesired(spellOrEntryId)
     if not entryId then
         return false
     end
-    return api.RemoveDesiredID(entryId, entryType)
+
+    local removed = api.RemoveDesiredID(entryId, entryType)
+    Wishlist.UntrackEntry(entryId, entryType)
+    return removed
 end
 
 function Wishlist.IsDesired(spellOrEntryId)
@@ -145,10 +305,10 @@ function Wishlist.IsDesired(spellOrEntryId)
 end
 
 -- How many tracked wishlist entries are currently marked Desired in Ascension.
--- This is the only Desired set the addon can enumerate: the client offers
--- IsDesiredID per entry but no count or listing of Desired selections, so
--- entries the player marked directly in the native Rapid window are invisible
--- here and are reported as zero.
+-- The client offers IsDesiredID per entry but no count or listing of Desired
+-- selections, so this only sees entries the addon has a tracked (id, type) pair
+-- for. DesiredSync keeps that registry fed from the native windows; a mark made
+-- while the addon was unloaded stays invisible until the next sync.
 function Wishlist.CountDesired()
     local api = GetAPI()
     if not api then
@@ -156,10 +316,10 @@ function Wishlist.CountDesired()
     end
 
     local count = 0
-    local spellIds = Wishlist.GetSpellIds()
-    for index = 1, #spellIds do
-        local entryId, entryType = ResolveEntryPair(spellIds[index])
-        if entryId and entryType and api.IsDesiredID(entryId, entryType) then
+    local tracked = Wishlist.CollectTracked()
+    for index = 1, #tracked do
+        local row = tracked[index]
+        if api.IsDesiredID(row.id, row.type) then
             count = count + 1
         end
     end
@@ -186,17 +346,19 @@ function Wishlist.SaveProfile(name, includeKnownSnapshot)
     -- is not the same as marking it Desired, and loading a profile must not
     -- desire everything the player merely kept an eye on.
     local entries = {}
-    local spellIds = Wishlist.GetSpellIds()
-    for index = 1, #spellIds do
-        local entryId, entryType = ResolveEntryPair(spellIds[index])
-        if entryId and entryType and api.IsDesiredID(entryId, entryType) then
+    local tracked = Wishlist.CollectTracked()
+    for index = 1, #tracked do
+        local row = tracked[index]
+        if api.IsDesiredID(row.id, row.type) then
             entries[#entries + 1] = {
-                id = entryId,
-                type = entryType,
-                spellId = spellIds[index],
+                id = row.id,
+                type = row.type,
+                spellId = row.spellId,
             }
         end
     end
+
+    local spellIds = Wishlist.GetSpellIds()
 
     local profile = {
         entries = entries,
@@ -237,6 +399,18 @@ function Wishlist.LoadProfile(name, reapplyDesired)
 
     if type(profile.spellIds) == "table" then
         data.wishlistSpellIds = CopyTable(profile.spellIds)
+    end
+
+    -- The profile's Desired set replaces the tracked registry outright: the
+    -- entries it names are exactly the targets Auto-Roll should verify next.
+    data.wishlistEntries = {}
+    if type(profile.entries) == "table" then
+        for index = 1, #profile.entries do
+            local row = profile.entries[index]
+            if type(row) == "table" and row.id and row.type then
+                Wishlist.TrackEntry(row.id, row.type, row.spellId)
+            end
+        end
     end
 
     if reapplyDesired ~= false then

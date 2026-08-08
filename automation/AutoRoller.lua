@@ -49,8 +49,8 @@ end
 
 -- Rolling with nothing marked Desired is a plain reroll loop until scrolls run
 -- out, which the assist boundary rules out. The client cannot count Desired
--- selections, so this verifies the wishlist entries the addon tracks; targets
--- marked only in the native Rapid window are not visible to it.
+-- selections, so this verifies the entries the addon tracks -- which now include
+-- marks made in Ascension's own windows, as long as DesiredSync has seen them.
 local function HasDesiredTargets()
     local Wishlist = AscensionSuite.Wishlist
     if not Wishlist or not Wishlist.CountDesired then
@@ -126,6 +126,16 @@ local function Tick(delta)
         return
     end
 
+    -- A Desired entry landed: it is already learned, and the session's own
+    -- buttons are now COMPLETE, Lock and Unlearn. Close the session out through
+    -- the native path and hand control back rather than opening a fresh one --
+    -- the player asked for this entry, not for the scrolls after it.
+    if api.IsRapidRollingDesiredHit and api.IsRapidRollingDesiredHit() then
+        api.AdvanceRapidRoll(true)
+        AutoRoller.Stop("desired_learned")
+        return
+    end
+
     local phase = CurrentPhase()
     if phase ~= nil and phase == lastPhase then
         stalledFor = stalledFor + (delta or TICK_SECONDS)
@@ -150,6 +160,14 @@ local function Tick(delta)
 end
 
 function AutoRoller.Start()
+    -- Pull in Desired marks the player made in Ascension's own windows before
+    -- deciding there are no targets: those are invisible until something has
+    -- tracked their (id, type) pair.
+    local DesiredSync = AscensionSuite.DesiredSync
+    if DesiredSync and DesiredSync.Sync then
+        DesiredSync.Sync()
+    end
+
     local canRun, reason = CanOperate()
     if not canRun then
         return false, reason
