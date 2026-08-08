@@ -242,6 +242,23 @@ function API.ResolveEntry(spellOrEntryId)
     return API.GetEntryByInternalID(id)
 end
 
+-- Advancement internal IDs and spell IDs are separate id spaces, so anything
+-- that already knows it holds an internal ID (the WILDCARD_*_LEARNED events do)
+-- must look that up first or it can land on an unrelated entry whose spell ID
+-- happens to collide.
+function API.ResolveEntryByInternalID(internalId)
+    local id = tonumber(internalId)
+    if not id then
+        return nil
+    end
+
+    local entry = API.GetEntryByInternalID(id)
+    if entry then
+        return entry
+    end
+    return API.GetEntryBySpellID(id)
+end
+
 function API.GetEntryInternalID(spellOrEntryId)
     local entry = API.ResolveEntry(spellOrEntryId)
     if entry then
@@ -511,6 +528,110 @@ function API.CaptureKnownSnapshot()
         end
     end
     return snapshot
+end
+
+------------------------------------------------------------------------
+-- Rolled-entry description (mirrors the native Rapid result display)
+------------------------------------------------------------------------
+
+local function CAUtil()
+    return Namespace("CharacterAdvancementUtil")
+end
+
+-- A talent's icon and name belong to the spell for a specific rank, so a rank-1
+-- lookup mislabels an upgraded talent. Ascension's own Rapid Rolling result
+-- display resolves it this way (RapidRollingRender.CachePreviousUpgradeResultDisplay).
+function API.GetTalentRankSpellID(internalId, rank)
+    local id = tonumber(internalId)
+    if not id then
+        return nil
+    end
+
+    local util = CAUtil()
+    if util then
+        local byRank = Method(util, { "GetTalentRankSpellByID" })
+        if byRank and rank then
+            local ok, spellId = pcall(byRank, id, rank)
+            if ok then
+                spellId = tonumber(spellId)
+                if spellId and spellId ~= 0 then
+                    return spellId
+                end
+            end
+        end
+
+        local bySpell = Method(util, { "GetSpellByID" })
+        if bySpell then
+            local ok, spellId = pcall(bySpell, id)
+            if ok then
+                spellId = tonumber(spellId)
+                if spellId and spellId ~= 0 then
+                    return spellId
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+function API.GetTalentRank(internalId)
+    local id = tonumber(internalId)
+    if not id then
+        return nil
+    end
+    local ca = CA()
+    if not ca then
+        return nil
+    end
+    local rank, maxRank = Call(ca, { "GetTalentRankByID" }, id)
+    return tonumber(rank), tonumber(maxRank)
+end
+
+-- Single description used by the logbook. newRank / preRollRank come straight
+-- from WILDCARD_RAPID_ROLL_LEARNED / WILDCARD_ENTRY_LEARNED.
+function API.DescribeRolledEntry(internalId, newRank, preRollRank)
+    local id = tonumber(internalId)
+    if not id or id == 0 then
+        return nil
+    end
+
+    local entry = API.ResolveEntryByInternalID(id)
+    local entryType = nil
+    if entry then
+        entryType = FirstString(entry.Type, entry.type, entry.entryType, entry.EntryType)
+    end
+
+    local rank = tonumber(newRank) or tonumber(preRollRank)
+    local currentRank, maxRank = API.GetTalentRank(id)
+    rank = rank or currentRank
+
+    local spellId = API.GetTalentRankSpellID(id, rank)
+    if not spellId and entry then
+        spellId = FirstNumber(entry.Spell, entry.spell, entry.SpellID, entry.spellID, entry.SpellId)
+    end
+
+    local name, icon
+    if spellId and GetSpellInfo then
+        local spellName, _, spellIcon = GetSpellInfo(spellId)
+        name = FirstString(spellName)
+        icon = FirstTexture(spellIcon)
+    end
+
+    if entry then
+        name = name or FirstString(entry.Name, entry.name, entry.spellName, entry.displayName)
+        icon = icon or FirstTexture(entry.Icon, entry.icon, entry.texture, entry.Texture, entry.spellIcon)
+    end
+
+    return {
+        entryId = id,
+        spellId = spellId,
+        name = name or ("Entry " .. tostring(id)),
+        icon = icon or PLACEHOLDER_ICON,
+        entryType = entryType,
+        rank = rank,
+        maxRank = maxRank,
+    }
 end
 
 ------------------------------------------------------------------------

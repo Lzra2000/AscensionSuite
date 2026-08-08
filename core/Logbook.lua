@@ -42,34 +42,35 @@ local function NormalizeEntryType(entryType)
     return "ability"
 end
 
-local function BuildRecord(spellOrEntryId, entryTypeOverride)
+local function BuildRecord(internalId, newRank, preRollRank)
     local api = GetAPI()
     if not api then
         return nil
     end
 
-    local spellId = api.GetEntrySpellID(spellOrEntryId) or tonumber(spellOrEntryId)
-    local entryId = api.GetEntryInternalID(spellOrEntryId)
-    local name = api.GetEntryName(spellOrEntryId)
-    local icon = api.GetEntryIcon(spellOrEntryId)
-    local entryType = entryTypeOverride or api.GetEntryType(spellOrEntryId)
+    local described = api.DescribeRolledEntry(internalId, newRank, preRollRank)
+    if not described then
+        return nil
+    end
 
     return {
-        spellId = spellId,
-        entryId = entryId,
-        name = name,
-        icon = icon,
-        entryType = NormalizeEntryType(entryType),
+        spellId = described.spellId,
+        entryId = described.entryId,
+        name = described.name,
+        icon = described.icon,
+        entryType = NormalizeEntryType(described.entryType),
+        rank = described.rank,
+        maxRank = described.maxRank,
         timestamp = time and time() or 0,
     }
 end
 
-function Logbook.Append(spellOrEntryId, entryTypeOverride)
+function Logbook.Append(internalId, newRank, preRollRank)
     if not AssistsEnabled() then
         return false
     end
 
-    local record = BuildRecord(spellOrEntryId, entryTypeOverride)
+    local record = BuildRecord(internalId, newRank, preRollRank)
     if not record then
         return false
     end
@@ -108,33 +109,23 @@ function Logbook.Clear()
     end
 end
 
-local function OnWildcardLearned(_, internalID)
-    if internalID then
-        Logbook.Append(internalID)
-    end
-end
-
-local function OnSpellsChanged()
-    if not AssistsEnabled() then
-        return
-    end
-    -- Known updates are observed for future diffing; roll events are primary.
-end
-
 function Logbook.Init()
     if frame then
         return
     end
 
+    -- Both events carry (internalID, newRank, preRollRank); the rapid variant
+    -- adds a stop reason. Rank matters because a talent upgrade reports the same
+    -- internal ID at a new rank.
     frame = CreateFrame("Frame")
     frame:RegisterEvent("WILDCARD_RAPID_ROLL_LEARNED")
     frame:RegisterEvent("WILDCARD_ENTRY_LEARNED")
-    frame:RegisterEvent("SPELLS_CHANGED")
-    frame:SetScript("OnEvent", function(_, event, arg1)
-        if event == "WILDCARD_RAPID_ROLL_LEARNED" or event == "WILDCARD_ENTRY_LEARNED" then
-            OnWildcardLearned(event, arg1)
-        elseif event == "SPELLS_CHANGED" then
-            OnSpellsChanged()
+    frame:SetScript("OnEvent", function(_, event, internalId, newRank, preRollRank)
+        if event ~= "WILDCARD_RAPID_ROLL_LEARNED" and event ~= "WILDCARD_ENTRY_LEARNED" then
+            return
+        end
+        if internalId then
+            Logbook.Append(internalId, newRank, preRollRank)
         end
     end)
 end

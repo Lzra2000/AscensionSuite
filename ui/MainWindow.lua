@@ -122,9 +122,17 @@ function MainWindow.RefreshLogbook()
     for index = start, #entries do
         local row = entries[index]
         if row then
-            lines[#lines + 1] = string.format("[%s] %s (%s)",
+            local rank = ""
+            if row.rank and row.maxRank and row.maxRank > 1 then
+                rank = string.format(" rank %d/%d", row.rank, row.maxRank)
+            elseif row.rank and row.rank > 1 then
+                rank = string.format(" rank %d", row.rank)
+            end
+
+            lines[#lines + 1] = string.format("[%s] %s%s (%s)",
                 row.entryType or "?",
                 row.name or "?",
+                rank,
                 tostring(row.spellId or row.entryId or "?"))
         end
     end
