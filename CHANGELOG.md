@@ -3,6 +3,27 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.3.0 (2026-08-08) -- Loadouts tab and Push refuse fixes
+
+#### Added
+- **Loadouts tab** (third `/asuite` tab): named builds with Save Build, Load →
+  Wishlist, Apply → Desired, Capture Known, and **ASUITE1** share-string
+  Copy/Import.
+- `core/Loadouts.lua` + `ui/LoadoutsPanel.lua` — bounded `AscensionSuiteDB.loadouts`
+  store (name, notes, resolved entries, optional Known snapshot, character meta).
+- `tests/test_loadouts.lua` — save/load/apply/import/export and refuse-resolve.
+
+#### Changed
+- **Push to Desired** resolves and caches `(entryId, entryType)` on every row
+  before calling Ascension, including spell-only wishlist rows, and surfaces
+  per-entry refuse reasons in status text.
+- Assists tab **Desired profile Save/Load** removed — use Loadouts instead;
+  legacy `desiredProfiles` migrate into loadouts on first load (schema v6).
+
+#### Fixed
+- Wishlist Push no longer reports blanket “N refused” for rows that only had a
+  spell id — pairs are resolved first and failures name the entry + reason.
+
 ### 0.2.9 (2026-08-08) -- Wishlist rows show native spell tooltips
 
 #### Added

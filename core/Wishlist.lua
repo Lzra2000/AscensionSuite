@@ -168,39 +168,72 @@ local function Trim(items)
     end
 end
 
--- The (entryId, entryType) pair every Desired call needs. Resolved from the
--- spell id when the row does not carry one yet and cached on the row, so a list
--- of a few hundred rows costs one lookup each rather than one per refresh.
+-- The (entryId, entryType) pair every Desired call needs. Resolved from whatever
+-- half the row already has and cached on the row, so Push does not hand Ascension
+-- a bare spell id and get "refused" back.
 local function ItemPair(item)
-    if type(item) ~= "table" then
-        return nil, nil
-    end
-    if item.entryId and type(item.entryType) == "string" then
-        return item.entryId, item.entryType
-    end
-
-    local api = GetAPI()
-    if not api or not item.spellId then
-        return nil, nil
-    end
-
-    local entry = api.ResolveEntry(item.spellId)
-    if type(entry) ~= "table" then
-        return nil, nil
-    end
-
-    local entryId = NormalizeId(entry.ID or entry.Id or entry.id or entry.internalID or entry.InternalID)
-    local entryType = entry.Type or entry.type or entry.entryType or entry.EntryType
-    if not entryId or type(entryType) ~= "string" or entryType == "" then
-        return nil, nil
-    end
-
-    item.entryId = entryId
-    item.entryType = entryType
+    local entryId, entryType = Wishlist.ResolveItemPair(item)
     return entryId, entryType
 end
 
 Wishlist.GetItemPair = ItemPair
+
+function Wishlist.ResolveItemPair(item)
+    if type(item) ~= "table" then
+        return nil, nil, "invalid_item"
+    end
+
+    local entryType = NormalizeEntryType(item.entryType)
+    local entryId = NormalizeId(item.entryId)
+    if entryId and entryType then
+        return entryId, entryType, nil
+    end
+
+    local api = GetAPI()
+    if not api then
+        return nil, nil, "no_api"
+    end
+
+    local entry
+    if entryId and api.ResolveEntryByInternalID then
+        entry = api.ResolveEntryByInternalID(entryId)
+    end
+    if not entry and item.spellId and api.ResolveEntry then
+        entry = api.ResolveEntry(item.spellId)
+    end
+    if not entry and item.spellId and api.ResolveEntryByInternalID then
+        entry = api.ResolveEntryByInternalID(item.spellId)
+    end
+    if not entry and api.ResolveEntry and (item.spellId or entryId) then
+        entry = api.ResolveEntry(item.spellId or entryId)
+    end
+
+    if type(entry) ~= "table" then
+        return nil, nil, "unresolved"
+    end
+
+    entryId = NormalizeId(entry.ID or entry.Id or entry.id or entry.internalID or entry.InternalID)
+    entryType = NormalizeEntryType(entry.Type or entry.type or entry.entryType or entry.EntryType)
+    if not entryId or not entryType then
+        return nil, nil, "incomplete_entry"
+    end
+
+    item.entryId = entryId
+    item.entryType = entryType
+    if not item.spellId and api.GetEntrySpellID then
+        local spellId = NormalizeId(api.GetEntrySpellID(entryId))
+        if not spellId and api.GetEntrySpellIDByInternalID then
+            spellId = NormalizeId(api.GetEntrySpellIDByInternalID(entryId))
+        end
+        if spellId then
+            item.spellId = spellId
+        end
+    end
+    if not item.name and api.GetEntryName then
+        item.name = api.GetEntryName(entryId)
+    end
+    return entryId, entryType, nil
+end
 
 ------------------------------------------------------------------------
 -- Editing (always allowed, in any game mode)
@@ -528,29 +561,38 @@ end
 function Wishlist.PushToDesired()
     local api = GetAPI()
     if not api then
-        return 0, 0, 0, "no_api"
+        return 0, 0, 0, "no_api", {}
     end
     if not api.IsWildcardModeActive() then
-        return 0, 0, 0, "not_wildcard"
+        return 0, 0, 0, "not_wildcard", {}
     end
 
     local pushed, already, failed = 0, 0, 0
+    local refuses = {}
     local items = Wishlist.GetItems()
     for index = 1, #items do
-        local entryId, entryType = ItemPair(items[index])
+        local item = items[index]
+        local label = item.name or tostring(item.spellId or item.entryId or "?")
+        local entryId, entryType, resolveErr = Wishlist.ResolveItemPair(item)
         if not entryId then
             failed = failed + 1
+            refuses[#refuses + 1] = { name = label, reason = resolveErr or "unresolved" }
         elseif api.IsDesiredID(entryId, entryType) then
             already = already + 1
         elseif not api.CanAddDesiredID(entryId, entryType) then
             failed = failed + 1
-        elseif api.AddDesiredID(entryId, entryType) then
-            pushed = pushed + 1
+            refuses[#refuses + 1] = { name = label, reason = "refused" }
         else
-            failed = failed + 1
+            local added, addReason = api.AddDesiredID(entryId, entryType)
+            if added then
+                pushed = pushed + 1
+            else
+                failed = failed + 1
+                refuses[#refuses + 1] = { name = label, reason = addReason or "add_failed" }
+            end
         end
     end
-    return pushed, already, failed
+    return pushed, already, failed, nil, refuses
 end
 
 function Wishlist.AddToDesired(spellOrEntryId)

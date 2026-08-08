@@ -11,7 +11,7 @@ local DB = {}
 AscensionSuite.Database = DB
 
 local DEFAULTS = {
-    version = 5,
+    version = 6,
     assists = {
         autoRoll = false,
         autoRollContinue = false,
@@ -22,6 +22,7 @@ local DEFAULTS = {
     },
     wishlist = {},
     desiredProfiles = {},
+    loadouts = {},
     logbook = {},
 }
 
@@ -62,6 +63,10 @@ local function EnsureDefaults(db)
 
     if type(db.desiredProfiles) ~= "table" then
         db.desiredProfiles = {}
+    end
+
+    if type(db.loadouts) ~= "table" then
+        db.loadouts = {}
     end
 
     if type(db.logbook) ~= "table" then
@@ -149,6 +154,89 @@ local function EnsureDefaults(db)
         db.wishlistEntries = nil
         db.wishlistSpellIds = nil
         db.version = 5
+    end
+
+    -- v6 adds named loadouts and migrates legacy desiredProfiles into them.
+    if db.version < 6 then
+        if type(db.loadouts) ~= "table" then
+            db.loadouts = {}
+        end
+
+        local function ProfileToLoadout(name, profile)
+            if type(profile) ~= "table" then
+                return nil
+            end
+            local entries = {}
+            if type(profile.wishlist) == "table" then
+                for index = 1, #profile.wishlist do
+                    local row = profile.wishlist[index]
+                    if type(row) == "table" then
+                        entries[#entries + 1] = {
+                            entryId = tonumber(row.entryId),
+                            entryType = row.entryType,
+                            spellId = tonumber(row.spellId),
+                            name = row.name,
+                        }
+                    end
+                end
+            end
+            if type(profile.entries) == "table" then
+                for index = 1, #profile.entries do
+                    local row = profile.entries[index]
+                    if type(row) == "table" and tonumber(row.id) and type(row.type) == "string" then
+                        local found = false
+                        for scan = 1, #entries do
+                            local existing = entries[scan]
+                            if existing.entryId == tonumber(row.id) and existing.entryType == row.type then
+                                existing.desired = true
+                                found = true
+                                break
+                            end
+                        end
+                        if not found then
+                            entries[#entries + 1] = {
+                                entryId = tonumber(row.id),
+                                entryType = row.type,
+                                spellId = tonumber(row.spellId),
+                                desired = true,
+                            }
+                        end
+                    end
+                end
+            end
+            local slug = name:lower():gsub("%s+", "-"):gsub("[^%w%-]", "")
+            if slug == "" then
+                slug = "profile"
+            end
+            local id = slug .. "-migrated"
+            local suffix = 1
+            while db.loadouts[id] do
+                suffix = suffix + 1
+                id = slug .. "-migrated-" .. tostring(suffix)
+            end
+            return {
+                id = id,
+                name = name,
+                notes = "Migrated from Assists Desired profile.",
+                entries = entries,
+                knownSnapshot = profile.knownSnapshot,
+                updatedAt = 0,
+                character = "shared",
+            }, id
+        end
+
+        if type(db.desiredProfiles) == "table" then
+            for profileName, profile in pairs(db.desiredProfiles) do
+                if type(profileName) == "string" and db.loadouts then
+                    local loadout, id = ProfileToLoadout(profileName, profile)
+                    if loadout and id and not db.loadouts[id] then
+                        db.loadouts[id] = loadout
+                    end
+                end
+            end
+        end
+
+        db.version = 6
     end
 
     return db

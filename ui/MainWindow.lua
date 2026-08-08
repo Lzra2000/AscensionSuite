@@ -19,13 +19,13 @@ local CONTENT_TOP = -88
 local LOG_LINES = 6
 
 local TAB_WISHLIST = 1
-local TAB_ASSISTS = 2
+local TAB_LOADOUTS = 2
+local TAB_ASSISTS = 3
 
 local frame
 local tabs = {}
 local contents = {}
 local activeTab = TAB_WISHLIST
-local profileBox
 local logHost
 local assistChecks = {}
 local autoRollStatus
@@ -43,6 +43,10 @@ end
 
 local function GetWishlistPanel()
     return AscensionSuite.WishlistPanel
+end
+
+local function GetLoadoutsPanel()
+    return AscensionSuite.LoadoutsPanel
 end
 
 local function Print(message)
@@ -291,6 +295,26 @@ local function EnsureWishlistPanel()
     end
 end
 
+local function EnsureLoadoutsPanel()
+    local content = contents[TAB_LOADOUTS]
+    local loadoutsPanel = GetLoadoutsPanel()
+    if not content or not loadoutsPanel then
+        return
+    end
+
+    if not loadoutsPanel.GetFrame() then
+        if loadoutsPanel.EnsureBuilt then
+            loadoutsPanel.EnsureBuilt(content, CONTENT_WIDTH)
+        elseif loadoutsPanel.Create then
+            loadoutsPanel.Create(content, CONTENT_WIDTH)
+        end
+    end
+
+    if loadoutsPanel.InvalidateLayout then
+        loadoutsPanel.InvalidateLayout()
+    end
+end
+
 local function RefreshAssistToggles()
     local assists = GetAssists()
     for key, check in pairs(assistChecks) do
@@ -323,51 +347,6 @@ local function SyncDesiredFromNative()
         panel.Refresh()
     end
     MainWindow.RefreshDesiredStatus(note)
-end
-
-local function SaveProfile()
-    if not profileBox then
-        return
-    end
-    local Wishlist = AscensionSuite.Wishlist
-    if not Wishlist or not Wishlist.SaveProfile then
-        Print("Cannot save profile — wishlist is not loaded.")
-        return
-    end
-
-    local name = profileBox:GetText()
-    local ok, reason = Wishlist.SaveProfile(name, true)
-    if ok then
-        Print(string.format("Saved Desired profile \"%s\" (%d wishlist rows).", name, Wishlist.Count()))
-    else
-        Print("Could not save profile — " .. tostring(reason or "unknown error") .. ".")
-    end
-end
-
-local function LoadProfile()
-    if not profileBox then
-        return
-    end
-    local Wishlist = AscensionSuite.Wishlist
-    if not Wishlist or not Wishlist.LoadProfile then
-        Print("Cannot load profile — wishlist is not loaded.")
-        return
-    end
-
-    local name = profileBox:GetText()
-    local ok, reason = Wishlist.LoadProfile(name, true)
-    if not ok then
-        Print("Could not load profile — " .. tostring(reason or "unknown error") .. ".")
-        return
-    end
-
-    EnsureWishlistPanel()
-    local panel = GetWishlistPanel()
-    if panel and panel.Refresh then
-        panel.Refresh()
-    end
-    MainWindow.RefreshDesiredStatus()
-    Print(string.format("Loaded Desired profile \"%s\" (%d wishlist rows). Use Push to Desired in Wildcard.", name, Wishlist.Count()))
 end
 
 local function StartAutoRoll()
@@ -444,14 +423,11 @@ end
 ------------------------------------------------------------------------
 
 function MainWindow.SelectTab(index)
-    if index ~= TAB_WISHLIST and index ~= TAB_ASSISTS then
+    if index ~= TAB_WISHLIST and index ~= TAB_LOADOUTS and index ~= TAB_ASSISTS then
         return
     end
     activeTab = index
 
-    -- PanelTemplates draws the selected/deselected tab art. It is guarded rather
-    -- than assumed: if the client's FrameXML disagrees about the signature the
-    -- window must still open, so the content swap below is done by hand either way.
     if frame and type(_G.PanelTemplates_SetTab) == "function" then
         pcall(_G.PanelTemplates_SetTab, frame, index)
     end
@@ -472,6 +448,12 @@ function MainWindow.SelectTab(index)
         local panel = GetWishlistPanel()
         if panel and panel.Refresh then
             panel.Refresh()
+        end
+    elseif index == TAB_LOADOUTS then
+        EnsureLoadoutsPanel()
+        local loadoutsPanel = GetLoadoutsPanel()
+        if loadoutsPanel and loadoutsPanel.Refresh then
+            loadoutsPanel.Refresh()
         end
     else
         MainWindow.RefreshDesiredStatus()
@@ -538,31 +520,11 @@ local function BuildAssistContent(content)
     autoRollStatus:SetWidth(240)
     autoRollStatus:SetJustifyH("RIGHT")
 
-    local profileLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    profileLabel:SetPoint("TOPLEFT", 0, -164)
-    profileLabel:SetText("Desired profile")
-
-    profileBox = CreateFrame("EditBox", FRAME_NAME .. "Profile", content, "InputBoxTemplate")
-    profileBox:SetWidth(140)
-    profileBox:SetHeight(22)
-    profileBox:SetPoint("TOPLEFT", 8, -182)
-    profileBox:SetAutoFocus(false)
-    profileBox:SetMaxLetters(32)
-    profileBox:SetText("my-hero")
-
-    local saveButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    saveButton:SetWidth(64)
-    saveButton:SetHeight(22)
-    saveButton:SetPoint("LEFT", profileBox, "RIGHT", 12, 0)
-    saveButton:SetText("Save")
-    saveButton:SetScript("OnClick", SaveProfile)
-
-    local loadButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    loadButton:SetWidth(64)
-    loadButton:SetHeight(22)
-    loadButton:SetPoint("LEFT", saveButton, "RIGHT", 8, 0)
-    loadButton:SetText("Load")
-    loadButton:SetScript("OnClick", LoadProfile)
+    local loadoutsHint = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    loadoutsHint:SetPoint("TOPLEFT", 0, -164)
+    loadoutsHint:SetWidth(CONTENT_WIDTH)
+    loadoutsHint:SetJustifyH("LEFT")
+    loadoutsHint:SetText("Save and load named builds on the Loadouts tab.")
 
     local syncButton = CreateFrame("Button", FRAME_NAME .. "SyncButton", content, "UIPanelButtonTemplate")
     syncButton:SetWidth(140)
@@ -632,14 +594,17 @@ local function EnsureFrame()
     local wishlistTab = CreateTab(frame, TAB_WISHLIST, "Wishlist")
     wishlistTab:SetPoint("TOPLEFT", 14, -46)
 
+    local loadoutsTab = CreateTab(frame, TAB_LOADOUTS, "Loadouts")
+    loadoutsTab:SetPoint("LEFT", wishlistTab, "RIGHT", -14, 0)
+
     local assistTab = CreateTab(frame, TAB_ASSISTS, "Assists")
-    assistTab:SetPoint("LEFT", wishlistTab, "RIGHT", -14, 0)
+    assistTab:SetPoint("LEFT", loadoutsTab, "RIGHT", -14, 0)
 
     if type(_G.PanelTemplates_SetNumTabs) == "function" then
-        pcall(_G.PanelTemplates_SetNumTabs, frame, 2)
+        pcall(_G.PanelTemplates_SetNumTabs, frame, 3)
     end
 
-    for index = 1, 2 do
+    for index = 1, 3 do
         local content = CreateFrame("Frame", FRAME_NAME .. "Content" .. index, frame)
         content:SetPoint("TOPLEFT", 20, CONTENT_TOP)
         content:SetWidth(CONTENT_WIDTH)
