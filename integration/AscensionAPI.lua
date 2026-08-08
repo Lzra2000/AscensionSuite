@@ -187,6 +187,41 @@ function API.IsAvailable()
     return CA() ~= nil or WC() ~= nil
 end
 
+-- Ascension's C_GameMode:IsGameModeActive takes Enum.GameMode flags, not strings.
+-- Sandbox tests still pass string mode names into a stub; the live client needs the
+-- enum value (or GetActiveGameModes / GetCustomGameMode fallbacks).
+local function GameModeEnum(modeName)
+    if type(modeName) ~= "string" or modeName == "" then
+        return nil
+    end
+    local enums = _G.Enum and _G.Enum.GameMode
+    if type(enums) ~= "table" then
+        return nil
+    end
+    local value = enums[modeName]
+    if value ~= nil then
+        return value
+    end
+    if modeName == "Wildcard" then
+        return enums.WildCard
+    end
+    return nil
+end
+
+local function BitContains(mask, flag)
+    if mask == nil or flag == nil then
+        return false
+    end
+    local bitLib = _G.bit
+    if type(bitLib) == "table" and type(bitLib.contains) == "function" then
+        return bitLib.contains(mask, flag) == true
+    end
+    if type(mask) == "number" and type(flag) == "number" then
+        return bitLib and type(bitLib.band) == "function" and bitLib.band(mask, flag) == flag
+    end
+    return false
+end
+
 function API.GetGameMode()
     local gm = GM()
     if not gm then
@@ -208,12 +243,41 @@ function API.IsGameModeActive(modeName)
         return false
     end
 
+    local enumValue = GameModeEnum(modeName)
     local gm = GM()
     if gm then
+        if enumValue ~= nil and Call(gm, { "IsGameModeActive" }, enumValue) == true then
+            return true
+        end
         if Call(gm, { "IsGameModeActive" }, modeName) == true then
             return true
         end
         if Call(gm, { "IsActiveGameMode" }, modeName) == true then
+            return true
+        end
+        if enumValue ~= nil and Call(gm, { "IsActiveGameMode" }, enumValue) == true then
+            return true
+        end
+
+        local modes = Call(gm, { "GetActiveGameModes" })
+        if type(modes) == "table" then
+            if modes[modeName] == true then
+                return true
+            end
+            if enumValue ~= nil and type(_G.Enum) == "table" and type(_G.Enum.GameMode) == "table" then
+                for name, active in pairs(modes) do
+                    if active == true and _G.Enum.GameMode[name] == enumValue then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+
+    local getCustom = _G.GetCustomGameMode
+    if enumValue ~= nil and type(getCustom) == "function" then
+        local ok, activeModes = pcall(getCustom)
+        if ok and BitContains(activeModes, enumValue) then
             return true
         end
     end
@@ -225,10 +289,13 @@ function API.IsGameModeActive(modeName)
     if type(current) == "string" then
         return current == modeName
     end
+    if type(current) == "number" and enumValue ~= nil then
+        return current == enumValue
+    end
     if type(current) == "number" and type(_G.Enum) == "table" and type(_G.Enum.GameMode) == "table" then
-        local enumValue = _G.Enum.GameMode[modeName]
-        if enumValue ~= nil then
-            return current == enumValue
+        local resolved = _G.Enum.GameMode[modeName]
+        if resolved ~= nil then
+            return current == resolved
         end
     end
     return tostring(current) == tostring(modeName)

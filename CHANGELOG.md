@@ -3,6 +3,27 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.2.7 (2026-08-08) -- Wishlist rows click and select again
+
+#### Fixed
+- **Wishlist rows could not be clicked.** The faux scroll frame covered the full list
+  area and sat above the row buttons in 3.3.5a, swallowing mouse input. The scroll
+  frame is now only the scrollbar strip; rows are raised, mouse-enabled, and
+  register left/right clicks.
+- **Left-click felt broken outside Wildcard.** It used to try toggling Desired and
+  only print a status note. Left-click now always selects/highlights the row;
+  right-click toggles Desired when Wildcard is active.
+- **Wildcard mode was never detected in-game.** `C_GameMode:IsGameModeActive`
+  expects `Enum.GameMode` flags, not the string `"WildCard"`, so Push to Desired
+  stayed greyed out and Desired counts stayed at 0 even in Wildcard. The API seam
+  now resolves enum values and falls back through `GetActiveGameModes` /
+  `GetCustomGameMode`.
+- **Push to Desired** is clickable whenever the list has entries; it explains in
+  status text (and tooltip) when Wildcard is required instead of staying dead grey.
+
+#### Added
+- `WishlistPanel.GetSelectedKey`, `tests/test_gamemode_enum.lua`.
+
 ### 0.2.6 (2026-08-08) -- WotLK checkboxes actually turn assists on
 
 #### Fixed
