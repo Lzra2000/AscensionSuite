@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install zip
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zip
+
+      - name: Build zip
+        run: sh scripts/build-dist.sh
+
+      - name: Extract changelog notes
+        id: notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 -c "
+          from pathlib import Path
+          import re, os
+          version = '''$VERSION'''
+          text = Path('CHANGELOG.md').read_text()
+          m = re.search(r'(### ' + re.escape(version) + r'.*?)(?=\n### |\Z)', text, re.S)
+          body = m.group(1).strip() if m else 'AscensionSuite ' + version
+          out = Path(os.environ['GITHUB_OUTPUT'])
+          with out.open('a') as f:
+              f.write('body<<EOF\n')
+              f.write(body + '\n')
+              f.write('EOF\n')
+          "
+
+      - name: Create GitHub Release with zip
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/AscensionSuite.zip
+          name: AscensionSuite ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          fail_on_unmatched_files: true

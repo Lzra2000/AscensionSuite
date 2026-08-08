@@ -19,6 +19,7 @@ AscensionSuite is a World of Warcraft addon for the Ascension / Project Ebonhold
 1. Run `sh scripts/check.sh` (syntax + seam scan).
 2. `luac5.1 -p` any changed Lua file.
 
-## Versioning
+## Versioning / releases
 
-User-visible releases bump `AscensionSuite.toc` Version and add a `CHANGELOG.md` entry.
+User-visible releases bump `AscensionSuite.toc` Version and add a `### <version>` CHANGELOG entry.
+**Always** publish a GitHub Release with `dist/AscensionSuite.zip` (`sh scripts/release.sh <version>` or the Release workflow on `v*` tags). Never ship a tag without the zip asset.
