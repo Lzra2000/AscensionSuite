@@ -97,15 +97,14 @@ local function ItemKey(item)
     return RowKey(item.entryId, item.entryType, item.spellId)
 end
 
+-- No clock means no way to put the highlight out again, so it is never lit: a row
+-- stuck lit forever would read as state rather than as feedback.
 local function TouchExpired()
-    if not touchedKey then
+    if not touchedKey or not touchedUntil then
         return true
     end
-    if not touchedUntil then
-        return false
-    end
     local now = Now()
-    return now ~= nil and now >= touchedUntil
+    return now == nil or now >= touchedUntil
 end
 
 -- Marks the row for an entry as just-touched. Safe to call before the panel has

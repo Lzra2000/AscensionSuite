@@ -217,6 +217,11 @@ local function Tick(delta)
         chainPending = true
         lastPhase = nil
         stalledFor = 0
+
+        local MainWindow = AscensionSuite.MainWindow
+        if MainWindow and MainWindow.RefreshAutoRoll then
+            MainWindow.RefreshAutoRoll()
+        end
         return
     end
     chainPending = false
