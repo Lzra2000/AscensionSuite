@@ -49,7 +49,7 @@ end
 
 local function ScrollOffset()
     if scrollFrame and type(_G.FauxScrollFrame_GetOffset) == "function" then
-        return _G.FauxScrollFrame_GetOffset(scrollFrame) or 0
+        return tonumber(_G.FauxScrollFrame_GetOffset(scrollFrame)) or 0
     end
     return 0
 end

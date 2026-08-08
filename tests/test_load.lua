@@ -77,6 +77,10 @@ local function NewFrame()
                     SetPoint = Noop,
                     SetTexture = Noop,
                     SetTexCoord = Noop,
+                    SetWidth = Noop,
+                    SetHeight = Noop,
+                    Show = Noop,
+                    Hide = Noop,
                 }
             end
         elseif key == "CreateFontString" then
@@ -204,11 +208,25 @@ AscensionSuite.Database.Init()
 assert(AscensionSuiteDB.assists.autoRoll == false, "autoRoll must default false")
 assert(AscensionSuiteDB.assists.captureRolls == false, "captureRolls must default false")
 
-local cell = AscensionSuite.SpellCell.Create(UIParent, "TestCell")
-cell:SetSpell(133)
-assert(cell:GetSpellId() == 133, "SpellCell spell id")
+-- The window builds both tabs on first open, so this also smoke-tests every
+-- widget the Wishlist panel creates.
+local MainWindow = AscensionSuite.MainWindow
+local Wishlist = AscensionSuite.Wishlist
+assert(Wishlist.Add(133), "seed one wishlist row")
 
-AscensionSuite.MainWindow.RegisterSlash()
+local window = MainWindow.Show()
+assert(window:IsShown(), "/asuite opens")
+assert(MainWindow.GetActiveTab() == 1, "the Wishlist tab is the one you land on")
+
+local panel = AscensionSuite.WishlistPanel
+assert(panel and panel.GetFrame(), "the Wishlist panel is built with the window")
+assert(#panel.GetFilteredRows() == 1, "and lists the wishlist")
+
+MainWindow.SelectTab(2)
+assert(MainWindow.GetActiveTab() == 2, "the Assists tab switches")
+MainWindow.SelectTab(1)
+
+MainWindow.RegisterSlash()
 assert(type(SlashCmdList.ASUITE) == "function", "slash handler missing")
 
 print("OK: AscensionSuite load smoke test passed")
