@@ -1,114 +1,70 @@
 # Ascension Suite — System & UI Sketch (greenfield)
 
-Scope for v0 (what you listed). No legacy AscensionBuilds assumptions.
+Scope for v0. **Native Rapid Rolling is the board**; Suite is overlay assists + wishlist sync + logbook.
 
 ## Product pillars
 
 | Pillar | Player-facing job |
 |--------|-------------------|
-| **Run Logbook** | Every Wildcard / Rapid / Dice / SkillCard run is saved as a dated run with outcomes |
-| **Build Save** | Pin a run (or selection) into a named Build that can be reopened |
-| **Build Share** | Export / import a short share string (clipboard) for a Build |
-| **Live CA Chrome** | Spell icon / id / tooltip **1:1 from Ascension client APIs** — never guess |
-| **Auto-Roller** | Opt-in; rolls only player-selected / locked targets |
-| **Instant skip** | Dice + SkillCard flipbook / reveal animation skip |
-| **Accept popups** | Opt-in auto-accept of Ascension Wildcard confirm dialogs only |
-| **Rapid Rolling board** | Lock / unlock / deselect entries on the Rapid board while rolling |
+| **Native Rapid board** | Ascension `WildCardRapidRollingFrame` — Desired · Roll · Known (do not clone) |
+| **Wishlist → Desired** | Add by id in Suite; sync to `C_Wildcard.AddDesiredID`; Save/Load profiles |
+| **Run Logbook** | Capture rolled abilities/talents while leveling (opt-in assist) |
+| **Live CA Chrome** | Spell icon / id / tooltip **1:1 from Ascension client APIs** |
+| **Auto-Roller** | Opt-in; rolls only current Ascension **Desired** targets |
+| **Instant skip** | Dice + SkillCard flipbook force-finish (never starts rolls alone) |
+| **Accept popups** | Opt-in auto-accept of allowlisted Wildcard confirm dialogs |
 
-## Hard rails (keep even in greenfield)
+## Hard rails
 
-- Default **off** for every actuator (Auto-Roll, popup accept, animation skip).
-- All `C_Wildcard` / `C_CharacterAdvancement` / `C_SkillCard` calls behind one **AscensionAPI** seam + `C_GameMode` gate.
-- Roll starters only via that seam; Draft pick / HoF claim / store purchase stay out of scope.
-- Auto-Roll / Rapid loops: visible **Stop**; halt on nil/error API result (release blocker if swallowed).
-- No currency budget fiction — Stop + selection exhaustion are the brakes.
+- Default **off** for every actuator.
+- All `C_Wildcard` / `C_CharacterAdvancement` calls behind **AscensionAPI** + GameMode gate.
+- Roll starters only in `integration/AscensionAPI.lua`; Draft / HoF / store stay out of scope.
+- Auto-Roll: visible **Stop**; halt on nil/error API result.
+- No currency budget fiction.
 
-## Data model (minimal)
-
-```
-Run
-  id, startedAt, endedAt, mode (wildcard|rapid|dice|skillcard)
-  events[]   -- ordered logbook lines (roll result, lock, unlock, accept, skip…)
-  selection[] -- spellIds / entryIds touched this run
-  outcomeSummary
-
-Build
-  id, name, createdAt, updatedAt
-  sourceRunId?          -- optional link to a Run
-  lockedEntryIds[]      -- Rapid lock set
-  undesiredEntryIds[]   -- explicitly deselected
-  desiredEntryIds[]     -- wishlist / prefer
-  primaryStat?          -- Hero Path when relevant
-  notes
-
-SharePayload
-  version, buildName, locked[], undesired[], desired[], primaryStat?
-  -- clipboard string; import = create Build (no auto-roll)
-```
-
-SavedVariables: `AscensionSuiteDB` (account) + optional char DB for last UI tab only.
-
-## Fetch layer (1:1 display)
+## Data model (v0.2)
 
 ```
-UI widget  →  SpellPresenter.Resolve(spellId|entryId)
-           →  AscensionAPI
-                GetEntryBySpellID / GetEntryByInternalID
-                icon fields (Icon/icon/texture) then GetSpellInfo
-                name / description / tooltip lines from client
-           →  paint Texture + FontString + GameTooltip 1:1
+AscensionSuiteDB
+  assists { autoRoll, instantDiceSkip, instantSkillCardSkip, acceptWildcardPopups, captureRolls }
+  wishlistSpellIds[]          -- UI grid ids
+  desiredProfiles[name] = { entries[], spellIds[], knownSnapshot? }
+  logbook[] = { spellId, entryId, name, icon, entryType, timestamp }
 ```
 
-Never invent names/icons. If client returns empty → show id + neutral placeholder, log once.
+Ascension Desired/Known state lives in **client APIs** — Suite does not mirror lock columns.
 
-## Module map (suggested)
-
-```
-core/          Bootstrap, DB, Scheduler, ErrorLog, Debug
-integration/   AscensionAPI.lua          -- only C_* home
-data/          Builds.lua, Runs.lua, ShareCodec.lua
-ui/            MainWindow, LogbookView, BuildListView,
-               RapidBoardView, SettingsView, SpellCell (shared)
-automation/    AutoRoller.lua, PopupAssist.lua, AnimationSkip.lua
-```
-
-## UI map (screens)
-
-1. **Home / Builds** — list Builds; New from last Run; Import share; Open
-2. **Logbook** — chronological Runs; open Run detail; “Save as Build”
-3. **Rapid Board** — grid of current Rapid candidates; Lock / Unlock / Deselect; Auto-Roll Start/Stop
-4. **Settings → Assists** — toggles: Auto-Roll mode, Instant Dice skip, Instant SkillCard skip, Accept Wildcard popups (all default off)
-5. **Share sheet** — copy/export string; paste/import
-
-Mockups: `ascension-suite-sketch-ui.html` (same folder).
-
-## Event flow (Auto-Roll + Rapid)
+## Module map
 
 ```
-Player locks targets on Rapid Board
-  → AutoRoller.Start(selectedLockedIds)   -- only if assist enabled
-  → AscensionAPI.StartRapidRolling / RollAbilities / Continue…
-  → each result → Runs.AppendEvent + refresh SpellCell 1:1
-  → Stop if: target done | selection empty | API nil/error | Stop clicked
-AnimationSkip: on Dice/SkillCard frames appear → force-finish / hide wait (opt-in)
-PopupAssist: allowlisted CONFIRM_WILDCARD_* only (opt-in)
+core/          Bootstrap, Database, Wishlist, Logbook
+integration/   AscensionAPI.lua
+automation/    AutoRoller, AnimationSkip, PopupAssist
+ui/            MainWindow (overlay), SpellCell
 ```
 
-## Step-by-step build order (after you approve sketch)
+## Event flow
 
-1. Repo + empty addon shell + AscensionAPI seam (read-only spell present)
-2. SpellCell 1:1 (icon/id/tooltip) proof screen
-3. Logbook + Run capture (observe rolls; no auto-roll yet)
-4. Build save from Run + Build list
-5. Share export/import
-6. Rapid Board lock/deselect UI
-7. Animation skip + popup accept (opt-in)
-8. Auto-Roller (opt-in, Stop, error halt)
-9. Polish / watermarks / i18n
+```
+Player adds id in Suite → AscensionAPI.AddDesiredID
+Native Rapid board shows Desired / Roll / Known
 
-## Out of scope for v0
+Auto-Roll (opt-in):
+  AutoRoller → AscensionAPI.AdvanceRapidRoll
+  → StartRapidRolling | ContinueRapidRolling | RollAbilities
+  → Stop on error | user Stop | assist off
 
-- Community cohort / “No local sample” recommendation engine
-- Preference sync Desired/Undesired curator complexity
-- Full CA taxonomy browser with tiers
+Logbook (opt-in captureRolls):
+  WILDCARD_RAPID_ROLL_LEARNED / WILDCARD_ENTRY_LEARNED → Logbook.Append
+
+Animation skip: hook WildCardDice flipbooks → HideFlipBooks / OnFinished*
+Popup assist: hook StaticPopup_Show → allowlisted CONFIRM_WILDCARD_* only
+```
+
+Mockups: `ascension-suite-rapid-native-mockup.html`, `ascension-suite-sketch-ui.html`.
+
+## Out of scope
+
+- Parallel Desired/Known three-column UI
 - Draft / Hall of Fate / store automation
+- Community recommendation engine

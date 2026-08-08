@@ -6,7 +6,7 @@ AscensionSuite treats **player-initiated** Ascension actions as sacred. The addo
 
 - **`integration/AscensionAPI.lua`** is the **only** first-party file that may reference `C_*` globals (`C_CharacterAdvancement`, `C_Wildcard`, `C_GameMode`, etc.).
 - All other modules call `AscensionSuite.AscensionAPI` helpers instead of reaching for the client directly.
-- `scripts/check.sh` scans for stray `C_*` usage outside the seam.
+- `scripts/check.sh` scans for stray `C_*` usage and confines roll starters to the seam.
 
 ## Forbidden automation (always out of scope)
 
@@ -15,22 +15,21 @@ AscensionSuite treats **player-initiated** Ascension actions as sacred. The addo
 | **Draft** | No auto-pick / auto-learn Draft cards |
 | **Hall of Fate** | No auto-claim HoF rewards |
 | **Store / merchant** | No auto-purchase or currency spend |
-| **Roll starters (v0.1.0)** | `RollAbilities`, `StartRapidRolling`, etc. are **not called** until step 8 |
 
-## Future assists (steps 7–8)
+## Opt-in assists (v0.2.0)
 
-When implemented, mutating assists must:
+Mutating assists default **off** and must:
 
-1. Default **off** in `AscensionSuiteDB.assists` until the player opts in.
-2. Route **only** through `AscensionAPI`, behind **`C_GameMode` gates**.
-3. Target **player-selected / locked** entry sets only (no broad reroll loops).
-4. Expose a visible **Stop** control while running.
-5. **Halt** on `nil` or error API results — never swallow failures in a tight loop.
-6. Limit popup accept to an **allowlist** of Wildcard confirm dialogs — never Draft/HoF/store prompts.
+1. Route **only** through `AscensionAPI`, behind **`C_GameMode` / Wildcard gates**.
+2. Target **Ascension Desired** (player-selected) entry sets only — no broad reroll loops.
+3. Expose a visible **Stop** control while Auto-Roll is running.
+4. **Halt** on `nil` or error API results — never swallow failures in a tight loop.
+5. Limit popup accept to an **allowlist**: `CONFIRM_WILDCARD_MASS_ROLL`, `CONFIRM_WILDCARD_LEVELING`, `CONFIRM_UNLEARN_S`.
+6. Animation skip may **force-finish / hide** flipbooks only — it must **never** start a roll by skipping alone.
 
 ## Data
 
-- SavedVariables: `AscensionSuiteDB` (account). No credentials or remote endpoints in v0.1.0.
+- SavedVariables: `AscensionSuiteDB` (account). Wishlist profiles and logbook are local only.
 - Share import (future) creates a **Build** record only — it must **not** start Auto-Roll.
 
 Report issues responsibly via the repository issue tracker.

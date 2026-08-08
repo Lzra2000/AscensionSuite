@@ -1,12 +1,17 @@
 ## Interface: 30300
 ## Title: AscensionSuite
-## Notes: Run logbook, build save/share, and opt-in Ascension assists.
+## Notes: Native Rapid Rolling assists, wishlist Desired sync, and roll logbook.
 ## Author: Lzra2000
-## Version: 0.1.0
+## Version: 0.2.0
 ## SavedVariables: AscensionSuiteDB
 
 core\Bootstrap.lua
 core\Database.lua
+core\Wishlist.lua
+core\Logbook.lua
 integration\AscensionAPI.lua
+automation\AutoRoller.lua
+automation\AnimationSkip.lua
+automation\PopupAssist.lua
 ui\SpellCell.lua
 ui\MainWindow.lua

@@ -11,14 +11,17 @@ local DB = {}
 AscensionSuite.Database = DB
 
 local DEFAULTS = {
-    version = 1,
+    version = 3,
     assists = {
         autoRoll = false,
         instantDiceSkip = false,
         instantSkillCardSkip = false,
         acceptWildcardPopups = false,
+        captureRolls = false,
     },
-    proofSpellIds = {},
+    wishlistSpellIds = {},
+    desiredProfiles = {},
+    logbook = {},
 }
 
 local function CopyTable(source)
@@ -52,8 +55,46 @@ local function EnsureDefaults(db)
         end
     end
 
-    if type(db.proofSpellIds) ~= "table" then
-        db.proofSpellIds = {}
+    if type(db.wishlistSpellIds) ~= "table" then
+        db.wishlistSpellIds = {}
+    end
+
+    if type(db.desiredProfiles) ~= "table" then
+        db.desiredProfiles = {}
+    end
+
+    if type(db.logbook) ~= "table" then
+        db.logbook = {}
+    end
+
+    -- Migrate v2 marks/profiles into wishlist spell ids only (best-effort).
+    if db.version < 3 then
+        if type(db.proofSpellIds) == "table" and #db.wishlistSpellIds == 0 then
+            for index = 1, #db.proofSpellIds do
+                db.wishlistSpellIds[#db.wishlistSpellIds + 1] = db.proofSpellIds[index]
+            end
+        end
+        if type(db.marks) == "table" then
+            for key in pairs(db.marks) do
+                local spellId = tonumber(key)
+                if spellId then
+                    local found = false
+                    for index = 1, #db.wishlistSpellIds do
+                        if db.wishlistSpellIds[index] == spellId then
+                            found = true
+                            break
+                        end
+                    end
+                    if not found then
+                        db.wishlistSpellIds[#db.wishlistSpellIds + 1] = spellId
+                    end
+                end
+            end
+        end
+        db.marks = nil
+        db.profiles = nil
+        db.proofSpellIds = nil
+        db.version = 3
     end
 
     return db
@@ -71,12 +112,18 @@ function DB.Get()
     return DB.data
 end
 
-function DB.GetProofSpellIds()
-    local data = DB.Get()
-    return data.proofSpellIds
+function DB.GetAssists()
+    return DB.Get().assists
 end
 
-function DB.SetProofSpellIds(spellIds)
-    local data = DB.Get()
-    data.proofSpellIds = spellIds
+function DB.GetWishlistSpellIds()
+    return DB.Get().wishlistSpellIds
+end
+
+function DB.SetWishlistSpellIds(spellIds)
+    DB.Get().wishlistSpellIds = spellIds
+end
+
+function DB.GetLogbook()
+    return DB.Get().logbook
 end

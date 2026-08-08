@@ -1,5 +1,5 @@
 -- AscensionSuite: ui/MainWindow.lua
--- Minimal proof window: spell id input, Add/Refresh, SpellCell grid.
+-- Thin assist overlay: toggles, wishlist sync, profiles, logbook. Native Rapid UI stays authoritative.
 
 local AscensionSuite = _G.AscensionSuite
 if type(AscensionSuite) ~= "table" then
@@ -13,25 +13,25 @@ AscensionSuite.MainWindow = MainWindow
 local FRAME_NAME = "AscensionSuiteMainWindow"
 local GRID_COLUMNS = 8
 local CELL_GAP = 10
+local LOG_LINES = 6
 
 local frame
 local inputBox
+local profileBox
 local gridHost
+local logHost
 local cells = {}
+local assistChecks = {}
+local autoRollStatus
+local stopButton
+local startButton
 
-local function GetDB()
+local function GetAssists()
     local DB = AscensionSuite.Database
-    if DB and DB.GetProofSpellIds then
-        return DB.GetProofSpellIds()
+    if DB and DB.GetAssists then
+        return DB.GetAssists()
     end
     return {}
-end
-
-local function SaveSpellIds(spellIds)
-    local DB = AscensionSuite.Database
-    if DB and DB.SetProofSpellIds then
-        DB.SetProofSpellIds(spellIds)
-    end
 end
 
 local function ParseInput(text)
@@ -42,32 +42,110 @@ local function ParseInput(text)
     return math.floor(id)
 end
 
-local function UniqueAppend(spellIds, spellId)
-    for index = 1, #spellIds do
-        if spellIds[index] == spellId then
-            return false
+local function CreateCheckbox(parent, label, assistKey, yOffset)
+    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    check:SetPoint("TOPLEFT", 20, yOffset)
+    check:SetSize(24, 24)
+
+    local text = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    text:SetPoint("LEFT", check, "RIGHT", 4, 0)
+    text:SetText(label)
+
+    check:SetScript("OnClick", function(self)
+        local assists = GetAssists()
+        assists[assistKey] = self:GetChecked() == true
+        if assistKey == "autoRoll" and not assists.autoRoll then
+            local AutoRoller = AscensionSuite.AutoRoller
+            if AutoRoller and AutoRoller.Stop then
+                AutoRoller.Stop("assist_off")
+            end
         end
-    end
-    spellIds[#spellIds + 1] = spellId
-    return true
+        MainWindow.RefreshAutoRoll()
+    end)
+
+    assistChecks[assistKey] = check
+    return check
 end
 
-local function LayoutGrid()
+function MainWindow.RefreshAutoRoll()
+    if not frame then
+        return
+    end
+
+    local assists = GetAssists()
+    local AutoRoller = AscensionSuite.AutoRoller
+    local running = AutoRoller and AutoRoller.IsRunning and AutoRoller.IsRunning()
+
+    if autoRollStatus then
+        if running then
+            autoRollStatus:SetText("Auto-Roll: running")
+            autoRollStatus:SetTextColor(0.43, 0.81, 0.54, 1)
+        elseif AutoRoller and AutoRoller.GetLastError and AutoRoller.GetLastError() then
+            autoRollStatus:SetText("Auto-Roll stopped: " .. tostring(AutoRoller.GetLastError()))
+            autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
+        else
+            autoRollStatus:SetText("Auto-Roll: idle")
+            autoRollStatus:SetTextColor(0.54, 0.60, 0.67, 1)
+        end
+    end
+
+    if startButton then
+        startButton:SetEnabled(assists.autoRoll == true and not running)
+    end
+    if stopButton then
+        stopButton:SetEnabled(running == true)
+    end
+end
+
+function MainWindow.RefreshLogbook()
+    if not logHost then
+        return
+    end
+
+    local Logbook = AscensionSuite.Logbook
+    if not Logbook or not Logbook.GetEntries then
+        return
+    end
+
+    local entries = Logbook.GetEntries()
+    local lines = {}
+    local start = math.max(1, #entries - LOG_LINES + 1)
+    for index = start, #entries do
+        local row = entries[index]
+        if row then
+            lines[#lines + 1] = string.format("[%s] %s (%s)",
+                row.entryType or "?",
+                row.name or "?",
+                tostring(row.spellId or row.entryId or "?"))
+        end
+    end
+
+    if #lines == 0 then
+        logHost:SetText("Logbook empty (enable capture assist)")
+    else
+        logHost:SetText(table.concat(lines, "\n"))
+    end
+end
+
+function MainWindow.RefreshGrid()
     if not gridHost then
         return
     end
 
     local SpellCell = AscensionSuite.SpellCell
-    if not SpellCell or not SpellCell.Create then
+    local Wishlist = AscensionSuite.Wishlist
+    if not SpellCell or not SpellCell.Create or not Wishlist then
         return
     end
 
-    local spellIds = GetDB()
+    local spellIds = Wishlist.GetSpellIds()
     local needed = #spellIds
-
     while #cells < needed do
         local index = #cells + 1
         local cell = SpellCell.Create(gridHost, FRAME_NAME .. "Cell" .. index)
+        cell:SetOnChanged(function()
+            MainWindow.RefreshGrid()
+        end)
         cells[index] = cell
     end
 
@@ -91,13 +169,12 @@ local function LayoutGrid()
     end
 end
 
-local function RefreshAll()
-    for index = 1, #cells do
-        local spellId = cells[index]:GetSpellId()
-        if spellId then
-            cells[index]:SetSpell(spellId)
-        end
+local function RefreshAssistToggles()
+    local assists = GetAssists()
+    for key, check in pairs(assistChecks) do
+        check:SetChecked(assists[key] == true)
     end
+    MainWindow.RefreshAutoRoll()
 end
 
 local function AddSpellFromInput()
@@ -110,13 +187,50 @@ local function AddSpellFromInput()
         return
     end
 
-    local spellIds = GetDB()
-    if UniqueAppend(spellIds, spellId) then
-        SaveSpellIds(spellIds)
+    local Wishlist = AscensionSuite.Wishlist
+    if Wishlist and Wishlist.AddToDesired then
+        Wishlist.AddToDesired(spellId)
     end
 
     inputBox:SetText("")
-    LayoutGrid()
+    MainWindow.RefreshGrid()
+end
+
+local function SaveProfile()
+    if not profileBox then
+        return
+    end
+    local Wishlist = AscensionSuite.Wishlist
+    if Wishlist and Wishlist.SaveProfile then
+        Wishlist.SaveProfile(profileBox:GetText(), true)
+    end
+end
+
+local function LoadProfile()
+    if not profileBox then
+        return
+    end
+    local Wishlist = AscensionSuite.Wishlist
+    if Wishlist and Wishlist.LoadProfile then
+        Wishlist.LoadProfile(profileBox:GetText(), true)
+    end
+    MainWindow.RefreshGrid()
+end
+
+local function StartAutoRoll()
+    local AutoRoller = AscensionSuite.AutoRoller
+    if AutoRoller and AutoRoller.Start then
+        AutoRoller.Start()
+    end
+    MainWindow.RefreshAutoRoll()
+end
+
+local function StopAutoRoll()
+    local AutoRoller = AscensionSuite.AutoRoller
+    if AutoRoller and AutoRoller.Stop then
+        AutoRoller.Stop("user_stop")
+    end
+    MainWindow.RefreshAutoRoll()
 end
 
 local function EnsureFrame()
@@ -125,7 +239,7 @@ local function EnsureFrame()
     end
 
     frame = CreateFrame("Frame", FRAME_NAME, UIParent)
-    frame:SetSize(560, 420)
+    frame:SetSize(720, 520)
     frame:SetPoint("CENTER")
     frame:SetMovable(true)
     frame:EnableMouse(true)
@@ -152,26 +266,70 @@ local function EnsureFrame()
     frame:SetBackdrop(backdrop)
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", 0, -18)
-    title:SetText("AscensionSuite")
-
-    local subtitle = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    subtitle:SetPoint("TOP", title, "BOTTOM", 0, -4)
-    subtitle:SetText("SpellCell proof — icon / id / tooltip from client APIs")
+    title:SetPoint("TOPLEFT", 24, -18)
+    title:SetText("AscensionSuite assists")
 
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -4, -4)
 
+    local subtitle = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    subtitle:SetPoint("TOPLEFT", 24, -42)
+    subtitle:SetWidth(420)
+    subtitle:SetJustifyH("LEFT")
+    subtitle:SetText("Native Rapid Rolling is the board. Suite syncs Desired, captures rolls, and optional assists.")
+
+    CreateCheckbox(frame, "Auto-Roll while leveling (Desired targets only)", "autoRoll", -70)
+    CreateCheckbox(frame, "Instant skip WildCardDice animation", "instantDiceSkip", -94)
+    CreateCheckbox(frame, "Instant skip SkillCard flipbook", "instantSkillCardSkip", -118)
+    CreateCheckbox(frame, "Accept Wildcard confirm popups", "acceptWildcardPopups", -142)
+    CreateCheckbox(frame, "Capture rolls into Logbook", "captureRolls", -166)
+
+    startButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    startButton:SetSize(90, 22)
+    startButton:SetPoint("TOPLEFT", 280, -72)
+    startButton:SetText("Start")
+    startButton:SetScript("OnClick", StartAutoRoll)
+
+    stopButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    stopButton:SetSize(90, 22)
+    stopButton:SetPoint("TOPLEFT", startButton, "BOTTOMLEFT", 0, -6)
+    stopButton:SetText("Stop")
+    stopButton:SetScript("OnClick", StopAutoRoll)
+
+    autoRollStatus = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    autoRollStatus:SetPoint("TOPLEFT", stopButton, "BOTTOMLEFT", 0, -6)
+    autoRollStatus:SetWidth(180)
+    autoRollStatus:SetJustifyH("LEFT")
+
+    profileBox = CreateFrame("EditBox", FRAME_NAME .. "Profile", frame, "InputBoxTemplate")
+    profileBox:SetSize(120, 24)
+    profileBox:SetPoint("TOPRIGHT", -52, -20)
+    profileBox:SetAutoFocus(false)
+    profileBox:SetMaxLetters(32)
+    profileBox:SetText("my-hero")
+
+    local saveButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    saveButton:SetSize(56, 22)
+    saveButton:SetPoint("TOPRIGHT", profileBox, "BOTTOMRIGHT", 0, -6)
+    saveButton:SetText("Save")
+    saveButton:SetScript("OnClick", SaveProfile)
+
+    local loadButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    loadButton:SetSize(56, 22)
+    loadButton:SetPoint("RIGHT", saveButton, "LEFT", -8, 0)
+    loadButton:SetText("Load")
+    loadButton:SetScript("OnClick", LoadProfile)
+
     inputBox = CreateFrame("EditBox", FRAME_NAME .. "Input", frame, "InputBoxTemplate")
     inputBox:SetSize(120, 24)
-    inputBox:SetPoint("TOPLEFT", 24, -64)
+    inputBox:SetPoint("TOPLEFT", 24, -200)
     inputBox:SetAutoFocus(false)
     inputBox:SetNumeric(true)
     inputBox:SetMaxLetters(8)
 
     local inputLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     inputLabel:SetPoint("BOTTOMLEFT", inputBox, "TOPLEFT", 0, 2)
-    inputLabel:SetText("Spell ID")
+    inputLabel:SetText("Spell / entry id → Ascension Desired")
 
     local addButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     addButton:SetSize(72, 22)
@@ -179,26 +337,29 @@ local function EnsureFrame()
     addButton:SetText("Add")
     addButton:SetScript("OnClick", AddSpellFromInput)
 
-    local refreshButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    refreshButton:SetSize(72, 22)
-    refreshButton:SetPoint("LEFT", addButton, "RIGHT", 8, 0)
-    refreshButton:SetText("Refresh")
-    refreshButton:SetScript("OnClick", RefreshAll)
-
     inputBox:SetScript("OnEnterPressed", function(self)
         AddSpellFromInput()
         self:ClearFocus()
     end)
 
     gridHost = CreateFrame("Frame", nil, frame)
-    gridHost:SetPoint("TOPLEFT", 24, -110)
-    gridHost:SetPoint("BOTTOMRIGHT", -24, 24)
+    gridHost:SetPoint("TOPLEFT", 24, -240)
+    gridHost:SetSize(420, 140)
+
+    local logLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    logLabel:SetPoint("TOPLEFT", 24, -388)
+    logLabel:SetText("Logbook (recent)")
+
+    logHost = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    logHost:SetPoint("TOPLEFT", 24, -404)
+    logHost:SetWidth(660)
+    logHost:SetJustifyH("LEFT")
 
     local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("BOTTOM", 0, 12)
-    hint:SetText("/asuite to toggle · assists default off")
+    hint:SetText("Click cell toggles Ascension Desired · /asuite")
 
-    frame._layoutGrid = LayoutGrid
+    RefreshAssistToggles()
     return frame
 end
 
@@ -207,14 +368,18 @@ function MainWindow.Toggle()
     if win:IsShown() then
         win:Hide()
     else
-        LayoutGrid()
+        MainWindow.RefreshGrid()
+        MainWindow.RefreshLogbook()
+        MainWindow.RefreshAutoRoll()
         win:Show()
     end
 end
 
 function MainWindow.Show()
     local win = EnsureFrame()
-    LayoutGrid()
+    MainWindow.RefreshGrid()
+    MainWindow.RefreshLogbook()
+    MainWindow.RefreshAutoRoll()
     win:Show()
 end
 

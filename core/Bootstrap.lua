@@ -10,7 +10,7 @@ if type(AscensionSuite) ~= "table" then
 end
 
 AscensionSuite.NAME = addonName
-AscensionSuite.VERSION = "0.1.0"
+AscensionSuite.VERSION = "0.2.0"
 
 local function OnAddonLoaded(name)
     if name ~= addonName then
@@ -20,6 +20,26 @@ local function OnAddonLoaded(name)
     local DB = AscensionSuite.Database
     if DB and DB.Init then
         DB.Init()
+    end
+
+    local Logbook = AscensionSuite.Logbook
+    if Logbook and Logbook.Init then
+        Logbook.Init()
+    end
+
+    local AnimationSkip = AscensionSuite.AnimationSkip
+    if AnimationSkip and AnimationSkip.Init then
+        AnimationSkip.Init()
+    end
+
+    local PopupAssist = AscensionSuite.PopupAssist
+    if PopupAssist and PopupAssist.Init then
+        PopupAssist.Init()
+    end
+
+    local AutoRoller = AscensionSuite.AutoRoller
+    if AutoRoller and AutoRoller.Init then
+        AutoRoller.Init()
     end
 
     local MainWindow = AscensionSuite.MainWindow

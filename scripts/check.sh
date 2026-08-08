@@ -34,8 +34,8 @@ else
 fi
 
 echo ""
-echo "== Roll starters outside seam (must stay commented until step 8) =="
-ROLL_STRAY=$(grep -rn -E 'RollAbilities|RerollAbilities|StartRapidRolling|ContinueRapidRolling|CancelRapidRolling' . \
+echo "== Roll starters outside seam (only integration/AscensionAPI.lua) =="
+ROLL_STRAY=$(grep -rn -E '\b(RollAbilities|RerollAbilities|StartRapidRolling|ContinueRapidRolling|CancelRapidRolling)\s*\(' . \
     --include='*.lua' \
     | grep -v "^\./${SEAM}:" \
     | grep -v -E '^[^:]+:[0-9]+:[[:space:]]*--' || true)
@@ -44,7 +44,7 @@ if [ -n "$ROLL_STRAY" ]; then
     echo "$ROLL_STRAY" | sed 's/^/  /'
     FAILED=1
 else
-    echo "  OK: no live roll starter calls"
+    echo "  OK: roll starters confined to seam"
 fi
 
 echo ""
@@ -54,6 +54,28 @@ if [ -f tests/test_load.lua ]; then
         echo "  OK: test_load.lua"
     else
         echo "  FAIL: test_load.lua"
+        FAILED=1
+    fi
+fi
+
+echo ""
+if [ -f tests/test_wishlist.lua ]; then
+    echo "== test_wishlist.lua =="
+    if lua5.1 tests/test_wishlist.lua; then
+        echo "  OK: test_wishlist.lua"
+    else
+        echo "  FAIL: test_wishlist.lua"
+        FAILED=1
+    fi
+fi
+
+echo ""
+if [ -f tests/test_assists.lua ]; then
+    echo "== test_assists.lua =="
+    if lua5.1 tests/test_assists.lua; then
+        echo "  OK: test_assists.lua"
+    else
+        echo "  FAIL: test_assists.lua"
         FAILED=1
     fi
 fi

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AscensionSuite — native Rapid Rolling overlay</title>
+<style>
+  :root {
+    --bg: #0a0e14; --ink: #e8eef6; --muted: #8a9aab; --line: #2a3644;
+    --gold: #d4a84b; --good: #6ecf8a; --bad: #e07070; --wish: #4aa8e8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--ink);
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    background: radial-gradient(900px 480px at 70% 0%, #1a2838, var(--bg));
+    padding: 28px 32px 48px;
+  }
+  h1 { margin: 0 0 6px; font-size: 1.35rem; }
+  .lead { color: var(--muted); max-width: 52rem; line-height: 1.45; margin: 0 0 16px; }
+  .board {
+    max-width: 960px; display: grid; grid-template-columns: 1fr 220px 1fr; gap: 10px;
+    border: 1px solid var(--line); background: #151c26; padding: 12px;
+  }
+  .col { border: 1px solid var(--line); background: #0e141c; padding: 10px; min-height: 320px; }
+  .col h3 { margin: 0 0 8px; font-size: 0.85rem; color: var(--gold); }
+  .center { text-align: center; }
+  .die {
+    width: 100px; height: 100px; margin: 24px auto; border: 2px solid var(--gold);
+    border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    color: var(--gold); font-size: 2rem;
+    box-shadow: 0 0 20px rgba(212,168,75,.35);
+  }
+  .die.skip { opacity: 0.35; }
+  .btn {
+    border: 1px solid var(--bad); color: #f0c0c0; background: #2a1010;
+    padding: 10px 18px; font: inherit; cursor: pointer; width: 100%;
+  }
+  .btn.go { border-color: var(--good); color: var(--good); background: #102018; margin-top: 8px; }
+  .btn.stop { border-color: var(--bad); color: var(--bad); margin-top: 8px; }
+  .row {
+    display: flex; gap: 8px; align-items: center; padding: 6px; margin-bottom: 4px;
+    border: 1px solid var(--line); font-size: 0.8rem;
+  }
+  .row.des { border-color: var(--wish); }
+  .row.known { border-color: #a04040; }
+  .ico { width: 28px; height: 28px; background: #2a3a4c; border: 1px solid #6a8aa8; }
+  .overlay {
+    margin-top: 14px; max-width: 960px; border: 1px solid var(--gold);
+    padding: 12px 14px; background: #121820;
+  }
+  .overlay h2 { margin: 0 0 8px; font-size: 0.95rem; color: var(--gold); }
+  label { display: block; margin: 6px 0; font-size: 0.88rem; }
+  .note { margin-top: 14px; color: var(--muted); font-size: 0.86rem; max-width: 960px; line-height: 1.45; }
+  code { color: #e0c48a; }
+</style>
+</head>
+<body>
+  <h1>Native Rapid Rolling — Suite overlay</h1>
+  <p class="lead">
+    Do <strong>not</strong> rebuild Desired/Known. Hook Ascension’s Rapid Rolling window:
+    left Desired · center Roll · right Known. Suite adds a thin assist strip + logbook of rolls while leveling 1–60.
+  </p>
+  <div class="board">
+    <div class="col">
+      <h3>Desired Spells (Ascension)</h3>
+      <div class="row des"><div class="ico"></div> Direct Heal · id from client</div>
+      <div class="row des"><div class="ico"></div> Mobility · wishlist mark</div>
+      <div class="row"><div class="ico"></div> … categories / entries</div>
+    </div>
+    <div class="col center">
+      <h3>Roll</h3>
+      <div class="die skip">⏭</div>
+      <div style="color:var(--muted);font-size:0.75rem;margin-bottom:8px">animation skipped</div>
+      <button class="btn">Roll 5 Scrolls</button>
+      <button class="btn go">Suite: Auto-Roll</button>
+      <button class="btn stop">Stop</button>
+    </div>
+    <div class="col">
+      <h3>Known Spells (Ascension)</h3>
+      <div class="row known"><div class="ico"></div> Spartan Kick · lock</div>
+      <div class="row known"><div class="ico"></div> Life Tap · lock</div>
+      <div class="row known"><div class="ico"></div> … saved each roll</div>
+    </div>
+  </div>
+  <div class="overlay">
+    <h2>AscensionSuite assists (default off)</h2>
+    <label>☐ Auto-Roll while leveling (1–60) — only Desired targets</label>
+    <label>☐ Instant skip Dice / SkillCard animation</label>
+    <label>☐ Accept Wildcard confirm popups</label>
+    <label>☐ Auto-save rolled Ability/Talent into Logbook + Known snapshot</label>
+  </div>
+  <p class="note">
+    Wishlist = Ascension Desired list (add via Suite using spell id → client icon/tooltip 1:1, or capture from rolls).
+    Lock/deselect = Ascension padlocks on Known / Desired checkboxes — Suite drives those APIs, does not clone the three columns.
+  </p>
+</body>
+</html>

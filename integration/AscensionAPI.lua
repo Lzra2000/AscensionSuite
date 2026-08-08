@@ -1,6 +1,5 @@
 -- AscensionSuite: integration/AscensionAPI.lua
 -- The only first-party file that may reference C_* globals.
--- Read-only entry/spell presentation for v0.1.0; roll starters arrive in step 8.
 
 local AscensionSuite = _G.AscensionSuite
 if type(AscensionSuite) ~= "table" then
@@ -12,6 +11,23 @@ AscensionSuite.AscensionAPI = {}
 local API = AscensionSuite.AscensionAPI
 
 local PLACEHOLDER_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+
+local RAPID_CONTINUE_PHASES = {
+    AwaitingContinue = true,
+}
+
+local RAPID_IN_FLIGHT_PHASES = {
+    WaitingForUnlearn = true,
+    WaitingForRoll = true,
+    WaitingForLearn = true,
+    Revealing = true,
+}
+
+local RAPID_TERMINAL_PHASES = {
+    Completed = true,
+    Failed = true,
+    Cancelled = true,
+}
 
 ------------------------------------------------------------------------
 -- Namespace helpers
@@ -58,12 +74,12 @@ local function Call(namespace, names, ...)
 
     local results = { pcall(fn, namespace, ...) }
     if results[1] then
-        return unpack(results)
+        return unpack(results, 2)
     end
 
     local results2 = { pcall(fn, ...) }
     if results2[1] then
-        return unpack(results2)
+        return unpack(results2, 2)
     end
 
     return false
@@ -75,11 +91,14 @@ local ENTRY_BY_SPELL_ID = { "GetEntryBySpellID", "GetEntryBySpellId", "GetEntryF
 local GAME_MODE_GET = { "Get", "GetGameMode", "GetActiveGameMode" }
 local GAME_MODE_IS = { "Is", "IsGameMode", "IsActiveGameMode" }
 
-local function TableOrNil(ok, value)
-    if not ok or type(value) ~= "table" then
-        return nil
+local function TableOrNil(...)
+    for index = 1, select("#", ...) do
+        local value = select(index, ...)
+        if type(value) == "table" then
+            return value
+        end
     end
-    return value
+    return nil
 end
 
 local function FirstString(...)
@@ -102,6 +121,27 @@ local function FirstTexture(...)
     return nil
 end
 
+local function FirstNumber(...)
+    for index = 1, select("#", ...) do
+        local value = tonumber(select(index, ...))
+        if value then
+            return value
+        end
+    end
+    return nil
+end
+
+local function RequireWildcard()
+    if not API.IsWildcardModeActive() then
+        return false, "not_wildcard_mode"
+    end
+    return true
+end
+
+local function RapidRollingFrame()
+    return _G.WildCardRapidRollingFrame
+end
+
 ------------------------------------------------------------------------
 -- Availability + GameMode gates
 ------------------------------------------------------------------------
@@ -115,12 +155,12 @@ function API.GetGameMode()
     if not gm then
         return nil
     end
-    local ok, value = Call(gm, GAME_MODE_GET)
-    if ok then
+    local value = Call(gm, GAME_MODE_GET)
+    if value ~= false and value ~= nil then
         return value
     end
-    ok, value = Call(gm, GAME_MODE_IS)
-    if ok then
+    value = Call(gm, GAME_MODE_IS)
+    if value ~= false and value ~= nil then
         return value
     end
     return nil
@@ -130,6 +170,17 @@ function API.IsGameModeActive(modeName)
     if modeName == nil then
         return false
     end
+
+    local gm = GM()
+    if gm then
+        if Call(gm, { "IsGameModeActive" }, modeName) == true then
+            return true
+        end
+        if Call(gm, { "IsActiveGameMode" }, modeName) == true then
+            return true
+        end
+    end
+
     local current = API.GetGameMode()
     if current == nil then
         return false
@@ -191,6 +242,22 @@ function API.ResolveEntry(spellOrEntryId)
     return API.GetEntryByInternalID(id)
 end
 
+function API.GetEntryInternalID(spellOrEntryId)
+    local entry = API.ResolveEntry(spellOrEntryId)
+    if entry then
+        return FirstNumber(entry.ID, entry.Id, entry.id, entry.internalID, entry.InternalID)
+    end
+    return tonumber(spellOrEntryId)
+end
+
+function API.GetEntryType(spellOrEntryId)
+    local entry = API.ResolveEntry(spellOrEntryId)
+    if not entry then
+        return nil
+    end
+    return FirstString(entry.Type, entry.type, entry.entryType, entry.EntryType)
+end
+
 ------------------------------------------------------------------------
 -- Presentation (dual-read fields, GetSpellInfo fallback)
 ------------------------------------------------------------------------
@@ -236,6 +303,17 @@ function API.GetEntryName(spellOrEntryId)
         return "Spell " .. tostring(id)
     end
     return "Unknown"
+end
+
+function API.GetEntrySpellID(spellOrEntryId)
+    local entry = API.ResolveEntry(spellOrEntryId)
+    if entry then
+        local spellId = FirstNumber(entry.Spell, entry.spell, entry.SpellID, entry.spellID, entry.SpellId)
+        if spellId then
+            return spellId
+        end
+    end
+    return tonumber(spellOrEntryId)
 end
 
 function API.GetEntryTooltipLines(spellOrEntryId)
@@ -295,21 +373,338 @@ function API.GetEntryTooltipLines(spellOrEntryId)
 end
 
 ------------------------------------------------------------------------
--- Step 8 — roll / rapid wrappers (stubs; do not call RollAbilities yet)
+-- Desired (player-selected targets only; synced with Ascension Rapid board)
 ------------------------------------------------------------------------
 
--- function API.RollAbilities(...)
---     -- step 8: opt-in Auto-Roll only; C_GameMode gated; player-selected targets.
--- end
+function API.CanAddDesiredID(entryId, entryType)
+    local ok = RequireWildcard()
+    if not ok then
+        return false
+    end
+    local wc = WC()
+    if not wc then
+        return false
+    end
+    return Call(wc, { "CanAddDesiredID" }, entryId, entryType)
+end
 
--- function API.StartRapidRolling(...)
---     -- step 8
--- end
+function API.AddDesiredID(entryId, entryType)
+    local ok = RequireWildcard()
+    if not ok then
+        return false, ok
+    end
+    local wc = WC()
+    if not wc then
+        return false, "no_wildcard_api"
+    end
+    local result = Call(wc, { "AddDesiredID" }, entryId, entryType)
+    if result == false then
+        return false, "add_failed"
+    end
+    return true
+end
 
--- function API.ContinueRapidRolling(...)
---     -- step 8
--- end
+function API.RemoveDesiredID(entryId, entryType)
+    local ok = RequireWildcard()
+    if not ok then
+        return false
+    end
+    local wc = WC()
+    if not wc then
+        return false
+    end
+    return Call(wc, { "RemoveDesiredID" }, entryId, entryType)
+end
 
--- function API.CancelRapidRolling(...)
---     -- step 8
--- end
+function API.IsDesiredID(entryId, entryType)
+    local wc = WC()
+    if not wc then
+        return false
+    end
+    return Call(wc, { "IsDesiredID" }, entryId, entryType) == true
+end
+
+function API.ClearDesiredSpells()
+    local ok = RequireWildcard()
+    if not ok then
+        return false
+    end
+    local wc = WC()
+    if not wc then
+        return false
+    end
+    return Call(wc, { "ClearDesiredSpells" })
+end
+
+function API.GetNumFilteredDesiredEntries()
+    local wc = WC()
+    if not wc then
+        return 0
+    end
+    local count = Call(wc, { "GetNumFilteredDesiredEntries" })
+    if type(count) == "number" then
+        return count
+    end
+    return 0
+end
+
+------------------------------------------------------------------------
+-- Known probes (read-only)
+------------------------------------------------------------------------
+
+function API.IsKnownID(entryId)
+    local ca = CA()
+    if not ca then
+        return false
+    end
+    return Call(ca, { "IsKnownID" }, entryId) == true
+end
+
+function API.GetKnownSpellEntries()
+    local ca = CA()
+    if not ca then
+        return {}
+    end
+    local entries = Call(ca, { "GetKnownSpellEntries" })
+    if type(entries) == "table" then
+        return entries
+    end
+    return {}
+end
+
+function API.GetKnownTalentEntries()
+    local ca = CA()
+    if not ca then
+        return {}
+    end
+    local entries = Call(ca, { "GetKnownTalentEntries" })
+    if type(entries) == "table" then
+        return entries
+    end
+    return {}
+end
+
+function API.CaptureKnownSnapshot()
+    local snapshot = {}
+    local spells = API.GetKnownSpellEntries()
+    for index = 1, #spells do
+        local entry = spells[index]
+        if type(entry) == "table" then
+            snapshot[#snapshot + 1] = {
+                id = FirstNumber(entry.ID, entry.Id, entry.id),
+                type = FirstString(entry.Type, entry.type) or "Ability",
+                spellId = FirstNumber(entry.Spell, entry.spell, entry.SpellID, entry.spellID),
+                name = FirstString(entry.Name, entry.name),
+            }
+        end
+    end
+    local talents = API.GetKnownTalentEntries()
+    for index = 1, #talents do
+        local entry = talents[index]
+        if type(entry) == "table" then
+            snapshot[#snapshot + 1] = {
+                id = FirstNumber(entry.ID, entry.Id, entry.id),
+                type = FirstString(entry.Type, entry.type) or "Talent",
+                spellId = FirstNumber(entry.Spell, entry.spell, entry.SpellID, entry.spellID),
+                name = FirstString(entry.Name, entry.name),
+            }
+        end
+    end
+    return snapshot
+end
+
+------------------------------------------------------------------------
+-- Roll starters (opt-in assists only; GameMode gated)
+------------------------------------------------------------------------
+
+function API.CanRollAbilities()
+    local ok = RequireWildcard()
+    if not ok then
+        return false
+    end
+    local wc = WC()
+    if not wc then
+        return false
+    end
+    return Call(wc, { "CanRollAbilities" }) == true
+end
+
+function API.RollAbilities()
+    local ok = RequireWildcard()
+    if not ok then
+        return false, ok
+    end
+    local wc = WC()
+    if not wc then
+        return false, "no_wildcard_api"
+    end
+    local result = Call(wc, { "RollAbilities" })
+    if result == false then
+        return false, "roll_failed"
+    end
+    return true
+end
+
+function API.CanStartRapidRolling()
+    local ok = RequireWildcard()
+    if not ok then
+        return false, ok
+    end
+    local wc = WC()
+    if not wc then
+        return false, "no_wildcard_api"
+    end
+    return Call(wc, { "CanStartRapidRolling" })
+end
+
+function API.StartRapidRolling()
+    local ok = RequireWildcard()
+    if not ok then
+        return false, ok
+    end
+    local wc = WC()
+    if not wc then
+        return false, "no_wildcard_api"
+    end
+    local result, reason = Call(wc, { "StartRapidRolling" })
+    if result == false then
+        return false, reason or "start_failed"
+    end
+    return true, reason
+end
+
+function API.ContinueRapidRolling()
+    local ok = RequireWildcard()
+    if not ok then
+        return false, ok
+    end
+    local wc = WC()
+    if not wc then
+        return false, "no_wildcard_api"
+    end
+    local result, reason = Call(wc, { "ContinueRapidRolling" })
+    if result == false then
+        return false, reason or "continue_failed"
+    end
+    return true, reason
+end
+
+function API.CancelRapidRolling()
+    local ok = RequireWildcard()
+    if not ok then
+        return false
+    end
+    local wc = WC()
+    if not wc then
+        return false
+    end
+    return Call(wc, { "CancelRapidRolling" })
+end
+
+function API.GetRapidRollingState()
+    local wc = WC()
+    if not wc then
+        return nil
+    end
+    local state = Call(wc, { "GetRapidRollingState" })
+    if type(state) == "table" then
+        return state
+    end
+    return nil
+end
+
+function API.IsAwaitingRapidRollingTalentUpgradeRoll()
+    local wc = WC()
+    if not wc then
+        return false
+    end
+    return Call(wc, { "IsAwaitingRapidRollingTalentUpgradeRoll" }) == true
+end
+
+function API.IsRapidRollingFrameShown()
+    local frame = RapidRollingFrame()
+    return frame and frame.IsShown and frame:IsShown()
+end
+
+local function IsAwaitingContinue(state)
+    return state and RAPID_CONTINUE_PHASES[state.Phase]
+end
+
+local function IsInFlight(state)
+    return state and RAPID_IN_FLIGHT_PHASES[state.Phase]
+end
+
+local function IsTerminal(state)
+    return state and RAPID_TERMINAL_PHASES[state.Phase]
+end
+
+local function DiceIsShown()
+    local dice = _G.WildCardDice
+    return dice and dice.IsShown and dice:IsShown()
+end
+
+-- Click-equivalent advance for Rapid Rolling / leveling dice.
+-- Never starts a roll from animation skip; caller must invoke this explicitly.
+function API.AdvanceRapidRoll(skipConfirm)
+    local ok, reason = RequireWildcard()
+    if not ok then
+        return false, reason
+    end
+
+    if API.GetNumFilteredDesiredEntries() == 0 and not API.IsAwaitingRapidRollingTalentUpgradeRoll() then
+        return false, "no_desired_targets"
+    end
+
+    local frame = RapidRollingFrame()
+    if frame and frame.IsShown and frame:IsShown() and type(frame.Roll) == "function" then
+        frame:Roll(skipConfirm == true)
+        return true
+    end
+
+    local state = API.GetRapidRollingState()
+    local awaitingContinue = IsAwaitingContinue(state)
+    local inFlight = IsInFlight(state)
+    local terminalResult = IsTerminal(state)
+    local diceIsShown = DiceIsShown()
+
+    if inFlight or (diceIsShown and not awaitingContinue and not terminalResult) then
+        return false, "roll_in_flight"
+    end
+
+    if terminalResult and not API.IsAwaitingRapidRollingTalentUpgradeRoll() then
+        API.CancelRapidRolling()
+        if _G.WildCardDice and _G.WildCardDice.Hide then
+            _G.WildCardDice:Hide()
+        end
+        return false, "session_complete"
+    end
+
+    if awaitingContinue or API.IsAwaitingRapidRollingTalentUpgradeRoll() then
+        if API.IsAwaitingRapidRollingTalentUpgradeRoll() and API.CanRollAbilities() then
+            local rollOk = API.RollAbilities()
+            if not rollOk then
+                return false, "roll_failed"
+            end
+            return true
+        end
+        local contOk, contReason = API.ContinueRapidRolling()
+        if not contOk then
+            return false, contReason or "continue_failed"
+        end
+        return true
+    end
+
+    if API.CanRollAbilities() and not API.IsRapidRollingFrameShown() and API.GetNumFilteredDesiredEntries() == 0 then
+        local rollOk, rollReason = API.RollAbilities()
+        if not rollOk then
+            return false, rollReason or "roll_failed"
+        end
+        return true
+    end
+
+    local startOk, startReason = API.StartRapidRolling()
+    if not startOk then
+        return false, startReason or "start_failed"
+    end
+    return true
+end

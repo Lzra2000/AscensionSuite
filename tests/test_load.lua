@@ -66,7 +66,7 @@ local function NewFrame()
             or key == "StartMoving" or key == "StopMovingOrSizing" or key == "ClearAllPoints"
             or key == "SetPoint" or key == "SetAutoFocus" or key == "ClearFocus"
             or key == "SetNumeric" or key == "SetMaxLetters" or key == "SetTexCoord"
-            or key == "SetJustifyH" or key == "SetTextColor" then
+            or key == "SetJustifyH" or key == "SetTextColor" or key == "SetEnabled" then
             return Noop
         elseif key == "SetBackdrop" then
             return Noop
@@ -82,12 +82,16 @@ local function NewFrame()
         elseif key == "CreateFontString" then
             return function()
                 local text = ""
+                local shown = true
                 return {
                     SetPoint = Noop,
                     SetText = function(_, value) text = value or "" end,
                     GetText = function() return text end,
                     SetJustifyH = Noop,
                     SetTextColor = Noop,
+                    SetWidth = Noop,
+                    Show = function() shown = true end,
+                    Hide = function() shown = false end,
                 }
             end
         elseif key == "CreateFrame" then
@@ -103,6 +107,8 @@ local function NewFrame()
         elseif key == "GetText" then
             return function(self) return self._text or "" end
         elseif key == "SetOwner" or key == "ClearLines" or key == "AddLine" then
+            return Noop
+        elseif key == "GetChecked" or key == "SetChecked" then
             return Noop
         end
         return Noop
@@ -122,6 +128,8 @@ end
 
 UIParent = NewFrame()
 GameTooltip = NewFrame()
+hooksecurefunc = function() end
+StaticPopup_Show = function() end
 
 SLASH_ASUITE1 = nil
 SlashCmdList = SlashCmdList or {}
@@ -130,21 +138,50 @@ function GetSpellInfo(spellId)
     return "Test Spell " .. tostring(spellId), "Rank 1", nil, "10 Mana", nil, nil, 1500, 0, 30
 end
 
+C_GameMode = {
+    IsGameModeActive = function(_, mode)
+        return mode == "WildCard"
+    end,
+}
+
 C_CharacterAdvancement = {
     GetEntryBySpellID = function(_, id)
         return {
+            ID = id + 1000,
             Name = "CA Entry " .. tostring(id),
             Icon = "Interface\\Icons\\Spell_Nature_Lightning",
             Description = "From C_CharacterAdvancement",
-            Type = "Talent",
+            Type = "Ability",
+            Spell = id,
         }
     end,
+    GetKnownSpellEntries = function()
+        return {}
+    end,
+    GetKnownTalentEntries = function()
+        return {}
+    end,
+}
+
+C_Wildcard = {
+    CanAddDesiredID = function() return true end,
+    AddDesiredID = function() return true end,
+    RemoveDesiredID = function() return true end,
+    IsDesiredID = function() return false end,
+    ClearDesiredSpells = function() return true end,
+    GetNumFilteredDesiredEntries = function() return 0 end,
+    CanRollAbilities = function() return false end,
 }
 
 local files = {
     "core/Bootstrap.lua",
     "core/Database.lua",
+    "core/Wishlist.lua",
+    "core/Logbook.lua",
     "integration/AscensionAPI.lua",
+    "automation/AutoRoller.lua",
+    "automation/AnimationSkip.lua",
+    "automation/PopupAssist.lua",
     "ui/SpellCell.lua",
     "ui/MainWindow.lua",
 }
@@ -164,6 +201,7 @@ assert(#API.GetEntryTooltipLines(133) > 0, "GetEntryTooltipLines failed")
 
 AscensionSuite.Database.Init()
 assert(AscensionSuiteDB.assists.autoRoll == false, "autoRoll must default false")
+assert(AscensionSuiteDB.assists.captureRolls == false, "captureRolls must default false")
 
 local cell = AscensionSuite.SpellCell.Create(UIParent, "TestCell")
 cell:SetSpell(133)

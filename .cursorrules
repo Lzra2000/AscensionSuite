@@ -2,16 +2,22 @@
 
 AscensionSuite is a World of Warcraft addon for the Ascension / Project Ebonhold client.
 
+## Product direction
+
+- **Native Rapid Rolling is the board** (Desired · Roll · Known). Do **not** rebuild the three-column Rapid UI.
+- Suite is a **thin overlay**: assist toggles, wishlist → Desired sync, logbook, optional Auto-Roll / skip / popup accept.
+
 ## Hard constraints
 
 - **Lua 5.1 syntax only** — no `goto`, no bitwise operators, no `//`.
 - **`C_*` globals only in `integration/AscensionAPI.lua`.** Feature modules use the seam; `scripts/check.sh` enforces this.
-- **No Draft / Hall of Fate / store automation.** Read-only observation and future opt-in Wildcard assists only.
+- **Roll starters** (`RollAbilities`, `StartRapidRolling`, `ContinueRapidRolling`, `CancelRapidRolling`) only in `AscensionAPI.lua`.
+- **No Draft / Hall of Fate / store automation.**
 - **Assists default off.** Never auto-enable Auto-Roll, animation skip, or popup accept.
 
 ## UI changes
 
-- Read `docs/sketch/` before product decisions.
+- Read `docs/sketch/` before product decisions (`ascension-suite-rapid-native-mockup.html` is canonical for v0.2).
 - **Send a visual preview** (HTML mockup is fine) and get approval **before** implementing UI or asset changes.
 
 ## Before committing

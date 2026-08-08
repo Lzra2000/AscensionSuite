@@ -1,8 +1,8 @@
 # AscensionSuite
 
-AscensionSuite is a greenfield World of Warcraft addon for the **Ascension / Project Ebonhold** client. It helps players **log every Wildcard / Rapid / Dice / SkillCard run**, **save and share builds**, and optionally use **guarded assists** (Auto-Roll, animation skip, Wildcard popup accept) — all with spell **icon / id / tooltip painted 1:1 from client APIs**, never guessed locally.
+AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
-**v0.1.0** ships the addon shell, the `AscensionAPI` integration seam, and a **SpellCell proof window** only.
+**v0.2.0** ships: **AscensionAPI** wrappers, **wishlist → Desired sync**, **roll logbook**, and guarded assists (Auto-Roll, animation skip, popup accept) — all default **off**.
 
 ## In-game
 
@@ -10,41 +10,47 @@ AscensionSuite is a greenfield World of Warcraft addon for the **Ascension / Pro
 /asuite
 ```
 
-Opens the proof window: enter a spell id, click **Add**, hover a cell for the client tooltip. **Refresh** repaints icons/names from the API.
+Opens the **assist overlay**:
 
-## Assists
+- **Assists** (checkboxes, all default off): Auto-Roll, dice/skillcard animation skip, Wildcard popup accept, logbook capture.
+- **Start / Stop** for Auto-Roll (Stop is mandatory while running).
+- **Spell / entry id → Add** resolves icon/name/tooltip 1:1 via `AscensionAPI`, then calls `C_Wildcard.AddDesiredID`.
+- **Save / Load** named Desired profiles (+ optional Known snapshot) in `AscensionSuiteDB`.
+- **Wishlist grid** — click toggles Ascension Desired; native Rapid board stays authoritative.
+- **Logbook** — recent rolls captured while the capture assist is on.
 
-Every assist defaults **off** in `AscensionSuiteDB.assists`:
+## Native Rapid Rolling
 
-| Key | Default | Future job |
-|-----|---------|------------|
-| `autoRoll` | `false` | Opt-in Auto-Roller (step 8) |
-| `instantDiceSkip` | `false` | Dice flipbook skip (step 7) |
-| `instantSkillCardSkip` | `false` | SkillCard reveal skip (step 7) |
-| `acceptWildcardPopups` | `false` | Allowlisted Wildcard confirms (step 7) |
+Ascension’s `WildCardRapidRollingFrame` owns Desired / Roll / Known. Suite hooks:
 
-## Roadmap (from approved sketch)
+| Hook | Purpose |
+|------|---------|
+| `WILDCARD_RAPID_ROLL_LEARNED` / `WILDCARD_ENTRY_LEARNED` | Logbook capture |
+| `AscensionAPI.AdvanceRapidRoll` | Auto-Roll click-equivalent (`StartRapidRolling` / `ContinueRapidRolling` / `RollAbilities`) |
+| `hooksecurefunc(WildCardDice, …)` | Opt-in dice animation skip |
+| `hooksecurefunc(StaticPopup_Show, …)` | Allowlisted Wildcard confirms only |
 
-1. **Repo + shell + AscensionAPI seam** (read-only spell present) — **this release**
-2. SpellCell 1:1 proof screen — **this release**
-3. Logbook + Run capture (observe rolls; no auto-roll yet)
-4. Build save from Run + Build list
-5. Share export/import
-6. Rapid Board lock/deselect UI
-7. Animation skip + popup accept (opt-in)
-8. Auto-Roller (opt-in, Stop, error halt)
-9. Polish / watermarks / i18n
+See `docs/sketch/ascension-suite-rapid-native-mockup.html`.
 
-See `docs/sketch/` for the full system write-up and UI mockup.
+## Assists (`AscensionSuiteDB.assists`)
+
+| Key | Default | Job |
+|-----|---------|-----|
+| `autoRoll` | `false` | Auto-Roll while leveling (1–60) against **current Ascension Desired** only |
+| `instantDiceSkip` | `false` | Force-finish `WildCardDice` flipbooks (never starts a roll alone) |
+| `instantSkillCardSkip` | `false` | Force-finish SkillCard reveal flipbooks |
+| `acceptWildcardPopups` | `false` | Auto-accept `CONFIRM_WILDCARD_*` + `CONFIRM_UNLEARN_S` |
+| `captureRolls` | `false` | Append roll results to logbook |
 
 ## Layout
 
 ```
-core/           Bootstrap, Database
+core/           Bootstrap, Database, Wishlist, Logbook
 integration/    AscensionAPI.lua (only C_* home)
+automation/     AutoRoller, AnimationSkip, PopupAssist
 ui/             SpellCell, MainWindow
-scripts/        check.sh
-tests/          sandbox load smoke test
+scripts/        check.sh, release.sh
+tests/          sandbox load + wishlist + assists tests
 ```
 
 ## Install (release zip)
@@ -57,11 +63,11 @@ tests/          sandbox load smoke test
 
 ```sh
 sh scripts/check.sh
-sh scripts/build-dist.sh          # writes dist/AscensionSuite.zip
-sh scripts/release.sh 0.1.0       # tag + GitHub Release with zip (maintainers)
+sh scripts/build-dist.sh
+sh scripts/release.sh 0.2.0
 ```
 
-Every tagged release **must** ship `AscensionSuite.zip` on the GitHub Release (local `release.sh` and `.github/workflows/release.yml`).
+Roll starters (`RollAbilities`, `StartRapidRolling`, …) are allowed **only** in `integration/AscensionAPI.lua`; `scripts/check.sh` enforces this.
 
 ## License
 
