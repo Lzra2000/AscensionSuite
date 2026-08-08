@@ -300,7 +300,13 @@ function DesiredSync.Init()
 
     watcher = CreateFrame("Frame")
     watcher:RegisterEvent("ADDON_LOADED")
-    watcher:RegisterEvent("WILDCARD_DESIRED_ENTRIES_CHANGED")
+
+    -- WILDCARD_DESIRED_ENTRIES_CHANGED comes from the client rather than an
+    -- addon, so it exists whether or not Ascension_WildCard is loaded -- but
+    -- registering an event the client does not know raises, and this runs inside
+    -- the shared ADDON_LOADED handler that also starts the other assists.
+    pcall(watcher.RegisterEvent, watcher, "WILDCARD_DESIRED_ENTRIES_CHANGED")
+
     watcher:SetScript("OnEvent", function(_, event, name)
         if event == "ADDON_LOADED" then
             if name == "Ascension_WildCard" or name == "Ascension_CharacterAdvancement" then
