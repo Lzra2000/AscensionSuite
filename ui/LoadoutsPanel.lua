@@ -231,6 +231,54 @@ local function FillListRow(row, meta, position)
     row:Show()
 end
 
+local function LayoutSpellRowChrome(row)
+    if not row or not row._nameLabel or not row._remove then
+        return
+    end
+
+    local rightAnchor = row._remove
+    local rightPoint = "LEFT"
+    local xOffset = -4
+
+    local function AnchorRight(widget)
+        if not widget then
+            return
+        end
+        if type(widget.ClearAllPoints) == "function" and type(widget.SetPoint) == "function" then
+            widget:ClearAllPoints()
+            widget:SetPoint("RIGHT", rightAnchor, rightPoint, xOffset, 0)
+            rightAnchor = widget
+            rightPoint = "LEFT"
+            xOffset = -4
+        end
+    end
+
+    if row._badge and row._badge.IsShown and row._badge:IsShown() then
+        AnchorRight(row._badge)
+    end
+
+    if row._knownBadge and row._knownBadge.IsShown and row._knownBadge:IsShown() then
+        AnchorRight(row._knownBadge)
+    end
+
+    local tagText = row._tagLabel and row._tagLabel.GetText and row._tagLabel:GetText() or ""
+    if tagText ~= "" then
+        if row._tagLabel.Show then
+            row._tagLabel:Show()
+        end
+        AnchorRight(row._tagLabel)
+        xOffset = -6
+    elseif row._tagLabel and row._tagLabel.Hide then
+        row._tagLabel:Hide()
+    end
+
+    if type(row._nameLabel.ClearAllPoints) == "function" and type(row._nameLabel.SetPoint) == "function" then
+        row._nameLabel:ClearAllPoints()
+        row._nameLabel:SetPoint("LEFT", row._icon, "RIGHT", 8, 0)
+        row._nameLabel:SetPoint("RIGHT", rightAnchor, rightPoint, xOffset, 0)
+    end
+end
+
 local function FillSpellRow(row, data, position)
     if data.kind == "group" then
         row._group:Show()
@@ -268,6 +316,8 @@ local function FillSpellRow(row, data, position)
         row._badge:Hide()
     end
     row._icon:SetTexture(entry.icon or PLACEHOLDER_ICON)
+
+    LayoutSpellRowChrome(row)
 
     local key = SpellRowKey(raw, entry)
     if selectedSpellKey and key and key == selectedSpellKey then
@@ -778,7 +828,7 @@ H.OnLoadWishlist = function()
         SetStatus("Select a build first.", false)
         return
     end
-    local ok, count = Loadouts.LoadToWishlist(selectedId)
+    local ok, count, loadSkipped = Loadouts.LoadToWishlist(selectedId)
     if not ok then
         SetStatus("Could not load — " .. tostring(count or "error") .. ".", false)
         return
@@ -787,7 +837,11 @@ H.OnLoadWishlist = function()
     if MainWindow and MainWindow.RefreshWishlist then
         MainWindow.RefreshWishlist()
     end
-    LoadoutsPanel.Refresh(string.format("Loaded %d entries into the wishlist.", count or 0), true)
+    local note = string.format("Loaded %d entries into the wishlist.", count or 0)
+    if loadSkipped and loadSkipped > 0 then
+        note = note .. string.format(" Skipped %d Tag/meta rows.", loadSkipped)
+    end
+    LoadoutsPanel.Refresh(note, true)
 end
 
 H.OnApplyDesired = function()
@@ -814,18 +868,23 @@ H.OnApplyDesired = function()
         return
     end
 
-    local note = string.format("Applied: %d pushed, %d already Desired",
-        result.pushed or 0, result.already or 0)
+    local note
+    if Loadouts and Loadouts.FormatPushSummary then
+        note = string.format("Applied: loaded %d", result.loaded or 0)
+        if result.skipped and result.skipped > 0 then
+            note = note .. string.format(", skipped %d Tag/meta", result.skipped)
+        end
+        note = note .. " — " .. Loadouts.FormatPushSummary(result.pushed, result.already, result.failed,
+            0, result.refuses)
+    else
+        note = string.format("Applied: %d pushed, %d already Desired",
+            result.pushed or 0, result.already or 0)
+    end
     local good = true
     if (result.failed or 0) > 0 then
-        note = note .. string.format(", %d refused", result.failed)
-        local detail = Loadouts.FormatRefuseSummary(result.refuses)
-        if detail then
-            note = note .. ": " .. detail
-        end
         good = false
     end
-    LoadoutsPanel.Refresh(note .. ".", good)
+    LoadoutsPanel.Refresh(note, good)
 end
 
 H.OnSyncRapid = function()
@@ -1229,8 +1288,20 @@ local function CreateSpellRow(parent, index)
     groupLabel:SetTextColor(0.49, 0.77, 0.35, 1)
     row._groupLabel = groupLabel
 
+    local remove = CreateFrame("Button", FRAME_NAME .. "SpellRow" .. index .. "Remove", row, "UIPanelButtonTemplate")
+    remove:SetWidth(20)
+    remove:SetHeight(18)
+    remove:SetPoint("RIGHT", -4, 0)
+    remove:SetText("x")
+    remove:SetScript("OnClick", function()
+        OnSpellRowRemove(row)
+    end)
+    row._remove = remove
+
     local spell = CreateFrame("Frame", nil, row)
-    spell:SetAllPoints()
+    spell:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    spell:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+    spell:SetPoint("RIGHT", remove, "LEFT", -2, 0)
     row._spell = spell
 
     local icon = spell:CreateTexture(nil, "ARTWORK")
@@ -1276,16 +1347,6 @@ local function CreateSpellRow(parent, index)
     nameLabel:SetPoint("RIGHT", tagLabel, "LEFT", -8, 0)
     nameLabel:SetJustifyH("LEFT")
     row._nameLabel = nameLabel
-
-    local remove = CreateFrame("Button", FRAME_NAME .. "SpellRow" .. index .. "Remove", row, "UIPanelButtonTemplate")
-    remove:SetWidth(20)
-    remove:SetHeight(18)
-    remove:SetPoint("RIGHT", -4, 0)
-    remove:SetText("x")
-    remove:SetScript("OnClick", function()
-        OnSpellRowRemove(row)
-    end)
-    row._remove = remove
 
     row:SetScript("OnEnter", function()
         if row._raw then

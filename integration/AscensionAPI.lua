@@ -693,6 +693,47 @@ function API.GetEntryTooltipLines(spellOrEntryId)
 end
 
 ------------------------------------------------------------------------
+-- Desired eligibility (Ability / Talent only; Tag / Suggestion are meta rows)
+------------------------------------------------------------------------
+
+local DESIRED_ELIGIBLE_TYPES = {
+    Ability = true,
+    Talent = true,
+}
+
+local META_ENTRY_TYPES = {
+    Tag = true,
+    Suggestion = true,
+}
+
+function API.IsDesiredEligibleType(entryType)
+    if type(entryType) ~= "string" or entryType == "" then
+        return false
+    end
+    return DESIRED_ELIGIBLE_TYPES[entryType] == true
+end
+
+function API.IsMetaEntryType(entryType)
+    if type(entryType) ~= "string" or entryType == "" then
+        return false
+    end
+    return META_ENTRY_TYPES[entryType] == true
+end
+
+function API.DescribeEntryTypeRefuse(entryType, resolveErr)
+    if resolveErr == "unresolved" or resolveErr == "incomplete_entry" or resolveErr == "invalid_item" then
+        return "unresolved"
+    end
+    if API.IsMetaEntryType(entryType) then
+        return "tag_not_desired"
+    end
+    if entryType and not API.IsDesiredEligibleType(entryType) then
+        return "type_not_desired"
+    end
+    return "can_add_false"
+end
+
+------------------------------------------------------------------------
 -- Desired (player-selected targets only; synced with Ascension Rapid board)
 ------------------------------------------------------------------------
 
@@ -2190,7 +2231,7 @@ function API.CollectBuildSpellEntries(build)
     local seen = {}
     for index = 1, #build.Spells do
         local row = EntryFromBuildSpell(build, build.Spells[index])
-        if row then
+        if row and API.IsDesiredEligibleType(row.entryType) then
             local key = (row.entryType or "?") .. ":" .. tostring(row.entryId or row.spellId)
             if not seen[key] then
                 seen[key] = true

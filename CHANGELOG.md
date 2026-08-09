@@ -3,6 +3,29 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.12 (2026-08-09) -- Push skips Tag rows; only Ability/Talent → Desired
+
+#### Fixed
+- **Push / Apply → Desired** now attempts only **Ability** and **Talent** rows.
+  Tag / Suggestion / other meta advancement types are **skipped** (not counted as
+  opaque “refused”) with a status like `skipped N Tag/meta rows`.
+- **Import Archetype**, **ASUITE2** share import, and **Load → Wishlist** no longer
+  place Tag / Suggestion entries into the automation wishlist — only spell rows
+  Ascension can mark Desired.
+- **Auto-Roll Start** distinguishes “wishlist has only Tags” from “nothing Desired
+  yet” (`wishlist_tags_only` vs `no_desired_targets`).
+- **Loadouts spell list** name labels anchor from the remove button inward so badge
+  chrome no longer squeezes names to one-letter truncation.
+- **FormatRefuseSummary** reports `tag_not_desired`, `can_add_false`, `unresolved`,
+  and related reasons instead of a generic `refused`.
+
+#### Added
+- **Wishlist → Clear tags** removes Tag / meta rows from the saved list.
+- `AscensionAPI.IsDesiredEligibleType`, `IsMetaEntryType`, `DescribeEntryTypeRefuse`.
+- `Wishlist.RemoveIneligibleEntries`, `GetDesiredEligibilitySummary`.
+- `Loadouts.FormatPushSummary`, `Loadouts.RemoveIneligibleEntries`.
+- `tests/test_desired_skip_tags.lua`.
+
 ### 0.4.11 (2026-08-09) -- Revealed decision dice clickable again
 
 #### Fixed

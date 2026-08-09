@@ -40,6 +40,45 @@ local function GetAPI()
     return AscensionSuite.AscensionAPI
 end
 
+local function EntryTypeEligible(api, entryType)
+    if not entryType then
+        return false
+    end
+    if api and api.IsDesiredEligibleType then
+        return api.IsDesiredEligibleType(entryType) == true
+    end
+    return entryType == "Ability" or entryType == "Talent"
+end
+
+local function EntryTypeIsMeta(api, entryType)
+    if not entryType then
+        return false
+    end
+    if api and api.IsMetaEntryType then
+        return api.IsMetaEntryType(entryType) == true
+    end
+    return entryType == "Tag" or entryType == "Suggestion"
+end
+
+local function RefuseReasonForPush(api, entryType, resolveErr, canAdd)
+    if resolveErr then
+        return resolveErr
+    end
+    if api and api.DescribeEntryTypeRefuse then
+        return api.DescribeEntryTypeRefuse(entryType, nil)
+    end
+    if EntryTypeIsMeta(api, entryType) then
+        return "tag_not_desired"
+    end
+    if not EntryTypeEligible(api, entryType) then
+        return "type_not_desired"
+    end
+    if canAdd == false then
+        return "can_add_false"
+    end
+    return "refused"
+end
+
 local function CopyTable(source)
     local out = {}
     for key, value in pairs(source) do
@@ -358,6 +397,11 @@ function Wishlist.AddEntry(entryId, entryType, spellId, name)
         return false, "invalid_entry"
     end
 
+    local api = GetAPI()
+    if EntryTypeIsMeta(api, entryType) or not EntryTypeEligible(api, entryType) then
+        return false, "meta_entry"
+    end
+
     -- The id is always an advancement internal ID here, so it has to be resolved
     -- in that id space: a spell-first lookup can land on an unrelated entry whose
     -- spell ID collides with this internal ID.
@@ -464,6 +508,61 @@ function Wishlist.Clear()
         table.remove(items, index)
     end
     return removed
+end
+
+-- Strip Tag / Suggestion rows and any other type Ascension cannot mark Desired.
+function Wishlist.RemoveIneligibleEntries()
+    local api = GetAPI()
+    local items = Wishlist.GetItems()
+    local removed = 0
+    for index = #items, 1, -1 do
+        local item = items[index]
+        local entryId, entryType = ItemPair(item)
+        if not entryType and item and item.entryType then
+            entryType = NormalizeEntryType(item.entryType)
+        end
+        if not entryType and entryId and api and api.ResolveEntryByInternalID then
+            local entry = api.ResolveEntryByInternalID(entryId)
+            if type(entry) == "table" then
+                _, entryType = PairFromEntry(entry)
+            end
+        end
+        if entryType and (EntryTypeIsMeta(api, entryType) or not EntryTypeEligible(api, entryType)) then
+            table.remove(items, index)
+            removed = removed + 1
+        end
+    end
+    return removed
+end
+
+function Wishlist.GetDesiredEligibilitySummary()
+    local api = GetAPI()
+    local summary = {
+        total = 0,
+        eligible = 0,
+        meta = 0,
+        ineligible = 0,
+        desired = 0,
+    }
+    local items = Wishlist.GetItems()
+    for index = 1, #items do
+        local item = items[index]
+        summary.total = summary.total + 1
+        local entryId, entryType = Wishlist.ResolveItemPair(item)
+        if EntryTypeIsMeta(api, entryType) then
+            summary.meta = summary.meta + 1
+        elseif EntryTypeEligible(api, entryType) then
+            summary.eligible = summary.eligible + 1
+            if api and entryId and entryType and api.IsDesiredID(entryId, entryType) then
+                summary.desired = summary.desired + 1
+            elseif Wishlist.IsItemDesired(item) then
+                summary.desired = summary.desired + 1
+            end
+        else
+            summary.ineligible = summary.ineligible + 1
+        end
+    end
+    return summary
 end
 
 ------------------------------------------------------------------------
@@ -619,13 +718,13 @@ end
 function Wishlist.PushToDesired()
     local api = GetAPI()
     if not api then
-        return 0, 0, 0, "no_api", {}
+        return 0, 0, 0, "no_api", {}, 0
     end
     if not api.IsWildcardModeActive() then
-        return 0, 0, 0, "not_wildcard", {}
+        return 0, 0, 0, "not_wildcard", {}, 0
     end
 
-    local pushed, already, failed = 0, 0, 0
+    local pushed, already, failed, skipped = 0, 0, 0, 0
     local refuses = {}
     local items = Wishlist.GetItems()
     for index = 1, #items do
@@ -635,11 +734,16 @@ function Wishlist.PushToDesired()
         if not entryId then
             failed = failed + 1
             refuses[#refuses + 1] = { name = label, reason = resolveErr or "unresolved" }
+        elseif EntryTypeIsMeta(api, entryType) or not EntryTypeEligible(api, entryType) then
+            skipped = skipped + 1
         elseif api.IsDesiredID(entryId, entryType) then
             already = already + 1
         elseif not api.CanAddDesiredID(entryId, entryType) then
             failed = failed + 1
-            refuses[#refuses + 1] = { name = label, reason = "refused" }
+            refuses[#refuses + 1] = {
+                name = label,
+                reason = RefuseReasonForPush(api, entryType, nil, false),
+            }
         else
             local added, addReason = api.AddDesiredID(entryId, entryType)
             if added then
@@ -650,7 +754,7 @@ function Wishlist.PushToDesired()
             end
         end
     end
-    return pushed, already, failed, nil, refuses
+    return pushed, already, failed, nil, refuses, skipped
 end
 
 function Wishlist.AddToDesired(spellOrEntryId)
