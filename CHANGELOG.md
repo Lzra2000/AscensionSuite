@@ -3,6 +3,20 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.6 (2026-08-09) -- Loadouts polish: Stop, selection memory, scope toggle, Clear Desired
+
+#### Added
+- **Stop Auto-Roll** on the Loadouts automate strip (next to Start); refreshes status and
+  filtered Desired counts after stopping.
+- **Remember last selected loadout** across `/reload` via `AscensionSuiteDB.prefs.loadoutsSelectedId`.
+- **Shared ↔ character scope toggle** on the build header (click Scope chip); uses existing
+  `character = "shared"` vs player name on Create/meta.
+- **Clear Desired (filtered)** — removes Ascension Desired marks for the currently filtered
+  Spells list only (Wildcard); status summary; does not delete loadout rows.
+- **Empty state** when there are no saved builds — short hint plus **New build** affordance.
+- **Tag cycling** on spell rows — Alt+left-click or click the tag label cycles
+  Core → Optimal → Empowering → Synergistic → Utility so filters match import intent.
+
 ### 0.4.5 (2026-08-09) -- Loadouts polish: remove, duplicate, search, Known badge, ASUITE2
 
 #### Added

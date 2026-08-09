@@ -242,5 +242,10 @@ local spellSearchBox = _G.AscensionSuiteLoadoutsPanelSpellSearch
 assert(spellSearchBox, "spell search box exists")
 assert(spellRow._remove ~= nil, "spell rows have remove button")
 assert(spellRow._knownBadge ~= nil, "spell rows have known badge")
+assert(spellRow._tagButton ~= nil, "spell rows have tag cycle button")
+
+Loadouts.SetSelectedId(id)
+Panel.Refresh()
+assert(Panel.GetSelectedId() == id, "selection persisted to prefs")
 
 print("OK: AscensionSuite loadouts panel test passed")

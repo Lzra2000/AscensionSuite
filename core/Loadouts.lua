@@ -49,6 +49,7 @@ Loadouts.SECTION_HINTS = {
 
 Loadouts.CATEGORY_CYCLE = { "PvE", "PvP" }
 Loadouts.COMPLEXITY_CYCLE = { "Standard", "Intermediate", "Advanced", "Expert", "Impossible" }
+Loadouts.TAG_CYCLE = { "core", "optimal", "empowering", "synergistic" }
 
 local IMPORT_ERROR_MESSAGES = {
     not_found = "build not found",
@@ -593,8 +594,53 @@ function Loadouts.UpdateMeta(id, patch)
     if patch.complexity ~= nil then
         loadout.complexity = patch.complexity
     end
+    if patch.character ~= nil then
+        loadout.character = patch.character
+    end
     loadout.updatedAt = Now()
     return true
+end
+
+function Loadouts.GetSelectedId()
+    local data = GetDB()
+    if type(data.prefs) == "table" and type(data.prefs.loadoutsSelectedId) == "string" then
+        local id = data.prefs.loadoutsSelectedId
+        if id ~= "" and Loadouts.Get(id) then
+            return id
+        end
+    end
+    return nil
+end
+
+function Loadouts.SetSelectedId(id)
+    local data = GetDB()
+    if type(data.prefs) ~= "table" then
+        data.prefs = {}
+    end
+    if id == nil or id == "" then
+        data.prefs.loadoutsSelectedId = nil
+        return true
+    end
+    if not Loadouts.Get(id) then
+        return false, "not_found"
+    end
+    data.prefs.loadoutsSelectedId = id
+    return true
+end
+
+function Loadouts.ToggleCharacter(id)
+    local loadout = Loadouts.Get(id)
+    if not loadout then
+        return false, "not_found"
+    end
+    Loadouts.EnsureLoadoutShape(loadout)
+    if loadout.character == "shared" then
+        loadout.character = PlayerName()
+    else
+        loadout.character = "shared"
+    end
+    loadout.updatedAt = Now()
+    return true, loadout.character
 end
 
 function Loadouts.AddEntry(id, row)
@@ -917,6 +963,136 @@ function Loadouts.AddById(id, spellOrEntryId)
         return false, reason
     end
     return true, "added"
+end
+
+local function EntryIsLiveDesired(row)
+    if type(row) ~= "table" then
+        return false
+    end
+    local entryId, entryType = Loadouts.ResolveEntryRow(row)
+    local isDesired = row.desired == true
+    local Wishlist = GetWishlist()
+    local api = GetAPI()
+    if Wishlist and Wishlist.IsItemDesired and entryId and entryType then
+        isDesired = Wishlist.IsItemDesired({
+            entryId = entryId,
+            entryType = entryType,
+            spellId = row.spellId,
+            name = row.name,
+        }) == true or isDesired
+    elseif api and entryId and entryType and api.IsDesiredID then
+        isDesired = api.IsDesiredID(entryId, entryType) == true or isDesired
+    end
+    return isDesired, entryId, entryType
+end
+
+function Loadouts.ClearFilteredDesired(id, filters)
+    local loadout = Loadouts.Get(id)
+    if not loadout or type(loadout.entries) ~= "table" then
+        return false, "not_found"
+    end
+
+    local api = GetAPI()
+    if not api or not api.IsWildcardModeActive or not api.IsWildcardModeActive() then
+        return false, "not_wildcard"
+    end
+
+    Loadouts.EnsureLoadoutShape(loadout)
+    local cleared, scanned, notMarked = 0, 0, 0
+    local refuses = {}
+
+    for index = 1, #loadout.entries do
+        local row = loadout.entries[index]
+        if type(row) == "table" and EntryPassesFilters(row, filters) then
+            scanned = scanned + 1
+            local isDesired, entryId, entryType = EntryIsLiveDesired(row)
+            if not isDesired then
+                notMarked = notMarked + 1
+            else
+                local label = row.name or tostring(row.spellId or entryId or "?")
+                if entryId and entryType and api.RemoveDesiredID then
+                    local removed = api.RemoveDesiredID(entryId, entryType)
+                    if removed then
+                        cleared = cleared + 1
+                        row.desired = false
+                    else
+                        refuses[#refuses + 1] = { name = label, reason = "remove_failed" }
+                    end
+                else
+                    refuses[#refuses + 1] = { name = label, reason = "unresolved" }
+                end
+            end
+        end
+    end
+
+    if cleared > 0 then
+        loadout.updatedAt = Now()
+    end
+
+    return true, {
+        cleared = cleared,
+        scanned = scanned,
+        notMarked = notMarked,
+        refuses = refuses,
+    }
+end
+
+function Loadouts.CycleEntryTag(id, rawRow)
+    local loadout = Loadouts.Get(id)
+    if not loadout or type(rawRow) ~= "table" then
+        return false, "not_found"
+    end
+
+    Loadouts.EnsureLoadoutShape(loadout)
+    local targetId, targetType = Loadouts.ResolveEntryRow(rawRow)
+    local targetSpell = NormalizeId(rawRow.spellId)
+    local found = false
+
+    for index = 1, #loadout.entries do
+        local row = loadout.entries[index]
+        if type(row) == "table" then
+            local entryId, entryType = Loadouts.ResolveEntryRow(row)
+            local spellId = NormalizeId(row.spellId)
+            local match = false
+            if targetId and entryId == targetId and entryType == targetType then
+                match = true
+            elseif targetSpell and spellId == targetSpell then
+                match = true
+            end
+            if match then
+                rawRow = row
+                found = true
+                break
+            end
+        end
+    end
+
+    if not found then
+        return false, "missing"
+    end
+
+    local tags = NormalizeTags(rawRow.tags)
+    local currentIndex = 0
+    for cycleIndex = 1, #Loadouts.TAG_CYCLE do
+        local key = Loadouts.TAG_CYCLE[cycleIndex]
+        if tags[key] then
+            currentIndex = cycleIndex
+            break
+        end
+    end
+
+    local nextIndex = currentIndex + 1
+    if nextIndex > #Loadouts.TAG_CYCLE then
+        nextIndex = 0
+    end
+
+    local nextTags = { core = false, optimal = false, empowering = false, synergistic = false }
+    if nextIndex > 0 then
+        nextTags[Loadouts.TAG_CYCLE[nextIndex]] = true
+    end
+    rawRow.tags = nextTags
+    loadout.updatedAt = Now()
+    return true, TagLabel(nextTags), rawRow
 end
 
 function Loadouts.ToggleEntryDesired(id, rawRow)
