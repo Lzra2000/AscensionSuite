@@ -26,6 +26,8 @@ local frameLevel
 local rollButtonLevel
 local suiteShown = true
 local hoverClears = 0
+local mouseEnabled = true
+local registerCalls = 0
 
 local rollButton = {
     SetFrameLevel = function(_, level)
@@ -64,9 +66,14 @@ _G.WildCardDice = {
         end,
     },
     OnLeave = function() end,
-    IsMouseEnabled = function() return true end,
-    EnableMouse = function() end,
-    RegisterOnClick = function() end,
+    IsMouseEnabled = function() return mouseEnabled end,
+    EnableMouse = function(_, enabled) mouseEnabled = enabled == true end,
+    RegisterOnClick = function()
+        registerCalls = registerCalls + 1
+        mouseEnabled = true
+    end,
+    GetAlpha = function() return 1 end,
+    SetAlpha = function() end,
 }
 
 _G.AscensionSuiteMainWindow = {
@@ -111,11 +118,27 @@ assert(API.RestoreDiceAfterSuite() == true, "restore after Suite")
 assert(frameStrata == "FULLSCREEN_DIALOG", "restored Ascension native strata")
 assert(_G.WildCardDice._asuiteDemotedForSuite == nil, "demote flag cleared")
 
+-- Suite hide must re-enable mouse on an interactive die (even if demote flag gone).
+suiteShown = true
+frameStrata = "FULLSCREEN_DIALOG"
+frameLevel = 128
+mouseEnabled = true
+registerCalls = 0
+assert(API.DemoteDiceBelowSuite() == true, "demote before mouse-off case")
+mouseEnabled = false
+suiteShown = false
+_G.WildCardDice._asuiteDemotedForSuite = nil
+_G.WildCardDice._asuiteNativeStrata = "FULLSCREEN_DIALOG"
+assert(API.RestoreDiceAfterSuite() == true, "restore heals mouse without demote flag")
+assert(mouseEnabled == true, "Suite hide restores READY_TO_ROLL mouse")
+assert(registerCalls >= 1, "Suite hide calls RegisterOnClick")
+
 -- Rapid-rolling die is never demoted (parented to Rapid board).
 suiteShown = true
 _G.WildCardDice.isRapidRolling = true
 frameStrata = "FULLSCREEN_DIALOG"
 _G.WildCardDice._asuiteDemotedForSuite = nil
+mouseEnabled = true
 assert(API.DemoteDiceBelowSuite() == false, "rapid die not demoted")
 assert(frameStrata == "FULLSCREEN_DIALOG", "rapid strata untouched")
 assert(API.ResolveDiceGuardMode() == "rapid", "rapid mode")

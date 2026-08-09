@@ -2,6 +2,11 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
+**v0.5.3** fixes the leveling die stuck on **“Click the Dice to reveal a spell”**
+with mouse disabled: sticky Ascension `FadeMode OUT` no longer blocks READY_TO_ROLL
+heal, Instant Skip / DiceGuard prefer click recovery over stealer-clear, and Suite
+close re-enables mouse even without a demote flag.
+
 **v0.5.2** hardens **Wild Card / Rapid Rolling dice** edge cases: fade-IN is no longer
 treated as fade-out, Ascension's native `FULLSCREEN_DIALOG` is no longer rewritten to
 `MEDIUM`, recovery cooldown no longer blocks healing a fresh roll die, Suite close

@@ -76,9 +76,27 @@ local function MarkDiceSkipRecovery()
     recoveryUntil = now + RECOVERY_WINDOW_SECONDS
 end
 
+local function DiceNeedsClickHeal(API)
+    if not API then
+        return false
+    end
+    if API.IsDiceFadingOut and API.IsDiceFadingOut() then
+        return false
+    end
+    if API.DiceShouldAcceptClicks and API.IsDiceShownUnclickable then
+        return API.DiceShouldAcceptClicks() == true and API.IsDiceShownUnclickable() == true
+    end
+    return false
+end
+
 local function ShouldDeferDiceRecovery()
     local API = AscensionSuite.AscensionAPI
     if not API then
+        return false
+    end
+    -- Interactive READY_TO_ROLL / decision dice must heal even during recovery
+    -- cooldown; never ClearDiceClickStealer over a live click prompt.
+    if DiceNeedsClickHeal(API) then
         return false
     end
     if API.ShouldLetDiceHide and API.ShouldLetDiceHide() then
@@ -103,22 +121,27 @@ local function ScheduleEnsureDiceClickable(forceDecision)
 
     local force = forceDecision == true
     -- SetInternalID (force) must still recover a revealed decision die; only a
-    -- true FadeMode OUT defer blocks that path. Appear fade-IN must not.
+    -- true active FadeMode OUT defer blocks that path. Appear fade-IN must not.
+    -- Interactive dice never take the ClearDiceClickStealer defer branch.
     if not force and ShouldDeferDiceRecovery() then
-        if API.ClearDiceClickStealer then
-            API.ClearDiceClickStealer()
-        end
-        if API.ClearDiceHoverArtifacts then
-            API.ClearDiceHoverArtifacts()
+        if not DiceNeedsClickHeal(API) then
+            if API.ClearDiceClickStealer then
+                API.ClearDiceClickStealer()
+            end
+            if API.ClearDiceHoverArtifacts then
+                API.ClearDiceHoverArtifacts()
+            end
         end
         return
     end
     if force and API.IsDiceFadingOut and API.IsDiceFadingOut() then
-        if API.ClearDiceClickStealer then
-            API.ClearDiceClickStealer()
-        end
-        if API.ClearDiceHoverArtifacts then
-            API.ClearDiceHoverArtifacts()
+        if not DiceNeedsClickHeal(API) then
+            if API.ClearDiceClickStealer then
+                API.ClearDiceClickStealer()
+            end
+            if API.ClearDiceHoverArtifacts then
+                API.ClearDiceHoverArtifacts()
+            end
         end
         return
     end
@@ -137,6 +160,11 @@ local function ScheduleEnsureDiceClickable(forceDecision)
             ensureElapsed = 0
             local forced = ensureForceDecision
             ensureForceDecision = false
+            if DiceNeedsClickHeal(API) then
+                MarkDiceSkipRecovery()
+                API.EnsureDiceClickable()
+                return
+            end
             if forced then
                 if API.IsDiceFadingOut and API.IsDiceFadingOut() then
                     if API.ClearDiceClickStealer then
