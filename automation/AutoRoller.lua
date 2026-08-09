@@ -92,6 +92,14 @@ local function CanOperate(skipTargets)
         return false, "not_wildcard"
     end
     if not skipTargets and not HasDesiredTargets() then
+        local Wishlist = AscensionSuite.Wishlist
+        if Wishlist and Wishlist.GetDesiredEligibilitySummary then
+            local summary = Wishlist.GetDesiredEligibilitySummary()
+            if summary and summary.total > 0 and summary.eligible == 0
+                and (summary.meta > 0 or summary.ineligible > 0) then
+                return false, "wishlist_tags_only"
+            end
+        end
         return false, "no_desired_targets"
     end
     if not api.IsRapidRollingFrameShown() and not api.CanRollAbilities() then

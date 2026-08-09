@@ -137,7 +137,7 @@ pushed, already, failed, reason, refuses = Wishlist.PushToDesired()
 assert(failed >= 1, "refused entry counted (got " .. tostring(failed) .. ")")
 assert(type(refuses) == "table" and #refuses >= 1, "refuse list returned")
 local summary = Loadouts.FormatRefuseSummary(refuses)
-assert(type(summary) == "string" and summary:find("refused"), "summary mentions refuse")
+assert(type(summary) == "string" and summary:find("cannot mark Desired"), "summary explains refuse reason")
 
 ------------------------------------------------------------------------
 -- Loadouts save / load / export / import

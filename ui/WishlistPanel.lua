@@ -417,7 +417,7 @@ local function PushToDesired()
         return
     end
 
-    local pushed, already, failed, reason, refuses = Wishlist.PushToDesired()
+    local pushed, already, failed, reason, refuses, skipped = Wishlist.PushToDesired()
     if reason == "not_wildcard" then
         WishlistPanel.Refresh("Desired sync needs Wildcard mode. Your wishlist is saved and waiting.")
         return
@@ -427,18 +427,30 @@ local function PushToDesired()
         return
     end
 
-    local note = string.format("Pushed %d to Desired (%d already there", pushed, already)
-    if failed > 0 then
-        note = note .. string.format(", %d refused", failed)
-        local Loadouts = AscensionSuite.Loadouts
-        if Loadouts and Loadouts.FormatRefuseSummary and type(refuses) == "table" and #refuses > 0 then
-            local detail = Loadouts.FormatRefuseSummary(refuses)
-            if detail then
-                note = note .. ": " .. detail
-            end
-        end
+    local Loadouts = AscensionSuite.Loadouts
+    local note
+    if Loadouts and Loadouts.FormatPushSummary then
+        note = Loadouts.FormatPushSummary(pushed, already, failed, skipped, refuses)
+    else
+        note = string.format("Pushed %d to Desired (%d already there).", pushed, already)
     end
-    WishlistPanel.Refresh(note .. ").")
+    if skipped and skipped > 0 and pushed == 0 and failed == 0 and Wishlist.RemoveIneligibleEntries then
+        note = note .. " Use Clear tags to remove Tag rows from the wishlist."
+    end
+    WishlistPanel.Refresh(note)
+end
+
+local function ClearTags()
+    local Wishlist = GetWishlist()
+    if not Wishlist or not Wishlist.RemoveIneligibleEntries then
+        return
+    end
+    local removed = Wishlist.RemoveIneligibleEntries()
+    if removed > 0 then
+        WishlistPanel.Refresh(string.format("Removed %d Tag/meta rows from the wishlist.", removed))
+    else
+        WishlistPanel.Refresh("No Tag or meta rows to remove.")
+    end
 end
 
 ------------------------------------------------------------------------
@@ -741,6 +753,13 @@ local function BuildPanel(parent, width)
     clearButton:SetPoint("TOPRIGHT", listFrame, "BOTTOMRIGHT", 0, -8)
     clearButton:SetText("Clear list")
     clearButton:SetScript("OnClick", ClearList)
+
+    local clearTagsButton = CreateFrame("Button", FRAME_NAME .. "ClearTagsButton", panel, "UIPanelButtonTemplate")
+    clearTagsButton:SetWidth(90)
+    clearTagsButton:SetHeight(22)
+    clearTagsButton:SetPoint("RIGHT", clearButton, "LEFT", -8, 0)
+    clearTagsButton:SetText("Clear tags")
+    clearTagsButton:SetScript("OnClick", ClearTags)
 
     pushButton = CreateFrame("Button", FRAME_NAME .. "PushButton", panel, "UIPanelButtonTemplate")
     pushButton:SetWidth(140)

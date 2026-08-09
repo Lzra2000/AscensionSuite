@@ -119,6 +119,7 @@ end
 local STOP_REASONS = {
     assist_off = "assist switched off",
     no_desired_targets = "nothing on the wishlist is Desired yet",
+    wishlist_tags_only = "wishlist has only Tag/meta rows — Clear tags or re-import Archetype",
     level_out_of_range = "only runs while leveling 1-60",
     not_wildcard = "not in Wildcard mode",
     rapid_not_ready = "no roll available right now",
@@ -409,6 +410,8 @@ local function StartAutoRoll()
                 if Wishlist and Wishlist.Count and Wishlist.Count() > 0 then
                     detail = detail .. " — Wishlist tab → Push to Desired"
                 end
+            elseif reason == "wishlist_tags_only" then
+                detail = detail .. " — Wishlist tab → Clear tags"
             end
             autoRollStatus:SetText("Auto-Roll did not start - " .. detail)
             autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)

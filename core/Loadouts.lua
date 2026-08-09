@@ -74,6 +74,45 @@ local function GetWishlist()
     return AscensionSuite.Wishlist
 end
 
+local function EntryTypeEligible(api, entryType)
+    if not entryType then
+        return false
+    end
+    if api and api.IsDesiredEligibleType then
+        return api.IsDesiredEligibleType(entryType) == true
+    end
+    return entryType == "Ability" or entryType == "Talent"
+end
+
+local function EntryTypeIsMeta(api, entryType)
+    if not entryType then
+        return false
+    end
+    if api and api.IsMetaEntryType then
+        return api.IsMetaEntryType(entryType) == true
+    end
+    return entryType == "Tag" or entryType == "Suggestion"
+end
+
+local function RefuseReasonForPush(api, entryType, resolveErr, canAdd)
+    if resolveErr then
+        return resolveErr
+    end
+    if api and api.DescribeEntryTypeRefuse then
+        return api.DescribeEntryTypeRefuse(entryType, nil)
+    end
+    if EntryTypeIsMeta(api, entryType) then
+        return "tag_not_desired"
+    end
+    if not EntryTypeEligible(api, entryType) then
+        return "type_not_desired"
+    end
+    if canAdd == false then
+        return "can_add_false"
+    end
+    return "refused"
+end
+
 local function NormalizeId(value)
     local id = tonumber(value)
     if not id then
@@ -383,16 +422,16 @@ end
 local function PushRowsToDesired(rows)
     local api = GetAPI()
     if not api then
-        return 0, 0, 0, "no_api", {}
+        return 0, 0, 0, "no_api", {}, 0
     end
     if not api.IsWildcardModeActive() then
-        return 0, 0, 0, "not_wildcard", {}
+        return 0, 0, 0, "not_wildcard", {}, 0
     end
 
-    local pushed, already, failed = 0, 0, 0
+    local pushed, already, failed, skipped = 0, 0, 0, 0
     local refuses = {}
     if type(rows) ~= "table" then
-        return pushed, already, failed, nil, refuses
+        return pushed, already, failed, nil, refuses, skipped
     end
 
     for index = 1, #rows do
@@ -403,11 +442,16 @@ local function PushRowsToDesired(rows)
             if not entryId then
                 failed = failed + 1
                 refuses[#refuses + 1] = { name = label, reason = resolveErr or "unresolved" }
+            elseif EntryTypeIsMeta(api, entryType) or not EntryTypeEligible(api, entryType) then
+                skipped = skipped + 1
             elseif api.IsDesiredID(entryId, entryType) then
                 already = already + 1
             elseif not api.CanAddDesiredID(entryId, entryType) then
                 failed = failed + 1
-                refuses[#refuses + 1] = { name = label, reason = "refused" }
+                refuses[#refuses + 1] = {
+                    name = label,
+                    reason = RefuseReasonForPush(api, entryType, nil, false),
+                }
             else
                 local added, addReason = api.AddDesiredID(entryId, entryType)
                 if added then
@@ -419,7 +463,7 @@ local function PushRowsToDesired(rows)
             end
         end
     end
-    return pushed, already, failed, nil, refuses
+    return pushed, already, failed, nil, refuses, skipped
 end
 
 local function WishlistRowToEntry(item, markDesired)
@@ -665,6 +709,11 @@ function Loadouts.AddEntry(id, row)
                 entryType = entryType or NormalizeEntryType(entry.Type or entry.type)
             end
         end
+    end
+
+    local api = GetAPI()
+    if entryType and (EntryTypeIsMeta(api, entryType) or not EntryTypeEligible(api, entryType)) then
+        return false, "meta_entry"
     end
 
     for index = 1, #loadout.entries do
@@ -1132,8 +1181,12 @@ function Loadouts.ToggleEntryDesired(id, rawRow)
             return true, false, label
         end
 
+        if EntryTypeIsMeta(api, entryType) or not EntryTypeEligible(api, entryType) then
+            return false, "meta_entry", label
+        end
+
         if not api.CanAddDesiredID or not api.CanAddDesiredID(entryId, entryType) then
-            return false, "refused", label
+            return false, RefuseReasonForPush(api, entryType, nil, false), label
         end
 
         local added, addReason = api.AddDesiredID(entryId, entryType)
@@ -1209,13 +1262,17 @@ function Loadouts.LoadToWishlist(id)
     end
 
     local added = 0
+    local skipped = 0
     for index = 1, #loadout.entries do
         local row = loadout.entries[index]
         if type(row) == "table" then
             Loadouts.ResolveEntryRow(row)
             local entryId = NormalizeId(row.entryId)
             local entryType = NormalizeEntryType(row.entryType)
-            if entryId and entryType and Wishlist.AddEntry then
+            local api = GetAPI()
+            if entryType and (EntryTypeIsMeta(api, entryType) or not EntryTypeEligible(api, entryType)) then
+                skipped = skipped + 1
+            elseif entryId and entryType and Wishlist.AddEntry then
                 local ok = Wishlist.AddEntry(entryId, entryType, row.spellId, row.name)
                 if ok then
                     added = added + 1
@@ -1233,7 +1290,7 @@ function Loadouts.LoadToWishlist(id)
             end
         end
     end
-    return true, added
+    return true, added, skipped
 end
 
 function Loadouts.PushToDesired(id, filters)
@@ -1253,17 +1310,19 @@ function Loadouts.PushToDesired(id, filters)
 end
 
 function Loadouts.Apply(id, filters)
-    local ok, count = Loadouts.LoadToWishlist(id)
+    local ok, count, loadSkipped = Loadouts.LoadToWishlist(id)
     if not ok then
         return false, count, nil
     end
 
-    local pushed, already, failed, gate, refuses = Loadouts.PushToDesired(id, filters)
+    local pushed, already, failed, gate, refuses, pushSkipped = Loadouts.PushToDesired(id, filters)
     local result = {
         loaded = count,
+        loadedSkipped = loadSkipped or 0,
         pushed = pushed,
         already = already,
         failed = failed,
+        skipped = (loadSkipped or 0) + (pushSkipped or 0),
         refuses = refuses,
         gate = gate,
     }
@@ -1524,7 +1583,8 @@ local function EncodeShareEntries(loadout)
         if type(row) == "table" then
             local entryId, entryType = Loadouts.ResolveEntryRow(row)
             entryType = NormalizeEntryType(entryType) or "Ability"
-            if entryId then
+            local api = GetAPI()
+            if entryId and EntryTypeEligible(api, entryType) then
                 local name = EscapeShareName(row.name or ("e" .. tostring(entryId)))
                 parts[#parts + 1] = entryType .. ":" .. tostring(entryId) .. ":" .. name
             end
@@ -1641,16 +1701,23 @@ function Loadouts.ImportString(text, shared)
 
     local expected = tonumber(countText) or 0
     local entries = {}
+    local skippedMeta = 0
     if body and body ~= "" then
         for token in body:gmatch("[^;]+") do
             local row = ParseShareEntry(token)
             if row then
-                entries[#entries + 1] = row
+                local api = GetAPI()
+                local entryType = NormalizeEntryType(row.entryType)
+                if entryType and (EntryTypeIsMeta(api, entryType) or not EntryTypeEligible(api, entryType)) then
+                    skippedMeta = skippedMeta + 1
+                else
+                    entries[#entries + 1] = row
+                end
             end
         end
     end
 
-    if expected > 0 and #entries ~= expected then
+    if expected > 0 and (#entries + skippedMeta) ~= expected then
         return nil, "count_mismatch"
     end
 
@@ -1702,16 +1769,73 @@ function Loadouts.FormatRefuseSummary(refuses, maxNames)
         return nil
     end
     maxNames = maxNames or 3
+
+    local REASON_LABELS = {
+        tag_not_desired = "Tag",
+        type_not_desired = "not Ability/Talent",
+        can_add_false = "cannot mark Desired",
+        unresolved = "unresolved",
+        incomplete_entry = "unresolved",
+        invalid_item = "unresolved",
+        add_failed = "add failed",
+        remove_failed = "remove failed",
+        refused = "refused",
+        meta_entry = "Tag/meta row",
+    }
+
     local parts = {}
     for index = 1, math.min(#refuses, maxNames) do
         local row = refuses[index]
         local label = row.name or "?"
         local reason = row.reason or "refused"
-        parts[#parts + 1] = label .. " (" .. reason .. ")"
+        local reasonLabel = REASON_LABELS[reason] or reason
+        parts[#parts + 1] = label .. " (" .. reasonLabel .. ")"
     end
     local tail = ""
     if #refuses > maxNames then
         tail = string.format(" +%d more", #refuses - maxNames)
     end
     return table.concat(parts, ", ") .. tail
+end
+
+function Loadouts.FormatPushSummary(pushed, already, failed, skipped, refuses)
+    local note = string.format("Pushed %d to Desired (%d already there", pushed or 0, already or 0)
+    if skipped and skipped > 0 then
+        note = note .. string.format(", skipped %d Tag/meta rows", skipped)
+    end
+    if failed and failed > 0 then
+        note = note .. string.format(", %d refused", failed)
+        local detail = Loadouts.FormatRefuseSummary(refuses)
+        if detail then
+            note = note .. ": " .. detail
+        end
+    end
+    return note .. ")."
+end
+
+function Loadouts.RemoveIneligibleEntries(id)
+    local loadout = Loadouts.Get(id)
+    if not loadout or type(loadout.entries) ~= "table" then
+        return false, "not_found", 0
+    end
+    local api = GetAPI()
+    local removed = 0
+    for index = #loadout.entries, 1, -1 do
+        local row = loadout.entries[index]
+        if type(row) == "table" then
+            local entryId, entryType = Loadouts.ResolveEntryRow(row)
+            entryType = NormalizeEntryType(entryType or row.entryType)
+            if entryType and (EntryTypeIsMeta(api, entryType) or not EntryTypeEligible(api, entryType)) then
+                table.remove(loadout.entries, index)
+                removed = removed + 1
+            elseif not entryId and not NormalizeId(row.spellId) then
+                table.remove(loadout.entries, index)
+                removed = removed + 1
+            end
+        end
+    end
+    if removed > 0 then
+        loadout.updatedAt = Now()
+    end
+    return true, removed
 end
