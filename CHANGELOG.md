@@ -3,6 +3,25 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.11 (2026-08-09) -- Revealed decision dice clickable again
+
+#### Fixed
+- **Post-reveal Wild Card decision die unclickable** — after Instant Dice Skip or
+  animation overlap, the leveling die could finish reveal (`SetInternalID`, green cage
+  + spell icon, `RollButton` offer) while `EnableMouse(false)` or low strata left it
+  stranded over nameplates. `DiceShouldAcceptClicks` now recognizes visually revealed
+  decisions (including Core stuck in `REVEALING` after skip); `EnsureDiceClickable`
+  restores native `RegisterOnClick`, refreshes `UpdateRollButton`, and raises
+  `FULLSCREEN_DIALOG` strata. Animation Skip hooks `OnFinishedCollapse` and
+  `SetInternalID`; DiceGuard also watches `WILDCARD_UNLEARN_ABILITY_RESULT`.
+- **Auto-Roll** still halts on keep-vs-unlearn decisions (`0.4.10` rule); Suite never
+  auto-presses Unlearn, Lock, or `ConfirmOrUnlearnID`.
+
+#### Added
+- `AscensionAPI.IsDiceRevealedDecisionShown`.
+- `tests/test_dice_clickable.lua` coverage for `DECISION_PENDING` and stranded
+  post-reveal `REVEALING` recovery.
+
 ### 0.4.10 (2026-08-09) -- Auto-Roll never auto-Unlearns
 
 #### Fixed

@@ -1320,6 +1320,85 @@ local function GetDiceCoreState(dice)
     return state, core.State
 end
 
+local DICE_DECISION_STRATA = "FULLSCREEN_DIALOG"
+local DICE_DECISION_FRAME_LEVEL = 128
+
+local function FrameChildIsShown(frame)
+    if type(frame) ~= "table" or type(frame.IsShown) ~= "function" then
+        return false
+    end
+    local ok, shown = pcall(frame.IsShown, frame)
+    return ok and shown == true
+end
+
+local function GetDiceInternalID(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" or type(dice.GetInternalID) ~= "function" then
+        return nil
+    end
+    local ok, id = pcall(dice.GetInternalID, dice)
+    if ok and id and id ~= 0 then
+        return id
+    end
+    return nil
+end
+
+-- Post-reveal keep-vs-unlearn: green cage + spell icon / name frame / Roll offer.
+function API.IsDiceRevealedDecisionShown(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" or dice.isRapidRolling then
+        return false
+    end
+    if dice.pendingReveal then
+        return false
+    end
+    if not GetDiceInternalID(dice) then
+        return false
+    end
+    if FrameChildIsShown(dice.Icon) then
+        return true
+    end
+    if FrameChildIsShown(dice.NameFrame) then
+        return true
+    end
+    if API.IsDiceUnlearnRollOffered(dice) then
+        return true
+    end
+    return false
+end
+
+local function RaiseDiceAboveClutter(dice)
+    if type(dice.SetFrameStrata) == "function" then
+        pcall(dice.SetFrameStrata, dice, DICE_DECISION_STRATA)
+    end
+    if type(dice.SetFrameLevel) == "function" then
+        pcall(dice.SetFrameLevel, dice, DICE_DECISION_FRAME_LEVEL)
+    end
+    local rollButton = dice.RollButton
+    if type(rollButton) == "table" and type(rollButton.SetFrameLevel) == "function" then
+        pcall(rollButton.SetFrameLevel, rollButton, DICE_DECISION_FRAME_LEVEL + 1)
+    end
+end
+
+-- Refresh RollButton state and lift strata for a stranded post-reveal decision die.
+local function SyncDiceDecisionAffordances(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" then
+        return false
+    end
+    if not API.IsDiceRevealedDecisionShown(dice) and not API.IsDiceDecisionPending(dice) then
+        return false
+    end
+
+    RaiseDiceAboveClutter(dice)
+
+    if API.IsDiceUnlearnRollOffered(dice) and type(dice.UpdateRollButton) == "function" then
+        pcall(dice.UpdateRollButton, dice)
+    end
+
+    return true
+end
+
 -- Character Advancement unlearn / reset confirms from patch-B StaticPopup.lua.
 -- PopupAssist must never accept these; Auto-Roll must halt while any is visible.
 local UNLEARN_CONFIRM_DIALOGS = {
@@ -1404,9 +1483,9 @@ function API.IsUnlearnOrKeepDecisionPending()
     return false
 end
 
--- READY_TO_ROLL (golden d20) and DECISION_PENDING (confirm/reroll) are the only
--- Core states Ascension wires to RegisterOnClick. A shown die in either state
--- with EnableMouse false is the level-up / animation-skip hang players report.
+-- READY_TO_ROLL (golden d20), DECISION_PENDING (confirm/reroll), and a visually
+-- revealed decision (icon/name frame) are clickable. Animation skip can strand
+-- Core in REVEALING while SetInternalID already rendered the spell icon.
 function API.DiceShouldAcceptClicks(dice)
     dice = dice or _G.WildCardDice
     if type(dice) ~= "table" then
@@ -1415,7 +1494,17 @@ function API.DiceShouldAcceptClicks(dice)
 
     local state, states = GetDiceCoreState(dice)
     if state and states then
-        return state == states.READY_TO_ROLL or state == states.DECISION_PENDING
+        if state == states.READY_TO_ROLL or state == states.DECISION_PENDING then
+            return true
+        end
+        if state == states.REVEALING and API.IsDiceRevealedDecisionShown(dice) then
+            return true
+        end
+        return false
+    end
+
+    if API.IsDiceRevealedDecisionShown(dice) then
+        return true
     end
 
     if dice.RollButton and type(dice.RollButton.IsVisible) == "function" then
@@ -1455,32 +1544,42 @@ function API.IsDiceShownUnclickable()
 end
 
 -- Re-enable mouse / visibility on a shown die that should accept clicks but does
--- not. Never touches roll starters or the dice state machine beyond what
--- RegisterOnClick already does when Ascension enters READY_TO_ROLL.
+-- not. Never auto-presses Unlearn, Lock, or ConfirmOrUnlearnID. Refreshes native
+-- RollButton enablement and raises strata when a post-reveal decision is shown.
 function API.EnsureDiceClickable()
-    if not API.IsDiceShownUnclickable() then
+    local dice = _G.WildCardDice
+    if type(dice) ~= "table" then
         return false
     end
 
-    local dice = _G.WildCardDice
-    if type(dice.RegisterOnClick) == "function" then
-        pcall(dice.RegisterOnClick, dice)
-    elseif type(dice.EnableMouse) == "function" then
-        pcall(dice.EnableMouse, dice, true)
+    local healed = false
+    local shownOk, shown = false, false
+    if type(dice.IsShown) == "function" then
+        shownOk, shown = pcall(dice.IsShown, dice)
     end
 
-    if type(dice.GetAlpha) == "function" and type(dice.SetAlpha) == "function" then
-        local alphaOk, alpha = pcall(dice.GetAlpha, dice)
-        if alphaOk and (not alpha or alpha < 0.1) then
-            pcall(dice.SetAlpha, dice, 1)
+    if shownOk and shown == true and API.DiceShouldAcceptClicks(dice) then
+        local needsMouse = API.IsDiceShownUnclickable()
+        if needsMouse then
+            if type(dice.RegisterOnClick) == "function" then
+                pcall(dice.RegisterOnClick, dice)
+            elseif type(dice.EnableMouse) == "function" then
+                pcall(dice.EnableMouse, dice, true)
+            end
+
+            if type(dice.GetAlpha) == "function" and type(dice.SetAlpha) == "function" then
+                local alphaOk, alpha = pcall(dice.GetAlpha, dice)
+                if alphaOk and (not alpha or alpha < 0.1) then
+                    pcall(dice.SetAlpha, dice, 1)
+                end
+            end
+
+            healed = true
         end
     end
 
-    if type(dice.SetFrameStrata) == "function" then
-        pcall(dice.SetFrameStrata, dice, "FULLSCREEN_DIALOG")
-    end
-
-    return true
+    local affordances = SyncDiceDecisionAffordances(dice)
+    return healed or affordances
 end
 
 -- Mirrors WildCardRapidRollingMixin:IsRapidRollingDiceActive. A shown die with

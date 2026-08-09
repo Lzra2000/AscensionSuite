@@ -2,7 +2,7 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
-**v0.4.10** stops **Auto-Roll** when a keep-vs-unlearn decision is up (`DECISION_PENDING`,
+**v0.4.11** fixes **post-reveal Wild Card decision dice** left unclickable after Instant Dice Skip (green cage + spell icon stranded over nameplates): `EnsureDiceClickable` now covers revealed `DECISION_PENDING` / stranded `REVEALING` visuals, refreshes native RollButton enablement, raises strata, and Animation Skip / DiceGuard schedule recovery after collapse / `SetInternalID`. **v0.4.10** stops **Auto-Roll** when a keep-vs-unlearn decision is up (`DECISION_PENDING`,
 `CONFIRM_UNLEARN_S`, Scroll of Fortune spend): Suite never auto-Unlearns; Cancel/Unlearn is
 always yours. **v0.4.9** fixes **Wild Card dice clickability after level-ups**: when animation skip or
 overlapping roll sessions left the die shown with mouse disabled, `EnsureDiceClickable`

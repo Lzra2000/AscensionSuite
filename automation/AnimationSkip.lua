@@ -195,6 +195,18 @@ local function AttachDice()
         end)
     end
 
+    if type(dice.OnFinishedCollapse) == "function" then
+        hooksecurefunc(dice, "OnFinishedCollapse", function()
+            ScheduleEnsureDiceClickable()
+        end)
+    end
+
+    if type(dice.SetInternalID) == "function" then
+        hooksecurefunc(dice, "SetInternalID", function()
+            ScheduleEnsureDiceClickable()
+        end)
+    end
+
     local scrollFrame = dice.ScrollFrame
     if type(scrollFrame) == "table" and type(scrollFrame.Play) == "function" then
         hooksecurefunc(scrollFrame, "Play", function(self)
