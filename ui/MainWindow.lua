@@ -1344,6 +1344,15 @@ local function EnsureFrame()
         if panel and panel.HideTooltips then
             panel.HideTooltips()
         end
+        local API = AscensionSuite.AscensionAPI
+        if API then
+            if API.ClearDiceHoverArtifacts then
+                API.ClearDiceHoverArtifacts()
+            end
+            if API.RestoreDiceAfterSuite then
+                API.RestoreDiceAfterSuite()
+            end
+        end
     end)
     frame:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()

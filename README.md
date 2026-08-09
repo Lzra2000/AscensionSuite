@@ -2,6 +2,11 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
+**v0.5.2** hardens **Wild Card / Rapid Rolling dice** edge cases: fade-IN is no longer
+treated as fade-out, Ascension's native `FULLSCREEN_DIALOG` is no longer rewritten to
+`MEDIUM`, recovery cooldown no longer blocks healing a fresh roll die, Suite close
+restores dice layering, and DiceGuard / Instant Skip share one guard mode path.
+
 **v0.5.1** applies that native WotLK parchment / gold chrome to **every** `/asuite`
 tab — Wishlist, Loadouts, and Assists — so no layer is left on flat-dark panels.
 

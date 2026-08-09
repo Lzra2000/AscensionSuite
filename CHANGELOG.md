@@ -3,6 +3,41 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.5.2 (2026-08-09) -- Wild Card dice edge-case harden
+
+#### Fixed
+- **Fade-IN treated as fade-out** — AscensionUI `BaseFrameFade` sets `FadeMode`
+  `"IN"` / `"OUT"` on the die; Suite had been treating any mid alpha as fade-out,
+  so appear ramps cleared mouse and fought Ascension's own `RegisterOnClick`.
+  `IsDiceFadingOut` now keys off `FadeMode == "OUT"` (plus the sandbox fade stub).
+- **Native FULLSCREEN_DIALOG rewritten to MEDIUM** — Ascension creates
+  `WildCardDice` at `FULLSCREEN_DIALOG`. Suite treated that as a Suite-raised
+  click-stealer and "restored" it to `MEDIUM` during mid-reveal / idle clear,
+  leaving the die under other UI. Strata restore now only undoes Suite's own
+  `_asuiteStrataRaised` / `_asuiteDemotedForSuite` mutations.
+- **Recovery cooldown blocked new rolls** — after hiding a lingerer, the 2s
+  cooldown refused to heal a fresh `READY_TO_ROLL` / decision die. Cooldown still
+  suppresses hide thrash, but interactive dice heal through it.
+- **Instant Dice Skip force recovery deferred forever** — `SetInternalID` scheduled
+  ensure with `forceDecision`, but the deferred OnUpdate still ran the full defer
+  gate (including false fade-IN). Force path now only defers on true fade-out.
+- **Suite close left die demoted** — closing `/asuite` now
+  `RestoreDiceAfterSuite` back to Ascension native layering and re-heals mouse
+  when the player still needs Continue / roll.
+- **Rapid Rolling die demoted with Suite** — rapid dice stay parented to the Rapid
+  board; Suite no longer rewrites their strata.
+
+#### Changed
+- DiceGuard / AnimationSkip / Ensure share one `ResolveDiceGuardMode` path
+  (`hide_linger` / `let_hide` / `demote` / `heal` / `clear_stealer`) instead of
+  stacking independent Clear / Ensure / Demote fights every frame.
+- Suite demote is idempotent (no hover/tooltip thrash on repeat calls).
+
+#### Added
+- `AscensionAPI.ResolveDiceGuardMode`, `RestoreDiceAfterSuite`.
+- Sandbox coverage for fade-IN vs OUT, cooldown heal, Suite demote/restore, and
+  rapid demote skip.
+
 ### 0.5.1 (2026-08-09) -- Native WotLK chrome on every /asuite tab
 
 #### Changed

@@ -1633,9 +1633,11 @@ local function GetDiceCoreState(dice)
     return state, core.State
 end
 
+-- Ascension creates WildCardDice at FULLSCREEN_DIALOG (WildCard.lua). Suite must
+-- not treat that native strata as a Suite-raised click-stealer.
 local DICE_DECISION_STRATA = "FULLSCREEN_DIALOG"
 local DICE_DECISION_FRAME_LEVEL = 128
-local DICE_NATIVE_STRATA = "MEDIUM"
+local DICE_NATIVE_STRATA = "FULLSCREEN_DIALOG"
 local DICE_SUITE_STRATA = "DIALOG"
 local SUITE_MAIN_WINDOW_NAME = "AscensionSuiteMainWindow"
 local SUITE_MAIN_FRAME_LEVEL = 130
@@ -1712,9 +1714,15 @@ local function CaptureDiceNativeLayering(dice)
     if type(dice) ~= "table" then
         return
     end
-    if not dice._asuiteNativeStrata and type(dice.GetFrameStrata) == "function" then
+    -- Once Suite has demoted/raised, do not re-sample the mutated strata as "native".
+    if dice._asuiteNativeStrata then
+        return
+    end
+    if dice._asuiteStrataRaised or dice._asuiteDemotedForSuite then
+        dice._asuiteNativeStrata = DICE_NATIVE_STRATA
+    elseif type(dice.GetFrameStrata) == "function" then
         local ok, strata = pcall(dice.GetFrameStrata, dice)
-        if ok and strata and strata ~= DICE_DECISION_STRATA then
+        if ok and type(strata) == "string" and strata ~= "" then
             dice._asuiteNativeStrata = strata
         end
     end
@@ -1723,7 +1731,7 @@ local function CaptureDiceNativeLayering(dice)
     end
     if not dice._asuiteNativeLevel and type(dice.GetFrameLevel) == "function" then
         local ok, level = pcall(dice.GetFrameLevel, dice)
-        if ok and level and level < DICE_DECISION_FRAME_LEVEL then
+        if ok and level then
             dice._asuiteNativeLevel = level
         end
     end
@@ -1731,7 +1739,7 @@ local function CaptureDiceNativeLayering(dice)
     if type(rollButton) == "table" and not dice._asuiteRollButtonLevel
         and type(rollButton.GetFrameLevel) == "function" then
         local ok, level = pcall(rollButton.GetFrameLevel, rollButton)
-        if ok and level and level < DICE_DECISION_FRAME_LEVEL then
+        if ok and level then
             dice._asuiteRollButtonLevel = level
         end
     end
@@ -1741,15 +1749,14 @@ local function RestoreDiceNativeLayering(dice)
     if type(dice) ~= "table" then
         return false
     end
+    -- Only undo Suite mutations; never rewrite Ascension's own FULLSCREEN_DIALOG.
+    if not dice._asuiteStrataRaised and not dice._asuiteDemotedForSuite then
+        return false
+    end
+
     local restored = false
     local strata = dice._asuiteNativeStrata or DICE_NATIVE_STRATA
-    if type(dice.GetFrameStrata) == "function" and type(dice.SetFrameStrata) == "function" then
-        local ok, current = pcall(dice.GetFrameStrata, dice)
-        if ok and current == DICE_DECISION_STRATA then
-            pcall(dice.SetFrameStrata, dice, strata)
-            restored = true
-        end
-    elseif type(dice.SetFrameStrata) == "function" then
+    if type(dice.SetFrameStrata) == "function" then
         pcall(dice.SetFrameStrata, dice, strata)
         restored = true
     end
@@ -1765,6 +1772,7 @@ local function RestoreDiceNativeLayering(dice)
         restored = true
     end
     dice._asuiteStrataRaised = nil
+    dice._asuiteDemotedForSuite = nil
     return restored
 end
 
@@ -1821,6 +1829,7 @@ local function DiceFadeAnimationPlaying(dice)
     if type(dice) ~= "table" then
         return false
     end
+    -- Sandbox / legacy stub; AscensionUI does not attach this object.
     local fade = dice.BaseFrameFadeOut
     if type(fade) == "table" and type(fade.IsPlaying) == "function" then
         local ok, playing = pcall(fade.IsPlaying, fade)
@@ -1831,20 +1840,19 @@ local function DiceFadeAnimationPlaying(dice)
     return false
 end
 
--- Ascension is mid BaseFrameFadeOut / alpha fade after a completed leveling roll.
+-- AscensionUI BaseFrameFade sets frame.FadeMode to "IN" or "OUT". Mid alpha alone
+-- is NOT fade-out — appear uses the same alpha ramp with FadeMode "IN", and Suite
+-- used to clear mouse / demote strata during that ramp.
 function API.IsDiceFadingOut(dice)
     dice = dice or _G.WildCardDice
     if type(dice) ~= "table" then
         return false
     end
-    if DiceFadeAnimationPlaying(dice) then
+    if dice.FadeMode == "OUT" then
         return true
     end
-    if type(dice.GetAlpha) == "function" then
-        local ok, alpha = pcall(dice.GetAlpha, dice)
-        if ok and alpha and alpha > 0 and alpha < 0.95 then
-            return true
-        end
+    if DiceFadeAnimationPlaying(dice) then
+        return true
     end
     return false
 end
@@ -1986,17 +1994,8 @@ local function MaybeSanitizeDiceHoverAfterRecovery(dice)
 end
 
 local function DiceStrataWasRaised(dice)
-    if type(dice) ~= "table" then
-        return false
-    end
-    if dice._asuiteStrataRaised then
-        return true
-    end
-    if type(dice.GetFrameStrata) == "function" then
-        local ok, strata = pcall(dice.GetFrameStrata, dice)
-        return ok and strata == DICE_DECISION_STRATA
-    end
-    return false
+    -- Only Suite's own raise flag — Ascension's native strata is FULLSCREEN_DIALOG.
+    return type(dice) == "table" and dice._asuiteStrataRaised == true
 end
 
 local function FrameIsMouseOver(frame)
@@ -2101,8 +2100,8 @@ local function RestoreDiceRollButtonAffordances(dice)
     return restored
 end
 
--- Shown die at FULLSCREEN_DIALOG with mouse on but not in a clickable state steals
--- clicks from Manastorm tracker dice and other UI after level-ups / animation skip.
+-- Non-interactive die with mouse on (or Suite-raised strata) steals clicks from
+-- Manastorm tracker / other UI. Does not rewrite Ascension's native FULLSCREEN_DIALOG.
 function API.ClearDiceClickStealer(dice)
     dice = dice or _G.WildCardDice
     if type(dice) ~= "table" then
@@ -2124,7 +2123,11 @@ function API.ClearDiceClickStealer(dice)
         end
     end
 
-    if DiceStrataWasRaised(dice) then
+    if IsSuiteMainWindowShown() and not dice.isRapidRolling and DiceIsShown(dice) then
+        if API.DemoteDiceBelowSuite(dice, { skipHoverClear = true }) then
+            cleared = true
+        end
+    elseif DiceStrataWasRaised(dice) then
         if RestoreDiceNativeLayering(dice) then
             cleared = true
         end
@@ -2142,30 +2145,45 @@ function API.ClearDiceClickStealer(dice)
 end
 
 -- While /asuite is open, keep the leveling die under the Suite window — never at
--- FULLSCREEN_DIALOG above MainWindow.
-function API.DemoteDiceBelowSuite(dice)
+-- FULLSCREEN_DIALOG above MainWindow. Rapid-rolling dice stay parented to the
+-- Rapid board and are left alone.
+function API.DemoteDiceBelowSuite(dice, opts)
     dice = dice or _G.WildCardDice
+    opts = opts or {}
     if type(dice) ~= "table" or not DiceIsShown(dice) then
         return false
     end
+    if dice.isRapidRolling then
+        return false
+    end
 
-    API.ClearDiceHoverArtifacts(dice)
     CaptureDiceNativeLayering(dice)
 
     local suiteLevel = SuiteMainWindowFrameLevel()
     local targetLevel = math.max(1, suiteLevel - 2)
+    local already = false
+    if dice._asuiteDemotedForSuite and type(dice.GetFrameStrata) == "function" then
+        local ok, strata = pcall(dice.GetFrameStrata, dice)
+        already = ok and strata == DICE_SUITE_STRATA
+    end
 
-    if type(dice.SetFrameStrata) == "function" then
-        pcall(dice.SetFrameStrata, dice, DICE_SUITE_STRATA)
+    if not already then
+        if not opts.skipHoverClear then
+            API.ClearDiceHoverArtifacts(dice)
+        end
+        if type(dice.SetFrameStrata) == "function" then
+            pcall(dice.SetFrameStrata, dice, DICE_SUITE_STRATA)
+        end
+        if type(dice.SetFrameLevel) == "function" then
+            pcall(dice.SetFrameLevel, dice, targetLevel)
+        end
+        local rollButton = dice.RollButton
+        if type(rollButton) == "table" and type(rollButton.SetFrameLevel) == "function" then
+            pcall(rollButton.SetFrameLevel, rollButton, targetLevel + 1)
+        end
+        dice._asuiteDemotedForSuite = true
+        dice._asuiteStrataRaised = nil
     end
-    if type(dice.SetFrameLevel) == "function" then
-        pcall(dice.SetFrameLevel, dice, targetLevel)
-    end
-    local rollButton = dice.RollButton
-    if type(rollButton) == "table" and type(rollButton.SetFrameLevel) == "function" then
-        pcall(rollButton.SetFrameLevel, rollButton, targetLevel + 1)
-    end
-    dice._asuiteStrataRaised = nil
     return true
 end
 
@@ -2180,25 +2198,44 @@ local function RaiseDiceAboveClutter(dice)
     if type(dice) ~= "table" or not DiceIsShown(dice) or not API.DiceShouldAcceptClicks(dice) then
         return false
     end
+    if dice.isRapidRolling then
+        return false
+    end
 
     if IsSuiteMainWindowShown() then
-        return API.DemoteDiceBelowSuite(dice)
+        return API.DemoteDiceBelowSuite(dice, { skipHoverClear = true })
     end
 
     CaptureDiceNativeLayering(dice)
 
-    if type(dice.SetFrameStrata) == "function" then
+    local changed = false
+    if type(dice.GetFrameStrata) == "function" and type(dice.SetFrameStrata) == "function" then
+        local ok, strata = pcall(dice.GetFrameStrata, dice)
+        if not ok or strata ~= DICE_DECISION_STRATA then
+            pcall(dice.SetFrameStrata, dice, DICE_DECISION_STRATA)
+            changed = true
+        end
+    elseif type(dice.SetFrameStrata) == "function" then
         pcall(dice.SetFrameStrata, dice, DICE_DECISION_STRATA)
+        changed = true
     end
     if type(dice.SetFrameLevel) == "function" then
-        pcall(dice.SetFrameLevel, dice, DICE_DECISION_FRAME_LEVEL)
+        local ok, level = false, nil
+        if type(dice.GetFrameLevel) == "function" then
+            ok, level = pcall(dice.GetFrameLevel, dice)
+        end
+        if not ok or level ~= DICE_DECISION_FRAME_LEVEL then
+            pcall(dice.SetFrameLevel, dice, DICE_DECISION_FRAME_LEVEL)
+            changed = true
+        end
     end
     local rollButton = dice.RollButton
     if type(rollButton) == "table" and type(rollButton.SetFrameLevel) == "function" then
         pcall(rollButton.SetFrameLevel, rollButton, DICE_DECISION_FRAME_LEVEL + 1)
     end
     dice._asuiteStrataRaised = true
-    return true
+    dice._asuiteDemotedForSuite = nil
+    return changed or true
 end
 
 -- Refresh RollButton state and lift strata for a shown, clickable post-reveal die.
@@ -2468,6 +2505,53 @@ function API.IsDiceShownUnclickable()
     return mouseOk and enabled == false
 end
 
+-- Single mode resolver for DiceGuard / AnimationSkip / Unstick. Prefer this over
+-- stacking independent Ensure / Clear / Demote calls every frame.
+-- Modes: none | rapid | hide_linger | let_hide | demote | heal | clear_stealer | ok
+function API.ResolveDiceGuardMode(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" then
+        return "none"
+    end
+    if dice.isRapidRolling then
+        if API.IsDiceShownUnclickable() then
+            return "heal"
+        end
+        return "rapid"
+    end
+    if API.IsDiceStuckVisibleNonInteractive(dice) then
+        return "hide_linger"
+    end
+    if API.ShouldLetDiceHide(dice) then
+        return "let_hide"
+    end
+    if IsSuiteMainWindowShown() and DiceIsShown(dice) then
+        if API.DiceShouldAcceptClicks(dice) and API.IsDiceShownUnclickable() then
+            return "heal"
+        end
+        return "demote"
+    end
+    if API.IsDiceRecoveryCooldownActive() then
+        if DiceIsShown(dice) and API.DiceShouldAcceptClicks(dice) and not API.IsDiceFadingOut(dice) then
+            return "heal"
+        end
+        return "clear_stealer"
+    end
+    if DiceIsShown(dice) and API.DiceShouldAcceptClicks(dice) then
+        if API.IsDiceFadingOut(dice) then
+            return "let_hide"
+        end
+        if API.IsDiceShownUnclickable() then
+            return "heal"
+        end
+        if API.IsDiceRevealedDecisionShown(dice) or API.IsDiceDecisionPending(dice) then
+            return "heal"
+        end
+        return "ok"
+    end
+    return "clear_stealer"
+end
+
 -- Re-enable mouse / visibility on a shown die that should accept clicks but does
 -- not. Never auto-presses Unlearn, Lock, or ConfirmOrUnlearnID. Refreshes native
 -- RollButton enablement and raises strata when a post-reveal decision is shown.
@@ -2477,11 +2561,20 @@ function API.EnsureDiceClickable()
         return false
     end
 
-    if API.IsDiceStuckVisibleNonInteractive(dice) then
+    local mode = API.ResolveDiceGuardMode(dice)
+
+    if mode == "none" or mode == "rapid" or mode == "ok" then
+        if mode == "ok" and IsSuiteMainWindowShown() then
+            return API.DemoteDiceBelowSuite(dice, { skipHoverClear = true })
+        end
+        return false
+    end
+
+    if mode == "hide_linger" then
         return API.HideLingeringDice(dice)
     end
 
-    if API.ShouldLetDiceHide(dice) then
+    if mode == "let_hide" then
         local cleared = API.ClearDiceClickStealer(dice)
         API.ClearDiceHoverArtifacts(dice)
         if cleared then
@@ -2490,22 +2583,29 @@ function API.EnsureDiceClickable()
         return cleared
     end
 
-    if API.IsDiceRecoveryCooldownActive() then
+    if mode == "clear_stealer" then
         return API.ClearDiceClickStealer(dice)
     end
 
-    local cleared = API.ClearDiceClickStealer(dice)
+    if mode == "demote" then
+        return API.DemoteDiceBelowSuite(dice)
+    end
+
+    -- mode == "heal"
+    if not API.DiceShouldAcceptClicks(dice) then
+        return API.ClearDiceClickStealer(dice)
+    end
+    if API.IsDiceFadingOut(dice) then
+        return API.ClearDiceClickStealer(dice)
+    end
+
     local healed = false
     local shownOk, shown = false, false
     if type(dice.IsShown) == "function" then
         shownOk, shown = pcall(dice.IsShown, dice)
     end
 
-    if shownOk and shown == true and API.DiceShouldAcceptClicks(dice) then
-        if API.IsDiceFadingOut(dice) then
-            return cleared
-        end
-
+    if shownOk and shown == true then
         local needsMouse = API.IsDiceShownUnclickable()
         if needsMouse then
             if type(dice.RegisterOnClick) == "function" then
@@ -2525,14 +2625,43 @@ function API.EnsureDiceClickable()
         end
     end
 
-    local affordances = false
-    if not API.IsDiceFadingOut(dice) then
-        affordances = SyncDiceDecisionAffordances(dice)
+    local affordances = SyncDiceDecisionAffordances(dice)
+    if IsSuiteMainWindowShown() and not dice.isRapidRolling and DiceIsShown(dice) then
+        API.DemoteDiceBelowSuite(dice, { skipHoverClear = true })
     end
     if healed or affordances then
         MaybeSanitizeDiceHoverAfterRecovery(dice)
     end
-    return healed or affordances or cleared
+    return healed or affordances == true
+end
+
+-- After /asuite closes, put a Suite-demoted leveling die back at Ascension native
+-- layering and re-heal mouse if the player still needs to click Continue / roll.
+function API.RestoreDiceAfterSuite(dice)
+    if IsSuiteMainWindowShown() then
+        return false
+    end
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" or not dice._asuiteDemotedForSuite then
+        return false
+    end
+
+    API.ClearDiceHoverArtifacts(dice)
+    local restored = RestoreDiceNativeLayering(dice)
+    if DiceIsShown(dice) and API.DiceShouldAcceptClicks(dice) then
+        if API.IsDiceShownUnclickable() then
+            if type(dice.RegisterOnClick) == "function" then
+                pcall(dice.RegisterOnClick, dice)
+            elseif type(dice.EnableMouse) == "function" then
+                pcall(dice.EnableMouse, dice, true)
+            end
+            restored = true
+        end
+        if SyncDiceDecisionAffordances(dice) then
+            restored = true
+        end
+    end
+    return restored
 end
 
 -- Mirrors WildCardRapidRollingMixin:IsRapidRollingDiceActive. A shown die with

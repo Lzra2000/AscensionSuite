@@ -93,13 +93,27 @@ local function ShouldDeferDiceRecovery()
     return false
 end
 
+local ensureForceDecision = false
+
 local function ScheduleEnsureDiceClickable(forceDecision)
     local API = AscensionSuite.AscensionAPI
     if not API or not API.EnsureDiceClickable then
         return
     end
 
-    if not forceDecision and ShouldDeferDiceRecovery() then
+    local force = forceDecision == true
+    -- SetInternalID (force) must still recover a revealed decision die; only a
+    -- true FadeMode OUT defer blocks that path. Appear fade-IN must not.
+    if not force and ShouldDeferDiceRecovery() then
+        if API.ClearDiceClickStealer then
+            API.ClearDiceClickStealer()
+        end
+        if API.ClearDiceHoverArtifacts then
+            API.ClearDiceHoverArtifacts()
+        end
+        return
+    end
+    if force and API.IsDiceFadingOut and API.IsDiceFadingOut() then
         if API.ClearDiceClickStealer then
             API.ClearDiceClickStealer()
         end
@@ -121,7 +135,16 @@ local function ScheduleEnsureDiceClickable(forceDecision)
             end
             ensurePending = false
             ensureElapsed = 0
-            if ShouldDeferDiceRecovery() then
+            local forced = ensureForceDecision
+            ensureForceDecision = false
+            if forced then
+                if API.IsDiceFadingOut and API.IsDiceFadingOut() then
+                    if API.ClearDiceClickStealer then
+                        API.ClearDiceClickStealer()
+                    end
+                    return
+                end
+            elseif ShouldDeferDiceRecovery() then
                 if API.ClearDiceClickStealer then
                     API.ClearDiceClickStealer()
                 end
@@ -132,6 +155,7 @@ local function ScheduleEnsureDiceClickable(forceDecision)
         end)
     end
 
+    ensureForceDecision = force or ensureForceDecision
     ensurePending = true
     ensureElapsed = 0
 end

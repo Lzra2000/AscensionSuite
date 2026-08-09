@@ -63,29 +63,8 @@ local function RunGuard()
         return
     end
 
-    if api.IsDiceStuckVisibleNonInteractive and api.IsDiceStuckVisibleNonInteractive() then
-        if api.HideLingeringDice and api.HideLingeringDice() then
-            return
-        end
-    end
-
-    if api.ShouldLetDiceHide and api.ShouldLetDiceHide() then
-        if api.ClearDiceClickStealer then
-            api.ClearDiceClickStealer()
-        end
-        if api.ClearDiceHoverArtifacts then
-            api.ClearDiceHoverArtifacts()
-        end
-        return
-    end
-
-    if api.IsDiceRecoveryCooldownActive and api.IsDiceRecoveryCooldownActive() then
-        if api.ClearDiceClickStealer then
-            api.ClearDiceClickStealer()
-        end
-        return
-    end
-
+    -- One entry point: ResolveDiceGuardMode + EnsureDiceClickable owns hide /
+    -- stealer / heal / Suite demote so AnimationSkip and DiceGuard cannot fight.
     if api.EnsureDiceClickable then
         api.EnsureDiceClickable()
     end
