@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AscensionSuite — contained layout (no overlap)</title>
+<style>
+  :root {
+    --page: #0b0d10;
+    --stone: #16130f;
+    --gold: #ffd100;
+    --gold-line: #6e5a24;
+    --ink: #f4ead6;
+    --muted: #9c927f;
+    --wish: #59b6ff;
+    --good: #62d187;
+    --bad: #e2726f;
+    --und: #c9a06a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 28px 50px; color: var(--ink);
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    background: radial-gradient(1100px 560px at 62% -10%, #1e232c, var(--page));
+  }
+  h1 { margin: 0 0 6px; font-size: 1.2rem; }
+  .lead { color: var(--muted); max-width: 78rem; line-height: 1.5; margin: 0 0 18px; font-size: .88rem; }
+  code { color: #edcd82; }
+  .stage { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+
+  .dialog {
+    position: relative; width: 700px; height: 540px;
+    background: linear-gradient(180deg, rgba(60,48,28,.35), rgba(0,0,0,0)), var(--stone);
+    border: 2px solid var(--gold-line); border-radius: 4px;
+    box-shadow: 0 0 0 2px #0b0906, 0 18px 44px rgba(0,0,0,.65);
+    padding: 14px 16px 12px; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .dialog::before {
+    content: ""; position: absolute; inset: 5px; border: 1px solid #3d3320; pointer-events: none;
+  }
+  .titlebar { display: flex; align-items: baseline; gap: 10px; flex: none; }
+  .titlebar h2 { margin: 0; font-size: 1rem; color: var(--gold); }
+  .ver { color: var(--muted); font-size: .72rem; }
+  .close {
+    position: absolute; top: 8px; right: 10px; width: 22px; height: 22px; line-height: 20px;
+    text-align: center; color: #f0d9a0; border: 1px solid var(--gold-line);
+    background: #241d12; border-radius: 50%; font-size: .8rem;
+  }
+
+  .tabs { display: flex; gap: 4px; margin: 10px 0 0; flex: none; }
+  .tab {
+    padding: 5px 14px 6px; font-size: .78rem; color: #cdbf9d;
+    background: linear-gradient(180deg, #241d12, #17130c);
+    border: 1px solid #4c3f22; border-bottom: none; border-radius: 5px 5px 0 0;
+  }
+  .tab.on { color: var(--gold); border-color: var(--gold-line); background: linear-gradient(180deg, #3b2f18, #241c10); }
+  .tabline { height: 1px; background: var(--gold-line); margin-bottom: 10px; flex: none; }
+
+  .body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+
+  /* ---- Assists layout --------------------------------------------------- */
+  .assist-grid {
+    display: grid; grid-template-columns: 1fr 200px; gap: 10px; flex: none;
+    min-height: 0;
+  }
+  .checks {
+    border: 1px solid #43381f; background: #0c0a07; padding: 8px 10px;
+    overflow: auto; max-height: 168px;
+  }
+  .chk { font-size: .78rem; color: #ded2b6; margin: 4px 0; display: flex; gap: 6px; align-items: flex-start; }
+  .chk input { margin-top: 2px; }
+  .controls {
+    border: 1px solid #43381f; background: #0c0a07; padding: 8px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .btnrow { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btn {
+    padding: 4px 10px; font: inherit; font-size: .74rem; color: #f0d9a0;
+    background: linear-gradient(180deg, #6a2a22, #3d1510);
+    border: 1px solid #8a4030; border-radius: 3px;
+  }
+  .btn.off { opacity: .4; }
+  .btn.quiet { background: linear-gradient(180deg, #2a2418, #16130c); border-color: #4c3f22; color: #cdbf9d; }
+  .mini-status { font-size: .7rem; color: var(--muted); line-height: 1.3; min-height: 2.6em; }
+  .mini-status.ok { color: var(--good); }
+  .mini-status.bad { color: var(--bad); }
+
+  .counts {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; flex: none;
+  }
+  .count-card {
+    border: 1px solid #43381f; background: #100e0a; padding: 6px 8px;
+  }
+  .count-card .lbl { font-size: .64rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .count-card .val { font-size: .95rem; margin-top: 2px; }
+  .count-card .val b { font-weight: 600; }
+  .count-card.wish .val { color: var(--wish); }
+  .count-card.des .val { color: var(--good); }
+  .count-card.und .val { color: var(--und); }
+
+  .section-label {
+    font-size: .68rem; color: var(--gold-dim); text-transform: uppercase; letter-spacing: .05em; flex: none;
+  }
+  .logbox {
+    flex: 1; min-height: 0; border: 1px solid #43381f; background: #0c0a07;
+    overflow: auto; padding: 6px 8px; font-size: .72rem; color: #b9ae95; line-height: 1.45;
+  }
+  .logbox .line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .logbox .tag { color: #8aa8c8; }
+
+  /* ---- Wishlist layout -------------------------------------------------- */
+  .wish-head { display: flex; align-items: baseline; gap: 8px; flex: none; }
+  .wish-head h3 { margin: 0; font-size: .92rem; color: var(--gold); }
+  .wish-head .meta { margin-left: auto; font-size: .74rem; color: var(--muted); }
+  .wish-head .meta b { color: var(--wish); }
+  .searchrow { display: flex; gap: 6px; flex: none; }
+  .input {
+    flex: 1; background: #0a0906; border: 1px solid #4c3f22; color: var(--ink);
+    padding: 4px 8px; font: inherit; font-size: .78rem; border-radius: 3px;
+  }
+  .list {
+    flex: 1; min-height: 0; border: 1px solid #43381f; background: #0c0a07;
+    overflow: auto; position: relative;
+  }
+  .row {
+    display: flex; align-items: center; gap: 7px; height: 26px; padding: 0 6px;
+    font-size: .78rem; border-bottom: 1px solid #1a1610;
+  }
+  .ico { width: 18px; height: 18px; border: 1px solid #6b5a30; border-radius: 2px; flex: none;
+    background: linear-gradient(135deg,#1d4f7a,#7fd0f5); }
+  .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .id { width: 52px; text-align: right; color: #6f6754; font-size: .68rem; flex: none; }
+  .badge { width: 52px; text-align: right; font-size: .64rem; color: var(--wish); flex: none; }
+  .badge.und { color: var(--und); }
+  .x { width: 18px; height: 18px; text-align: center; font-size: .7rem; border: 1px solid #4c3f22;
+    background: #1b1610; color: #c9b489; flex: none; border-radius: 2px; }
+
+  .footer {
+    flex: none; border: 1px solid #43381f; background: #100e0a; padding: 7px 8px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .footer .row2 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .status { font-size: .72rem; color: var(--muted); line-height: 1.3; }
+  .status.ok { color: var(--good); }
+  .hint { font-size: .66rem; color: #6f6754; line-height: 1.35; }
+
+  .aside {
+    width: 260px; font-size: .8rem; color: var(--muted); line-height: 1.45;
+  }
+  .aside h3 { color: #c8a03c; font-size: .88rem; margin: 0 0 8px; }
+  .aside ul { margin: 0; padding-left: 1.1rem; }
+  .aside li { margin-bottom: 6px; }
+  .aside .note {
+    margin-top: 12px; padding: 10px; border: 1px solid #43381f; background: #12100c;
+    border-radius: 3px; font-size: .74rem;
+  }
+</style>
+</head>
+<body>
+  <h1>AscensionSuite — contained layout (preview)</h1>
+  <p class="lead">
+    Everything stays <strong>inside the window chrome</strong> — fixed height, clipped panels,
+    no overlapping absolute stacks. Wishlist shows Desired / Undesired badges;
+    Assists has count cards + a scrollable Logbook. Confirm before Lua.
+  </p>
+
+  <div class="stage">
+    <!-- ASSISTS -->
+    <div class="dialog">
+      <div class="close">×</div>
+      <div class="titlebar">
+        <h2>AscensionSuite</h2>
+        <span class="ver">v0.5.0 preview · Assists</span>
+      </div>
+      <div class="tabs">
+        <div class="tab">Wishlist</div>
+        <div class="tab">Loadouts</div>
+        <div class="tab on">Assists</div>
+      </div>
+      <div class="tabline"></div>
+
+      <div class="body">
+        <div class="assist-grid">
+          <div class="checks">
+            <label class="chk"><input type="checkbox" checked> Auto-Roll while leveling (Desired only)</label>
+            <label class="chk"><input type="checkbox" checked> …keep going after a Desired hit</label>
+            <label class="chk"><input type="checkbox" checked> Instant skip WildCardDice animation</label>
+            <label class="chk"><input type="checkbox" checked> Instant skip SkillCard flipbook</label>
+            <label class="chk"><input type="checkbox" checked> Accept Wildcard confirm popups</label>
+            <label class="chk"><input type="checkbox" checked> Capture rolls into Logbook</label>
+            <label class="chk"><input type="checkbox" checked> Auto-unstick gray Rapid Continue</label>
+          </div>
+          <div class="controls">
+            <div class="btnrow">
+              <button class="btn">Start</button>
+              <button class="btn off">Stop</button>
+            </div>
+            <div class="btnrow">
+              <button class="btn">Unstick</button>
+              <button class="btn quiet">Sync</button>
+            </div>
+            <div class="mini-status bad">Auto-Roll idle — Desired 0 of 6</div>
+          </div>
+        </div>
+
+        <div class="counts">
+          <div class="count-card wish">
+            <div class="lbl">Wishlist</div>
+            <div class="val"><b>6</b></div>
+          </div>
+          <div class="count-card des">
+            <div class="lbl">Desired</div>
+            <div class="val"><b>0</b> / 6</div>
+          </div>
+          <div class="count-card und">
+            <div class="lbl">Undesired</div>
+            <div class="val"><b>2</b></div>
+          </div>
+        </div>
+
+        <div class="section-label">Logbook (recent)</div>
+        <div class="logbox">
+          <div class="line"><span class="tag">[talent]</span> Improved Tree of Life 2/3 (48536)</div>
+          <div class="line"><span class="tag">[talent]</span> Demonic Aegis 1/3 (30143)</div>
+          <div class="line"><span class="tag">[talent]</span> Feral Spirit (51533)</div>
+          <div class="line"><span class="tag">[ability]</span> Green Salve (280860)</div>
+          <div class="line"><span class="tag">[talent]</span> Pack Alpha (281402)</div>
+          <div class="line"><span class="tag">[ability]</span> Blizzard (10) — skipped Tag</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WISHLIST -->
+    <div class="dialog">
+      <div class="close">×</div>
+      <div class="titlebar">
+        <h2>AscensionSuite</h2>
+        <span class="ver">v0.5.0 preview · Wishlist</span>
+      </div>
+      <div class="tabs">
+        <div class="tab on">Wishlist</div>
+        <div class="tab">Loadouts</div>
+        <div class="tab">Assists</div>
+      </div>
+      <div class="tabline"></div>
+
+      <div class="body">
+        <div class="wish-head">
+          <h3>Wishlist</h3>
+          <span class="meta"><b>6</b> entries · Desired <b>0</b> · Undesired <b>2</b></span>
+        </div>
+        <div class="searchrow">
+          <input class="input" placeholder="Search…" />
+          <button class="btn quiet">Clear</button>
+        </div>
+        <div class="list">
+          <div class="row"><span class="ico"></span><span class="nm">Reave</span><span class="id">280990</span><span class="badge"></span><span class="x">x</span></div>
+          <div class="row"><span class="ico"></span><span class="nm">Resonance Rune</span><span class="id">280960</span><span class="badge und">Undes.</span><span class="x">x</span></div>
+          <div class="row"><span class="ico"></span><span class="nm">Solar Nova</span><span class="id">280940</span><span class="badge"></span><span class="x">x</span></div>
+          <div class="row"><span class="ico"></span><span class="nm">Gavel of Wrath</span><span class="id">8264</span><span class="badge und">Undes.</span><span class="x">x</span></div>
+          <div class="row"><span class="ico"></span><span class="nm">Lava Lash</span><span class="id">60103</span><span class="badge">Desired</span><span class="x">x</span></div>
+          <div class="row"><span class="ico"></span><span class="nm">Stormstrike</span><span class="id">17364</span><span class="badge"></span><span class="x">x</span></div>
+        </div>
+        <div class="footer">
+          <div class="row2">
+            <input class="input" placeholder="Spell / entry id" style="flex:1;min-width:120px" />
+            <button class="btn">Add</button>
+            <button class="btn quiet">Clear tags</button>
+            <button class="btn quiet">Clear list</button>
+          </div>
+          <div class="row2">
+            <button class="btn">Push to Desired</button>
+            <button class="btn quiet">Sync from Rapid</button>
+            <span class="status ok">Ready — 4 Ability/Talent can mark Desired</span>
+          </div>
+          <div class="hint">Left-click select · right-click Desired (Wildcard) · Alt+right-click CA book · badges = Desired / Undesired from Rapid</div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="aside">
+      <h3>Layout rules</h3>
+      <ul>
+        <li>Fixed window size; <code>overflow: hidden</code> on chrome</li>
+        <li>Body uses flex column — list/log scroll <em>inside</em> reserved bands</li>
+        <li>No absolute stacks that paint over tabs or each other</li>
+        <li>Footer / Logbook always clipped to the frame</li>
+        <li>WildCardDice never raised above Suite</li>
+      </ul>
+      <div class="note">
+        <strong>Desired / Undesired:</strong> Suite reads Ascension Rapid marks
+        (Desired + Undesired lists). Wishlist rows show badges; Assists count cards
+        summarize. Push only Ability/Talent. Logbook stays a clipped scroll region.
+      </div>
+    </aside>
+  </div>
+</body>
+</html>
