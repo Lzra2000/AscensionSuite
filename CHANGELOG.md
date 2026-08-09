@@ -3,6 +3,25 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.5 (2026-08-09) -- Loadouts polish: remove, duplicate, search, Known badge, ASUITE2
+
+#### Added
+- **Remove spell from loadout** — `x` on Spells rows (like Wishlist) via
+  `Loadouts.RemoveEntry`; removes from the saved build only (Ascension Desired
+  untouched until you toggle or Apply).
+- **Duplicate build** — clones the selected loadout (entries, sections, equipment
+  stubs, tags, meta, known snapshot) with a distinct `… (copy)` name.
+- **Search** on Spells and Talents — filters the visible list by name or id text
+  in addition to Core/Optimal/… tag filters.
+- **Known badge** on spell rows when the entry appears in the loadout's
+  `knownSnapshot` (from Capture Known).
+- **ASUITE2** share format — export includes section texts, meta, and equipment
+  stubs; import accepts ASUITE2 and legacy ASUITE1 strings.
+
+#### Changed
+- Share export defaults to **ASUITE2**; **Copy share** button label replaces
+  Copy ASUITE1. Use `ExportString(id, "ASUITE1")` for the legacy format.
+
 ### 0.4.4 (2026-08-09) -- Loadouts polish: tooltips, Desired toggle, add-by-id, rename, pros/cons
 
 #### Added

@@ -35,6 +35,7 @@ local selectedId
 local activeSection = "SPELLS_AND_TALENTS"
 local displayRows = {}
 local spellFilters = { core = true, optimal = true, empowering = true, synergistic = true }
+local spellSearchText = ""
 local selectedSpellKey
 
 local function GetLoadouts()
@@ -161,7 +162,7 @@ local function BuildSpellDisplayRows(loadout)
     end
 
     local Loadouts = GetLoadouts()
-    local groups, order, total = Loadouts.GroupEntries(loadout.entries, spellFilters)
+    local groups, order, total = Loadouts.GroupEntries(loadout.entries, spellFilters, spellSearchText, loadout)
     for groupIndex = 1, #order do
         local label = order[groupIndex]
         displayRows[#displayRows + 1] = { kind = "group", label = label }
@@ -227,6 +228,11 @@ local function FillSpellRow(row, data, position)
 
     row._nameLabel:SetText(entry.name or "?")
     row._tagLabel:SetText(entry.tagLabel or "")
+    if entry.known then
+        row._knownBadge:Show()
+    else
+        row._knownBadge:Hide()
+    end
     if entry.desired then
         row._badge:Show()
     else
@@ -282,6 +288,10 @@ local function ShowSpellRowTooltip(row)
     else
         GameTooltip:AddLine("Desired sync happens in Wildcard mode", 0.6, 0.6, 0.6)
     end
+    if described and described.known then
+        GameTooltip:AddLine("Known when this build was captured", 0.38, 0.82, 0.53)
+    end
+    GameTooltip:AddLine("x removes from this build (Ascension Desired untouched)", 0.6, 0.6, 0.6)
     GameTooltip:AddLine("Left-click selects this row", 0.6, 0.6, 0.6)
     GameTooltip:Show()
 end
@@ -294,6 +304,29 @@ local function SelectSpellRow(row, note)
     selectedSpellKey = key
     LoadoutsPanel.Refresh(note)
     return true
+end
+
+local function OnSpellRowRemove(row)
+    local Loadouts = GetLoadouts()
+    local raw = row._raw
+    if not Loadouts or not selectedId or not raw then
+        return
+    end
+
+    local name = row._name or "entry"
+    local ok, reason = Loadouts.RemoveEntry(selectedId, raw)
+    if not ok then
+        SetStatus("Could not remove " .. name .. " — " .. tostring(reason or "error") .. ".", false)
+        return
+    end
+
+    if selectedSpellKey and SpellRowKey(raw, row._described) == selectedSpellKey then
+        selectedSpellKey = nil
+    end
+    if GameTooltip then
+        GameTooltip:Hide()
+    end
+    LoadoutsPanel.Refresh("Removed " .. name .. " from this build.", true)
 end
 
 local function OnSpellRowToggleDesired(row)
@@ -456,6 +489,17 @@ local function RefreshSectionContent(loadout)
         end
 
         local offset = ScrollOffset(W.spellScrollFrame)
+        local maxOffset = #displayRows - VISIBLE_SPELL_ROWS
+        if maxOffset < 0 then
+            maxOffset = 0
+        end
+        if offset > maxOffset then
+            offset = maxOffset
+            if W.spellScrollFrame and type(_G.FauxScrollFrame_SetOffset) == "function" then
+                _G.FauxScrollFrame_SetOffset(W.spellScrollFrame, offset)
+            end
+        end
+
         for index = 1, VISIBLE_SPELL_ROWS do
             local row = W.spellRows[index]
             local data = displayRows[index + offset]
@@ -889,6 +933,23 @@ H.OnNewBuild = function()
     LoadoutsPanel.Refresh("Created a new build.", true)
 end
 
+H.OnDuplicateBuild = function()
+    local Loadouts = GetLoadouts()
+    if not Loadouts or not selectedId then
+        SetStatus("Select a build to duplicate.", false)
+        return
+    end
+    local sourceName = Loadouts.Get(selectedId) and Loadouts.Get(selectedId).name or "build"
+    local clone, newId = Loadouts.Duplicate(selectedId)
+    if not clone then
+        SetStatus("Could not duplicate — " .. tostring(newId or "error") .. ".", false)
+        return
+    end
+    selectedId = newId
+    selectedSpellKey = nil
+    LoadoutsPanel.Refresh(string.format("Duplicated \"%s\" as \"%s\".", sourceName, clone.name or "copy"), true)
+end
+
 H.OnDeleteBuild = function()
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
@@ -1036,15 +1097,23 @@ local function CreateSpellRow(parent, index)
     row._icon = icon
 
     local badge = spell:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    badge:SetPoint("RIGHT", -6, 0)
+    badge:SetPoint("RIGHT", -30, 0)
     badge:SetWidth(48)
     badge:SetJustifyH("RIGHT")
     badge:SetTextColor(0.35, 0.71, 1, 1)
     badge:SetText("Desired")
     row._badge = badge
 
+    local knownBadge = spell:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    knownBadge:SetPoint("RIGHT", badge, "LEFT", -6, 0)
+    knownBadge:SetWidth(44)
+    knownBadge:SetJustifyH("RIGHT")
+    knownBadge:SetTextColor(0.38, 0.82, 0.53, 1)
+    knownBadge:SetText("Known")
+    row._knownBadge = knownBadge
+
     local tagLabel = spell:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    tagLabel:SetPoint("RIGHT", badge, "LEFT", -6, 0)
+    tagLabel:SetPoint("RIGHT", knownBadge, "LEFT", -6, 0)
     tagLabel:SetWidth(64)
     tagLabel:SetJustifyH("RIGHT")
     row._tagLabel = tagLabel
@@ -1054,6 +1123,16 @@ local function CreateSpellRow(parent, index)
     nameLabel:SetPoint("RIGHT", tagLabel, "LEFT", -8, 0)
     nameLabel:SetJustifyH("LEFT")
     row._nameLabel = nameLabel
+
+    local remove = CreateFrame("Button", FRAME_NAME .. "SpellRow" .. index .. "Remove", row, "UIPanelButtonTemplate")
+    remove:SetWidth(20)
+    remove:SetHeight(18)
+    remove:SetPoint("RIGHT", -4, 0)
+    remove:SetText("x")
+    remove:SetScript("OnClick", function()
+        OnSpellRowRemove(row)
+    end)
+    row._remove = remove
 
     row:SetScript("OnEnter", function()
         if row._raw then
@@ -1189,6 +1268,13 @@ local function BuildPanel(parent, width)
     deleteButton:SetPoint("LEFT", newButton, "RIGHT", 6, 0)
     deleteButton:SetText("Delete")
     deleteButton:SetScript("OnClick", function() H.OnDeleteBuild() end)
+
+    local duplicateButton = CreateFrame("Button", nil, W.panel, "UIPanelButtonTemplate")
+    duplicateButton:SetWidth(68)
+    duplicateButton:SetHeight(22)
+    duplicateButton:SetPoint("LEFT", deleteButton, "RIGHT", 6, 0)
+    duplicateButton:SetText("Duplicate")
+    duplicateButton:SetScript("OnClick", function() H.OnDuplicateBuild() end)
 
     W.buildShell = CreateFrame("Frame", nil, W.panel)
     W.buildShell:SetPoint("TOPLEFT", W.listFrame, "TOPRIGHT", 8, 0)
@@ -1388,6 +1474,25 @@ local function BuildPanel(parent, width)
     W.filterBar:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -24)
     W.filterBar:SetHeight(24)
 
+    local searchLabel = W.filterBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    searchLabel:SetPoint("TOPLEFT", 0, 2)
+    searchLabel:SetText("Search")
+
+    W.spellSearchBox = CreateFrame("EditBox", FRAME_NAME .. "SpellSearch", W.filterBar, "InputBoxTemplate")
+    W.spellSearchBox:SetHeight(22)
+    W.spellSearchBox:SetWidth(88)
+    W.spellSearchBox:SetPoint("LEFT", searchLabel, "RIGHT", 4, 0)
+    W.spellSearchBox:SetAutoFocus(false)
+    W.spellSearchBox:SetMaxLetters(40)
+    W.spellSearchBox:SetScript("OnTextChanged", function(self)
+        spellSearchText = self:GetText() or ""
+        LoadoutsPanel.Refresh()
+    end)
+    W.spellSearchBox:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
+        self:ClearFocus()
+    end)
+
     local filterDefs = {
         { key = "core", label = "Core" },
         { key = "optimal", label = "Optimal" },
@@ -1403,7 +1508,7 @@ local function BuildPanel(parent, width)
         if lastCheck then
             check:SetPoint("LEFT", lastCheck, "RIGHT", 52, 0)
         else
-            check:SetPoint("LEFT", 0, 0)
+            check:SetPoint("LEFT", W.spellSearchBox, "RIGHT", 10, 0)
         end
         check:SetChecked(true)
         local text = W.filterBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1495,7 +1600,7 @@ local function BuildPanel(parent, width)
     copyButton:SetWidth(88)
     copyButton:SetHeight(22)
     copyButton:SetPoint("BOTTOMLEFT", 0, 28)
-    copyButton:SetText("Copy ASUITE1")
+    copyButton:SetText("Copy share")
     copyButton:SetScript("OnClick", function() H.OnCopyShare() end)
 
     local importShareButton = CreateFrame("Button", nil, foot, "UIPanelButtonTemplate")
