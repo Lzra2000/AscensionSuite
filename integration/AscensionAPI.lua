@@ -324,18 +324,40 @@ function API.IsGameModeActive(modeName)
         return current == modeName
     end
     if type(current) == "number" and enumValue ~= nil then
-        return current == enumValue
+        if current == enumValue or BitContains(current, enumValue) then
+            return true
+        end
     end
     if type(current) == "number" and type(_G.Enum) == "table" and type(_G.Enum.GameMode) == "table" then
         local resolved = _G.Enum.GameMode[modeName]
         if resolved ~= nil then
-            return current == resolved
+            if current == resolved or BitContains(current, resolved) then
+                return true
+            end
         end
     end
     return tostring(current) == tostring(modeName)
 end
 
 function API.IsWildcardModeActive()
+    local wildCard = GameModeEnum("WildCard")
+    if wildCard ~= nil then
+        if API.IsGameModeActive("WildCard") or API.IsGameModeActive("Wildcard") then
+            return true
+        end
+        local current = API.GetGameMode()
+        if type(current) == "number" and BitContains(current, wildCard) then
+            return true
+        end
+        local getCustom = _G.GetCustomGameMode
+        if type(getCustom) == "function" then
+            local ok, activeModes = pcall(getCustom)
+            if ok and BitContains(activeModes, wildCard) then
+                return true
+            end
+        end
+        return false
+    end
     return API.IsGameModeActive("WildCard") or API.IsGameModeActive("Wildcard")
 end
 
@@ -730,6 +752,79 @@ function API.DescribeEntryTypeRefuse(entryType, resolveErr)
     if entryType and not API.IsDesiredEligibleType(entryType) then
         return "type_not_desired"
     end
+    return "can_add_false"
+end
+
+function API.CountDesiredSelections(maxScan)
+    local selections = API.CollectAllDesiredSelections(maxScan)
+    return #selections
+end
+
+local function ResolveCanAddMaxDesired()
+    local wc = WC()
+    if not wc then
+        return nil
+    end
+    local maxDesired = Call(wc, { "GetMaxDesiredCount", "GetDesiredLimit", "GetMaxDesiredSelections" })
+    if type(maxDesired) == "number" and maxDesired > 0 then
+        return maxDesired
+    end
+    return nil
+end
+
+-- Why CanAddDesiredID returned false for a resolved (entryId, entryType) pair.
+function API.DescribeCanAddRefuse(entryId, entryType, resolveErr)
+    local typeRefuse = API.DescribeEntryTypeRefuse(entryType, resolveErr)
+    if typeRefuse ~= "can_add_false" then
+        return typeRefuse
+    end
+
+    if not API.IsWildcardModeActive() then
+        return "not_wildcard_mode"
+    end
+
+    local wc = WC()
+    if not wc then
+        return "no_wildcard_api"
+    end
+
+    local id = tonumber(entryId)
+    if not id or type(entryType) ~= "string" or entryType == "" then
+        return "bad_pair"
+    end
+
+    if API.IsDesiredID(id, entryType) then
+        return "already_desired"
+    end
+
+    if API.IsKnownID(id) then
+        return "already_known"
+    end
+
+    local entry = API.GetEntryByInternalID(id)
+    if type(entry) == "table" then
+        local resolvedId, resolvedType = EntryPair(entry)
+        if resolvedId and resolvedType then
+            if resolvedId ~= id or resolvedType ~= entryType then
+                return "bad_pair"
+            end
+        end
+    else
+        return "bad_pair"
+    end
+
+    local maxDesired = ResolveCanAddMaxDesired()
+    if maxDesired then
+        local desiredCount = API.CountDesiredSelections()
+        if desiredCount >= maxDesired then
+            return "desired_cap"
+        end
+    end
+
+    if API.CanAddDesiredID(id, entryType) then
+        return nil
+    end
+
     return "can_add_false"
 end
 
@@ -1362,6 +1457,33 @@ end
 local DICE_DECISION_STRATA = "FULLSCREEN_DIALOG"
 local DICE_DECISION_FRAME_LEVEL = 128
 local DICE_NATIVE_STRATA = "MEDIUM"
+local DICE_SUITE_STRATA = "DIALOG"
+local SUITE_MAIN_WINDOW_NAME = "AscensionSuiteMainWindow"
+local SUITE_MAIN_FRAME_LEVEL = 130
+
+local function IsSuiteMainWindowShown()
+    local win = _G[SUITE_MAIN_WINDOW_NAME]
+    if type(win) ~= "table" or type(win.IsShown) ~= "function" then
+        return false
+    end
+    local ok, shown = pcall(win.IsShown, win)
+    return ok and shown == true
+end
+
+function API.IsSuiteMainWindowShown()
+    return IsSuiteMainWindowShown()
+end
+
+local function SuiteMainWindowFrameLevel()
+    local win = _G[SUITE_MAIN_WINDOW_NAME]
+    if type(win) == "table" and type(win.GetFrameLevel) == "function" then
+        local ok, level = pcall(win.GetFrameLevel, win)
+        if ok and level then
+            return level
+        end
+    end
+    return SUITE_MAIN_FRAME_LEVEL
+end
 
 local function FrameChildIsShown(frame)
     if type(frame) ~= "table" or type(frame.IsShown) ~= "function" then
@@ -1840,9 +1962,48 @@ function API.ClearDiceClickStealer(dice)
     return cleared
 end
 
+-- While /asuite is open, keep the leveling die under the Suite window — never at
+-- FULLSCREEN_DIALOG above MainWindow.
+function API.DemoteDiceBelowSuite(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" or not DiceIsShown(dice) then
+        return false
+    end
+
+    API.ClearDiceHoverArtifacts(dice)
+    CaptureDiceNativeLayering(dice)
+
+    local suiteLevel = SuiteMainWindowFrameLevel()
+    local targetLevel = math.max(1, suiteLevel - 2)
+
+    if type(dice.SetFrameStrata) == "function" then
+        pcall(dice.SetFrameStrata, dice, DICE_SUITE_STRATA)
+    end
+    if type(dice.SetFrameLevel) == "function" then
+        pcall(dice.SetFrameLevel, dice, targetLevel)
+    end
+    local rollButton = dice.RollButton
+    if type(rollButton) == "table" and type(rollButton.SetFrameLevel) == "function" then
+        pcall(rollButton.SetFrameLevel, rollButton, targetLevel + 1)
+    end
+    dice._asuiteStrataRaised = nil
+    return true
+end
+
+function API.SyncDiceLayeringForSuite()
+    if not IsSuiteMainWindowShown() then
+        return false
+    end
+    return API.DemoteDiceBelowSuite()
+end
+
 local function RaiseDiceAboveClutter(dice)
     if type(dice) ~= "table" or not DiceIsShown(dice) or not API.DiceShouldAcceptClicks(dice) then
         return false
+    end
+
+    if IsSuiteMainWindowShown() then
+        return API.DemoteDiceBelowSuite(dice)
     end
 
     CaptureDiceNativeLayering(dice)

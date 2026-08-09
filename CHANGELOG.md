@@ -3,6 +3,29 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.17 (2026-08-09) -- Dice under Suite; Push refuse reasons
+
+#### Fixed
+- **Wild Card dice over /asuite** — leveling `WildCardDice` no longer stays at
+  `FULLSCREEN_DIALOG` above the Suite window while `/asuite` is open. Suite sits at
+  `FULLSCREEN_DIALOG` 130; dice demote to `DIALOG` under it. Opening Suite clears
+  sticky `GameTooltip` / dice hover artifacts and re-syncs layering.
+- **Wishlist Push “cannot mark Desired”** — `DescribeCanAddRefuse` surfaces real
+  reasons (`already learned`, `bad id/type pair`, `Desired cap reached`, `not
+  Wildcard`, etc.) instead of a generic label. Push re-resolves stale `(entryId,
+  entryType)` pairs from spell ids before refusing.
+- **Wildcard mode mask** — `IsWildcardModeActive` and `IsGameModeActive` treat
+  multi-bit `GetGameMode` / `GetCustomGameMode` masks as active when the WildCard
+  flag is set.
+- **Stuck wishlist tooltips** — `GameTooltip` is hidden on row refresh, tab switch,
+  and window hide; row `OnLeave` handlers run when leaving the Wishlist tab.
+
+#### Added
+- `AscensionAPI.DescribeCanAddRefuse`, `CountDesiredSelections`,
+  `DemoteDiceBelowSuite`, `SyncDiceLayeringForSuite`, `IsSuiteMainWindowShown`.
+- `WishlistPanel.HideTooltips`.
+- `tests/test_can_add_refuse.lua`, `tests/test_suite_dice_strata.lua`.
+
 ### 0.4.16 (2026-08-09) -- Wild Card dice fades out after level-up
 
 #### Fixed

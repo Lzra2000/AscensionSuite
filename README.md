@@ -2,6 +2,9 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
+**v0.4.17** keeps **Wild Card dice under `/asuite`** (no `FULLSCREEN_DIALOG` overlay on the
+Suite window), surfaces **real Push refusal reasons** (`already learned`, `bad id/type pair`,
+`Desired cap reached`, etc.), and clears **stuck wishlist tooltips** on tab/window hide.
 **v0.4.16** fixes **Wild Card dice linger and hover/tooltip thrash after level-up**:
 DiceGuard and Instant Dice Skip no longer fight Ascension's fade-out by re-enabling
 mouse, raising strata, or sanitizing hover every tick; burst events debounce, stuck

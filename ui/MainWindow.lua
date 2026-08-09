@@ -498,6 +498,14 @@ function MainWindow.SelectTab(index)
     if index ~= TAB_WISHLIST and index ~= TAB_LOADOUTS and index ~= TAB_ASSISTS then
         return
     end
+
+    if index ~= TAB_WISHLIST then
+        local panel = GetWishlistPanel()
+        if panel and panel.HideTooltips then
+            panel.HideTooltips()
+        end
+    end
+
     activeTab = index
 
     if frame then
@@ -641,11 +649,21 @@ local function EnsureFrame()
     end)
     frame:SetScript("OnHide", function(self)
         self:StopMovingOrSizing()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+        local panel = GetWishlistPanel()
+        if panel and panel.HideTooltips then
+            panel.HideTooltips()
+        end
     end)
     frame:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
     end)
     frame:Hide()
+
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:SetFrameLevel(130)
 
     frame.numTabs = 3
     frame.selectedTab = activeTab
@@ -710,6 +728,23 @@ end
 function MainWindow.Show()
     local win = EnsureFrame()
     win:Show()
+
+    local API = AscensionSuite.AscensionAPI
+    if API then
+        if API.ClearDiceHoverArtifacts then
+            API.ClearDiceHoverArtifacts()
+        end
+        if API.SanitizeDiceHover then
+            API.SanitizeDiceHover()
+        end
+        if API.SyncDiceLayeringForSuite then
+            API.SyncDiceLayeringForSuite()
+        end
+    end
+    if GameTooltip then
+        GameTooltip:Hide()
+    end
+
     MainWindow.InvalidateLayout()
     MainWindow.SelectTab(activeTab)
 

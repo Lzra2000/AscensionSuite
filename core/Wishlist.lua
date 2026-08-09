@@ -60,7 +60,10 @@ local function EntryTypeIsMeta(api, entryType)
     return entryType == "Tag" or entryType == "Suggestion"
 end
 
-local function RefuseReasonForPush(api, entryType, resolveErr, canAdd)
+local function RefuseReasonForPush(api, entryId, entryType, resolveErr)
+    if api and api.DescribeCanAddRefuse then
+        return api.DescribeCanAddRefuse(entryId, entryType, resolveErr)
+    end
     if resolveErr then
         return resolveErr
     end
@@ -73,10 +76,7 @@ local function RefuseReasonForPush(api, entryType, resolveErr, canAdd)
     if not EntryTypeEligible(api, entryType) then
         return "type_not_desired"
     end
-    if canAdd == false then
-        return "can_add_false"
-    end
-    return "refused"
+    return "can_add_false"
 end
 
 local function CopyTable(source)
@@ -257,9 +257,14 @@ local function CachedPairValid(api, entryId, entryType, spellId)
     return spellId == nil
 end
 
-function Wishlist.ResolveItemPair(item)
+function Wishlist.ResolveItemPair(item, forceRefresh)
     if type(item) ~= "table" then
         return nil, nil, "invalid_item"
+    end
+
+    if forceRefresh then
+        item.entryId = nil
+        item.entryType = nil
     end
 
     local api = GetAPI()
@@ -739,11 +744,31 @@ function Wishlist.PushToDesired()
         elseif api.IsDesiredID(entryId, entryType) then
             already = already + 1
         elseif not api.CanAddDesiredID(entryId, entryType) then
-            failed = failed + 1
-            refuses[#refuses + 1] = {
-                name = label,
-                reason = RefuseReasonForPush(api, entryType, nil, false),
-            }
+            local retryId, retryType, retryErr = Wishlist.ResolveItemPair(item, true)
+            if retryId and retryType
+                and (retryId ~= entryId or retryType ~= entryType)
+                and api.CanAddDesiredID(retryId, retryType) then
+                local added, addReason = api.AddDesiredID(retryId, retryType)
+                if added then
+                    pushed = pushed + 1
+                else
+                    failed = failed + 1
+                    refuses[#refuses + 1] = {
+                        name = label,
+                        reason = addReason or "add_failed",
+                    }
+                end
+            else
+                failed = failed + 1
+                refuses[#refuses + 1] = {
+                    name = label,
+                    reason = RefuseReasonForPush(
+                        api,
+                        retryId or entryId,
+                        retryType or entryType,
+                        retryErr or resolveErr),
+                }
+            end
         else
             local added, addReason = api.AddDesiredID(entryId, entryType)
             if added then
