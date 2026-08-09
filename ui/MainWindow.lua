@@ -160,6 +160,18 @@ local function MarkDirty()
     end
 end
 
+local function SyncCheckGroup(group, on)
+    if type(group) ~= "table" then
+        return
+    end
+    for index = 1, #group do
+        local check = group[index]
+        if check and check.SetChecked then
+            check:SetChecked(on)
+        end
+    end
+end
+
 local function RefreshFooterClean()
     if not footerStatus then
         return
@@ -870,18 +882,6 @@ local function CreateToggleRow(parent, y, title, description, onToggle)
     descFs:SetTextColor(0.35, 0.28, 0.18, 1)
 
     return check, -46
-end
-
-local function SyncCheckGroup(group, on)
-    if type(group) ~= "table" then
-        return
-    end
-    for index = 1, #group do
-        local check = group[index]
-        if check and check.SetChecked then
-            check:SetChecked(on)
-        end
-    end
 end
 
 local function BindAssistCheck(check, key)

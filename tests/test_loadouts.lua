@@ -234,7 +234,7 @@ AscensionSuiteDB.desiredProfiles = {
     },
 }
 AscensionSuite.Database.Init()
-assert(AscensionSuiteDB.version == 7, "migrated to v7")
+assert(AscensionSuiteDB.version == 8, "migrated to v8")
 assert(AscensionSuiteDB.loadouts["legacy-migrated"], "legacy profile became loadout")
 
 ------------------------------------------------------------------------
