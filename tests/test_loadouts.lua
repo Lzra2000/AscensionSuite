@@ -272,5 +272,43 @@ assert(importLoadout.name == "Imported archetype", "name copied")
 assert(importLoadout.author == "Native", "author copied")
 assert(importLoadout.sections.OVERVIEW:match("Imported overview"), "overview section copied")
 assert(#importLoadout.equipment.armorTypes == 1, "equipment stub copied")
+assert(importLoadout.equipment.armorTypes[1].type == "ITEM_SUBCLASS_ARMOR_PLATE", "equipment type normalized")
+
+------------------------------------------------------------------------
+-- Filtered Desired counts (live marks among filtered spells)
+------------------------------------------------------------------------
+
+local filterLoadout, filterId = Loadouts.Create("Filter test", "", false)
+filterLoadout.entries = {
+    { entryId = 1133, entryType = "Ability", spellId = 133, name = "Fireball", tags = { core = true } },
+    { entryId = 1116, entryType = "Talent", spellId = 116, name = "Ice Block", tags = { optimal = true } },
+}
+desired["1133/Ability"] = true
+local desiredCount, filteredTotal = Loadouts.CountFilteredDesired(filterLoadout, { core = true, optimal = false })
+assert(filteredTotal == 1, "only core row counts when optimal filtered out")
+assert(desiredCount == 1, "live Desired mark counted among filtered rows")
+
+------------------------------------------------------------------------
+-- Capture Known snapshot
+------------------------------------------------------------------------
+
+local okKnown, knownCount = Loadouts.CaptureKnown(filterId)
+assert(okKnown and knownCount >= 1, "Capture Known stores snapshot")
+
+------------------------------------------------------------------------
+-- Import failure messaging
+------------------------------------------------------------------------
+
+local message = Loadouts.DescribeImportError("no_build")
+assert(type(message) == "string" and message:find("importable"), "clear no-build message")
+
+local API = AscensionSuite.AscensionAPI
+local originalGetImportable = API.GetImportableBuild
+API.GetImportableBuild = function() return nil, "no_build" end
+local failLoadout, failId = Loadouts.Create("Fail import", "", false)
+local failOk, failReason = Loadouts.ImportFromArchetype(failId)
+API.GetImportableBuild = originalGetImportable
+assert(not failOk, "import fails without build")
+assert(type(failReason) == "string" and failReason:find("importable"), "import surfaces clear message")
 
 print("OK: AscensionSuite loadouts test passed")

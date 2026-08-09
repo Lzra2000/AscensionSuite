@@ -3,6 +3,24 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.3 (2026-08-09) -- Loadouts polish: live Desired count, equipment icons, Capture Known
+
+#### Added
+- **Automate strip** shows live **Desired: X of N** for the filtered Spells list (refreshes
+  after Apply, Sync, Auto-Roll, and tab show) so players see counts instead of a blank
+  “nothing Desired” state.
+- **Equipment section** renders imported armor/weapon stubs as icon rows (like native
+  Archetypes) with optional notes underneath.
+- **Capture Known** on the automate strip snapshots Known entries into the selected
+  loadout via the existing AscensionAPI path.
+- **Category / Complexity** meta chips cycle on click (author stays character name unless
+  imported from an archetype).
+
+#### Changed
+- **Import Archetype…** prefers editor pending → drafted → active build; clearer status
+  when none is available; equipment stubs preserve type keys and tags/class grouping on
+  spell import.
+
 ### 0.4.2 (2026-08-08) -- Loadouts Apply/Desired + share string + section UI
 
 #### Fixed

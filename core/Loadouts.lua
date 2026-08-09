@@ -46,6 +46,16 @@ Loadouts.SECTION_HINTS = {
     SPELLS_AND_TALENTS = "automation source",
 }
 
+Loadouts.CATEGORY_CYCLE = { "PvE", "PvP" }
+Loadouts.COMPLEXITY_CYCLE = { "Standard", "Intermediate", "Advanced", "Expert", "Impossible" }
+
+local IMPORT_ERROR_MESSAGES = {
+    not_found = "build not found",
+    no_api = "Ascension API unavailable",
+    no_build = "no importable build — open Archetypes in the editor, draft one, or activate a build first",
+    no_spells = "that build has no spells to import",
+}
+
 local function GetDB()
     local DB = AscensionSuite.Database
     if DB and DB.Get then
@@ -205,6 +215,49 @@ end
 
 local function UniqueId(name)
     return SlugFromName(name) .. "-" .. tostring(Now()) .. "-" .. tostring(math.random(1000, 9999))
+end
+
+local function NormalizeEquipmentList(list)
+    local rows = {}
+    if type(list) ~= "table" then
+        return rows
+    end
+    local api = GetAPI()
+    for index = 1, #list do
+        local item = list[index]
+        local typeKey, comment
+        if api and api.NormalizeEquipmentStub then
+            typeKey, comment = api.NormalizeEquipmentStub(item)
+        elseif type(item) == "table" then
+            typeKey = item.type or item.Type
+            comment = item.comment or item.Comment or ""
+        elseif type(item) == "string" then
+            typeKey = item
+            comment = ""
+        end
+        if typeKey then
+            rows[#rows + 1] = { type = typeKey, comment = comment or "" }
+        end
+    end
+    return rows
+end
+
+local function CycleValue(current, options)
+    if type(options) ~= "table" or #options == 0 then
+        return nil
+    end
+    if current == nil or current == "" then
+        return options[1]
+    end
+    for index = 1, #options do
+        if options[index] == current then
+            if index >= #options then
+                return nil
+            end
+            return options[index + 1]
+        end
+    end
+    return options[1]
 end
 
 local function GetStore()
@@ -401,12 +454,8 @@ function Loadouts.EnsureLoadoutShape(loadout)
     if type(loadout.equipment) ~= "table" then
         loadout.equipment = { armorTypes = {}, weaponTypes = {} }
     else
-        if type(loadout.equipment.armorTypes) ~= "table" then
-            loadout.equipment.armorTypes = {}
-        end
-        if type(loadout.equipment.weaponTypes) ~= "table" then
-            loadout.equipment.weaponTypes = {}
-        end
+        loadout.equipment.armorTypes = NormalizeEquipmentList(loadout.equipment.armorTypes)
+        loadout.equipment.weaponTypes = NormalizeEquipmentList(loadout.equipment.weaponTypes)
     end
     if type(loadout.entries) ~= "table" then
         loadout.entries = {}
@@ -529,7 +578,11 @@ function Loadouts.ImportFromArchetype(id)
 
     local build, source = api.GetImportableBuild()
     if not build then
-        return false, "no_build"
+        local message = source
+        if api.DescribeImportableBuildFailure then
+            message = api.DescribeImportableBuildFailure(source)
+        end
+        return false, message or "no_build"
     end
 
     Loadouts.EnsureLoadoutShape(loadout)
@@ -769,7 +822,94 @@ function Loadouts.CaptureKnown(id)
     end
     loadout.knownSnapshot = api.CaptureKnownSnapshot()
     loadout.updatedAt = Now()
-    return true
+    local count = type(loadout.knownSnapshot) == "table" and #loadout.knownSnapshot or 0
+    return true, count
+end
+
+function Loadouts.DescribeImportError(code)
+    if type(code) == "string" and IMPORT_ERROR_MESSAGES[code] then
+        return IMPORT_ERROR_MESSAGES[code]
+    end
+    if type(code) == "string" then
+        return code
+    end
+    return "import failed"
+end
+
+function Loadouts.CycleCategory(current)
+    return CycleValue(current, Loadouts.CATEGORY_CYCLE)
+end
+
+function Loadouts.CycleComplexity(current)
+    return CycleValue(current, Loadouts.COMPLEXITY_CYCLE)
+end
+
+function Loadouts.DescribeEquipmentStub(stub)
+    if type(stub) ~= "table" then
+        return nil
+    end
+    local api = GetAPI()
+    local typeKey = stub.type or stub.Type
+    local name, icon, isArmor
+    if api and api.GetEquipmentTypeIconAndName then
+        name, icon, isArmor = api.GetEquipmentTypeIconAndName(typeKey)
+    end
+    name = name or typeKey or "?"
+    icon = icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+    return {
+        type = typeKey,
+        name = name,
+        icon = icon,
+        isArmor = isArmor == true,
+        comment = stub.comment or stub.Comment or "",
+    }
+end
+
+function Loadouts.CountFiltered(loadout, filters)
+    if type(loadout) ~= "table" or type(loadout.entries) ~= "table" then
+        return 0
+    end
+    local total = 0
+    for index = 1, #loadout.entries do
+        if EntryPassesFilters(loadout.entries[index], filters) then
+            total = total + 1
+        end
+    end
+    return total
+end
+
+function Loadouts.CountFilteredDesired(loadout, filters)
+    if type(loadout) ~= "table" or type(loadout.entries) ~= "table" then
+        return 0, 0
+    end
+
+    local Wishlist = GetWishlist()
+    local api = GetAPI()
+    local desired = 0
+    local total = 0
+
+    for index = 1, #loadout.entries do
+        local row = loadout.entries[index]
+        if type(row) == "table" and EntryPassesFilters(row, filters) then
+            total = total + 1
+            local entryId, entryType = Loadouts.ResolveEntryRow(row)
+            local isDesired = row.desired == true
+            if Wishlist and Wishlist.IsItemDesired and entryId and entryType then
+                isDesired = Wishlist.IsItemDesired({
+                    entryId = entryId,
+                    entryType = entryType,
+                    spellId = row.spellId,
+                    name = row.name,
+                }) == true or isDesired
+            elseif api and entryId and entryType and api.IsDesiredID then
+                isDesired = api.IsDesiredID(entryId, entryType) == true or isDesired
+            end
+            if isDesired then
+                desired = desired + 1
+            end
+        end
+    end
+    return desired, total
 end
 
 function Loadouts.CountDesiredInLoadout(loadout)
