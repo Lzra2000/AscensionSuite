@@ -430,6 +430,61 @@ assert(healed == true, "fade-IN READY_TO_ROLL is healed")
 assert(mouseEnabled == true, "fade-IN mouse restored")
 _G.WildCardDice.FadeMode = nil
 
+-- Sticky FadeMode OUT at full alpha is NOT an active fade — READY_TO_ROLL must heal.
+-- Ascension leaves FadeMode set after ramps end; PlayFlipBook UnregisterOnClick races
+-- can leave mouse false while the gold "Click the Dice…" hint stays up.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "READY_TO_ROLL" end
+_G.WildCardDice.FadeMode = "OUT"
+diceAlpha = 1
+mouseEnabled = false
+registerCalls = 0
+assert(API.IsDiceFadingOut() == false, "sticky OUT at full alpha is not fading out")
+assert(API.ResolveDiceGuardMode() == "heal", "sticky OUT READY_TO_ROLL heals")
+healed = API.EnsureDiceClickable()
+assert(healed == true, "sticky OUT READY_TO_ROLL is healed")
+assert(mouseEnabled == true, "sticky OUT mouse restored")
+_G.WildCardDice.FadeMode = nil
+
+-- Active mid fade-OUT on READY_TO_ROLL must not re-enable mouse (HideDices ramp).
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "READY_TO_ROLL" end
+_G.WildCardDice.FadeMode = "OUT"
+diceAlpha = 0.4
+mouseEnabled = false
+registerCalls = 0
+assert(API.IsDiceFadingOut() == true, "mid OUT ramp is fading out")
+assert(API.ResolveDiceGuardMode() ~= "heal", "mid OUT ramp does not heal")
+healed = API.EnsureDiceClickable()
+assert(registerCalls == 0, "mid OUT ramp RegisterOnClick not called")
+assert(mouseEnabled == false, "mid OUT ramp mouse stays off")
+_G.WildCardDice.FadeMode = nil
+
+-- Gold hint prompt alone (Core lagged) still counts as interactive.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "IDLE" end
+_G.WildCardDice.HintFrame = {
+    IsShown = function() return true end,
+    GetAlpha = function() return 1 end,
+}
+mouseEnabled = false
+registerCalls = 0
+assert(API.DiceShouldAcceptClicks() == true, "HintFrame prompt accepts clicks")
+assert(API.ResolveDiceGuardMode() == "heal", "hint prompt heals")
+healed = API.EnsureDiceClickable()
+assert(healed == true and mouseEnabled == true, "hint prompt mouse restored")
+_G.WildCardDice.HintFrame = nil
+
+-- FadeMode IN on IDLE appear must not hide/clear (Core stays IDLE until OnFinishedAppear).
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "IDLE" end
+_G.WildCardDice.FadeMode = "IN"
+diceShown = true
+mouseEnabled = false
+assert(API.ShouldLetDiceHide() == false, "appear fade-IN IDLE is not let_hide")
+assert(API.IsDiceStuckVisibleNonInteractive() == false, "appear fade-IN is not stuck linger")
+_G.WildCardDice.FadeMode = nil
+
 -- ShouldLetDiceHide after level-up when no roll and no decision.
 ResetDiceVisuals()
 _G.WildCardDice.Core.GetState = function() return "IDLE" end

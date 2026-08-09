@@ -1840,18 +1840,34 @@ local function DiceFadeAnimationPlaying(dice)
     return false
 end
 
--- AscensionUI BaseFrameFade sets frame.FadeMode to "IN" or "OUT". Mid alpha alone
--- is NOT fade-out — appear uses the same alpha ramp with FadeMode "IN", and Suite
--- used to clear mouse / demote strata during that ramp.
+-- AscensionUI BaseFrameFade sets frame.FadeMode to "IN" or "OUT" and never clears
+-- it when the ramp ends. Mid alpha alone is NOT fade-out (appear uses FadeMode
+-- "IN"). Sticky FadeMode "OUT" on a fully-opaque shown die is also NOT an active
+-- fade — treating it as one left READY_TO_ROLL dice unhealed after HideDices /
+-- PlayFlipBook races (UnregisterOnClick then re-show without a fresh FadeIn).
 function API.IsDiceFadingOut(dice)
     dice = dice or _G.WildCardDice
     if type(dice) ~= "table" then
         return false
     end
-    if dice.FadeMode == "OUT" then
+    if DiceFadeAnimationPlaying(dice) then
         return true
     end
-    if DiceFadeAnimationPlaying(dice) then
+    if dice.FadeMode ~= "OUT" then
+        return false
+    end
+    -- Active OUT ramp: frame still shown while alpha is dropping toward Hide.
+    if DiceIsShown(dice) and type(dice.GetAlpha) == "function" then
+        local ok, alpha = pcall(dice.GetAlpha, dice)
+        if ok and alpha and alpha >= 0.95 then
+            return false
+        end
+        if ok and alpha and alpha > 0 and alpha < 0.95 then
+            return true
+        end
+    end
+    -- Hidden (or alpha already 0) with sticky OUT — Ascension is done fading.
+    if not DiceIsShown(dice) then
         return true
     end
     return false
@@ -1894,6 +1910,10 @@ local function DiceStuckCandidate(dice)
     if API.IsDiceFadingOut(dice) then
         return false
     end
+    -- Mid appear (FadeMode IN, Core often still IDLE) is not a Suite stall.
+    if dice.FadeMode == "IN" then
+        return false
+    end
     if API.IsUnlearnOrKeepDecisionPending() then
         return false
     end
@@ -1934,6 +1954,11 @@ function API.ShouldLetDiceHide(dice)
     end
     if API.IsDiceFadingOut(dice) then
         return true
+    end
+    -- Appear fade-IN: Core often stays IDLE until OnFinishedAppear. Do not treat
+    -- that as a lingerer to hide/clear — it fights Ascension's RegisterOnClick.
+    if dice.FadeMode == "IN" and DiceIsShown(dice) then
+        return false
     end
     if API.IsUnlearnOrKeepDecisionPending() then
         return false
@@ -2445,9 +2470,28 @@ function API.IsUnlearnOrKeepDecisionPending()
     return false
 end
 
--- READY_TO_ROLL (golden d20), DECISION_PENDING (confirm/reroll), and a visually
--- revealed decision (icon/name frame) are clickable. Animation skip can strand
--- Core in REVEALING while SetInternalID already rendered the spell icon.
+local function DiceHintPromptShown(dice)
+    local hint = dice and dice.HintFrame
+    if type(hint) ~= "table" or type(hint.IsShown) ~= "function" then
+        return false
+    end
+    local ok, shown = pcall(hint.IsShown, hint)
+    if not ok or shown ~= true then
+        return false
+    end
+    if type(hint.GetAlpha) == "function" then
+        local alphaOk, alpha = pcall(hint.GetAlpha, hint)
+        if alphaOk and alpha and alpha < 0.05 then
+            return false
+        end
+    end
+    return true
+end
+
+-- READY_TO_ROLL (golden d20 / "Click the Dice…" hint), DECISION_PENDING
+-- (confirm/reroll), and a visually revealed decision (icon/name frame) are
+-- clickable. Animation skip can strand Core in REVEALING while SetInternalID
+-- already rendered the spell icon.
 function API.DiceShouldAcceptClicks(dice)
     dice = dice or _G.WildCardDice
     if type(dice) ~= "table" then
@@ -2462,10 +2506,19 @@ function API.DiceShouldAcceptClicks(dice)
         if state == states.REVEALING and API.IsDiceRevealedDecisionShown(dice) then
             return true
         end
+        -- HintFrame is only BaseFrameFadeIn'd on READY_TO_ROLL. If Core lagged
+        -- but the gold prompt is up, the player must be able to click.
+        if DiceHintPromptShown(dice) and not dice.pendingReveal then
+            return true
+        end
         return false
     end
 
     if API.IsDiceRevealedDecisionShown(dice) then
+        return true
+    end
+
+    if DiceHintPromptShown(dice) and not dice.pendingReveal then
         return true
     end
 
@@ -2508,6 +2561,10 @@ end
 -- Single mode resolver for DiceGuard / AnimationSkip / Unstick. Prefer this over
 -- stacking independent Ensure / Clear / Demote calls every frame.
 -- Modes: none | rapid | hide_linger | let_hide | demote | heal | clear_stealer | ok
+--
+-- Interactive dice (READY_TO_ROLL / decision / hint prompt) always beat hide /
+-- stealer paths when not in an active fade-OUT ramp. Suite-open demote still
+-- runs after heal so the die stays under /asuite.
 function API.ResolveDiceGuardMode(dice)
     dice = dice or _G.WildCardDice
     if type(dice) ~= "table" then
@@ -2519,35 +2576,36 @@ function API.ResolveDiceGuardMode(dice)
         end
         return "rapid"
     end
+
+    local shown = DiceIsShown(dice)
+    local interactive = shown and API.DiceShouldAcceptClicks(dice)
+    local fadingOut = API.IsDiceFadingOut(dice)
+
+    -- Prefer clickability for a live decision / roll prompt over Suite "protect".
+    if interactive and not fadingOut then
+        if API.IsDiceShownUnclickable() then
+            return "heal"
+        end
+        if IsSuiteMainWindowShown() then
+            return "demote"
+        end
+        if API.IsDiceRevealedDecisionShown(dice) or API.IsDiceDecisionPending(dice) then
+            return "heal"
+        end
+        return "ok"
+    end
+
     if API.IsDiceStuckVisibleNonInteractive(dice) then
         return "hide_linger"
     end
     if API.ShouldLetDiceHide(dice) then
         return "let_hide"
     end
-    if IsSuiteMainWindowShown() and DiceIsShown(dice) then
-        if API.DiceShouldAcceptClicks(dice) and API.IsDiceShownUnclickable() then
-            return "heal"
-        end
+    if IsSuiteMainWindowShown() and shown then
         return "demote"
     end
     if API.IsDiceRecoveryCooldownActive() then
-        if DiceIsShown(dice) and API.DiceShouldAcceptClicks(dice) and not API.IsDiceFadingOut(dice) then
-            return "heal"
-        end
         return "clear_stealer"
-    end
-    if DiceIsShown(dice) and API.DiceShouldAcceptClicks(dice) then
-        if API.IsDiceFadingOut(dice) then
-            return "let_hide"
-        end
-        if API.IsDiceShownUnclickable() then
-            return "heal"
-        end
-        if API.IsDiceRevealedDecisionShown(dice) or API.IsDiceDecisionPending(dice) then
-            return "heal"
-        end
-        return "ok"
     end
     return "clear_stealer"
 end
@@ -2595,8 +2653,10 @@ function API.EnsureDiceClickable()
     if not API.DiceShouldAcceptClicks(dice) then
         return API.ClearDiceClickStealer(dice)
     end
+    -- Active fade-OUT only — sticky FadeMode OUT on an opaque interactive die
+    -- must not block RegisterOnClick (see IsDiceFadingOut).
     if API.IsDiceFadingOut(dice) then
-        return API.ClearDiceClickStealer(dice)
+        return false
     end
 
     local healed = false
@@ -2637,18 +2697,24 @@ end
 
 -- After /asuite closes, put a Suite-demoted leveling die back at Ascension native
 -- layering and re-heal mouse if the player still needs to click Continue / roll.
+-- Always attempts mouse heal for an interactive shown die even when Suite never
+-- demoted strata (demote flag missing / already cleared).
 function API.RestoreDiceAfterSuite(dice)
     if IsSuiteMainWindowShown() then
         return false
     end
     dice = dice or _G.WildCardDice
-    if type(dice) ~= "table" or not dice._asuiteDemotedForSuite then
+    if type(dice) ~= "table" then
         return false
     end
 
-    API.ClearDiceHoverArtifacts(dice)
-    local restored = RestoreDiceNativeLayering(dice)
-    if DiceIsShown(dice) and API.DiceShouldAcceptClicks(dice) then
+    local restored = false
+    if dice._asuiteDemotedForSuite then
+        API.ClearDiceHoverArtifacts(dice)
+        restored = RestoreDiceNativeLayering(dice)
+    end
+
+    if DiceIsShown(dice) and API.DiceShouldAcceptClicks(dice) and not API.IsDiceFadingOut(dice) then
         if API.IsDiceShownUnclickable() then
             if type(dice.RegisterOnClick) == "function" then
                 pcall(dice.RegisterOnClick, dice)

@@ -3,6 +3,32 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.5.3 (2026-08-09) -- READY_TO_ROLL dice click heal
+
+#### Fixed
+- **Click-to-reveal die left unclickable** — with the gold
+  “Click the Dice to reveal a spell” prompt up (`READY_TO_ROLL` / `HintFrame`),
+  Suite could still leave `EnableMouse` false. AscensionUI leaves sticky
+  `FadeMode == "OUT"` after ramps end; Suite treated that as an active fade and
+  chose `let_hide`, while `ClearDiceClickStealer` no-ops on interactive dice —
+  so mouse was never re-healed after `PlayFlipBook` / `HideDices` /
+  Instant Skip races. `IsDiceFadingOut` now requires an active OUT alpha ramp
+  (or a hidden frame), and `ResolveDiceGuardMode` prefers **heal** for
+  interactive dice over hide/stealer paths when Suite is closed.
+- **Appear IDLE treated as lingerer** — during appear, Core often stays `IDLE`
+  with `FadeMode "IN"` until `OnFinishedAppear`. Suite no longer
+  `ShouldLetDiceHide` / stuck-linger that window.
+- **Suite hide mouse restore** — `RestoreDiceAfterSuite` re-enables mouse on a
+  still-interactive die even when the demote flag was already cleared.
+- **Instant Dice Skip defer** — skip recovery no longer runs
+  `ClearDiceClickStealer` over a live READY_TO_ROLL / hint prompt; cooldown
+  cannot block that heal.
+
+#### Added
+- HintFrame prompt detection in `DiceShouldAcceptClicks`.
+- Sandbox coverage for sticky FadeMode OUT heal, mid-OUT non-heal, hint
+  prompt, appear IDLE, and Suite-hide mouse restore.
+
 ### 0.5.2 (2026-08-09) -- Wild Card dice edge-case harden
 
 #### Fixed
