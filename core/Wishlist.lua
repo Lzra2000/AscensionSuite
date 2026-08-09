@@ -621,6 +621,7 @@ function Wishlist.Describe(item)
         icon = icon,
         resolved = item.name ~= nil,
         desired = Wishlist.IsItemDesired(item),
+        undesired = Wishlist.IsItemUndesired(item),
     }
 end
 
@@ -670,6 +671,18 @@ function Wishlist.IsItemDesired(item)
     return api.IsDesiredID(entryId, entryType) == true
 end
 
+function Wishlist.IsItemUndesired(item)
+    local api = GetAPI()
+    if not api or not api.IsUndesiredID then
+        return false
+    end
+    local entryId, entryType = ItemPair(item)
+    if not entryId then
+        return false
+    end
+    return api.IsUndesiredID(entryId, entryType) == true
+end
+
 -- Every (entryId, entryType) pair the addon can ask IsDesiredID about. The
 -- client exposes no way to enumerate Desired selections, so this list is the
 -- whole universe Auto-Roll can verify against.
@@ -711,6 +724,22 @@ function Wishlist.CountDesired()
     local items = Wishlist.GetItems()
     for index = 1, #items do
         if Wishlist.IsItemDesired(items[index]) then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+function Wishlist.CountUndesired()
+    local api = GetAPI()
+    if not api or not api.IsUndesiredID then
+        return 0
+    end
+
+    local count = 0
+    local items = Wishlist.GetItems()
+    for index = 1, #items do
+        if Wishlist.IsItemUndesired(items[index]) then
             count = count + 1
         end
     end

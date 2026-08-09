@@ -3,6 +3,31 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.5.0 (2026-08-09) -- Native WotLK settings layout
+
+#### Changed
+- **Assists tab** uses Interface Options–style chrome: left **Categories** sidebar
+  (General, Automation, Logbook, Windows & Tools, Wishlist sync), parchment
+  content, section headers, `UICheckButtonTemplate` title+description rows, and
+  a contained footer with status + **Cancel** / **Save changes**.
+- **Automation** shows Wishlist / Desired / Undesired count cards, assist toggles,
+  a clipped Logbook preview, and **Start** / **Stop** / **Unstick** in the footer.
+- **Wishlist** count line includes Desired and Undesired; rows show **Desired** /
+  **Undes.** badges (toggleable); footer keeps **Push to Desired**, **Sync from
+  Rapid**, and **Clear tags** inside the DialogFrame.
+- Window chrome is a fixed **740×580** DialogFrame with CharacterFrame-style tabs;
+  Wild Card dice layering under Suite is unchanged from 0.4.17.
+
+#### Added
+- Assist toggles edit a **draft** until **Save changes** (Cancel reverts). Assists
+  still default **off**; Suite never auto-Unlearns / never spends Scroll of Fortune.
+- Prefs: `showWishlistBadges` (default on), `clickTrace` (default off).
+- `AscensionAPI` Undesired seams: `IsUndesiredID`, filtered/saved collectors,
+  `CountUndesiredSelections` (read-only; no Undesired automation).
+- `Wishlist.IsItemUndesired`, `CountUndesired`; Settings category APIs on
+  `MainWindow` (`SelectCategory`, `GetActiveCategory`).
+- `tests/test_settings_layout.lua`.
+
 ### 0.4.18 (2026-08-09) -- Instant Dice Skip recovery fix
 
 #### Fixed

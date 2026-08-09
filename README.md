@@ -2,6 +2,10 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
+**v0.5.0** redesigns **`/asuite` Assists** as a native WotLK settings window
+(Categories sidebar, parchment panels, Cancel/Save drafts, Desired/Undesired
+counts and badges) while keeping all assists opt-in and safety rules unchanged.
+
 **v0.4.18** fixes **Instant Dice Skip recovery** when the assist is enabled.
 
 **v0.4.17** keeps **Wild Card dice under `/asuite`** (no `FULLSCREEN_DIALOG` overlay on the
@@ -45,11 +49,13 @@ Three tabs:
 - Saved builds list, **Save Build**, **Reset**, **Duplicate**, **Copy share** / Import string (ASUITE2; ASUITE1 import still accepted)
 
 ### Assists
+- Native WotLK settings layout: **Categories** sidebar (General, Automation, Logbook, Windows & Tools, Wishlist sync)
+- Toggle rows use checkbox + title + description; changes are a **draft** until **Save changes** (Cancel reverts)
 - Checkboxes (all default off): Auto-Roll, keep going after a Desired hit, dice/SkillCard animation skip, Wildcard popup accept, logbook capture, **auto-unstick gray Rapid Continue**
-- **Start / Stop** for Auto-Roll, with a readable reason whenever it refuses or stops
-- **Unstick** if Rapid Continue is stuck gray or the leveling die will not accept clicks — confirms in chat (auto-unstick uses the same recovery when opted in)
-- **Sync from Rapid** to pull in marks made before the addon was watching
-- Logbook of recent rolls
+- **Start / Stop** / **Unstick** on the Automation footer, with a readable reason whenever Auto-Roll refuses or stops
+- **Sync from Rapid** under Wishlist sync (also on the Wishlist footer)
+- Logbook of recent rolls (clipped inside Logbook / Automation)
+- Optional: Desired/Undesired wishlist badges, click-trace pref (both under Windows & Tools)
 
 ## Marking wishlist entries
 
