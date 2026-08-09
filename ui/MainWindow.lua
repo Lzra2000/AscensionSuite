@@ -134,6 +134,7 @@ local STOP_REASONS = {
     chain_limit = "reached the chained-session limit - press Start to keep going",
     not_wildcard_mode = "not in Wildcard mode",
     no_wildcard_api = "Ascension's Wildcard API is not loaded",
+    unlearn_decision = "keep-or-unlearn decision is up - Cancel/Unlearn is yours; Suite never spends Scroll of Fortune",
 }
 
 function MainWindow.DescribeStopReason(reason)

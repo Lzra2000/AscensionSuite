@@ -97,6 +97,9 @@ local function CanOperate(skipTargets)
     if not api.IsRapidRollingFrameShown() and not api.CanRollAbilities() then
         return false, "rapid_not_ready"
     end
+    if api.IsUnlearnOrKeepDecisionPending and api.IsUnlearnOrKeepDecisionPending() then
+        return false, "unlearn_decision"
+    end
     return true
 end
 
@@ -156,6 +159,11 @@ local function Tick(delta)
         return
     end
 
+    if api.IsUnlearnOrKeepDecisionPending and api.IsUnlearnOrKeepDecisionPending() then
+        AutoRoller.Stop("unlearn_decision")
+        return
+    end
+
     local phase = CurrentPhase()
     -- Also stall when the advance is blocked with no usable Phase (die stuck on
     -- "?" / pendingReveal): that is the gray-Continue hang. Phase progress still
@@ -169,6 +177,10 @@ local function Tick(delta)
     if (phase ~= nil and phase == lastPhase) or (blocked and phase == lastPhase) then
         stalledFor = stalledFor + (delta or TICK_SECONDS)
         if stalledFor >= STALL_SECONDS then
+            if api.IsUnlearnOrKeepDecisionPending and api.IsUnlearnOrKeepDecisionPending() then
+                AutoRoller.Stop("unlearn_decision")
+                return
+            end
             if api.RecoverStuckRapidSession then
                 api.RecoverStuckRapidSession()
             end

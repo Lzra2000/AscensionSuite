@@ -19,6 +19,17 @@ local ALLOWLIST = {
     CONFIRM_WILDCARD_LEVELING = true,
 }
 
+local function StopAutoRollForUnlearnDialog(which)
+    local API = AscensionSuite.AscensionAPI
+    if API and API.IsUnlearnConfirmDialog and not API.IsUnlearnConfirmDialog(which) then
+        return
+    end
+    local AutoRoller = AscensionSuite.AutoRoller
+    if AutoRoller and AutoRoller.IsRunning and AutoRoller.IsRunning() and AutoRoller.Stop then
+        AutoRoller.Stop("unlearn_decision")
+    end
+end
+
 local hooked = false
 local dispatcher
 local pending = {}
@@ -114,5 +125,6 @@ function PopupAssist.Init()
         if ALLOWLIST[which] and ShouldAccept() then
             Queue(which)
         end
+        StopAutoRollForUnlearnDialog(which)
     end)
 end

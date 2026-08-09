@@ -3,6 +3,25 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.10 (2026-08-09) -- Auto-Roll never auto-Unlearns
+
+#### Fixed
+- **Auto-Roll halts on keep-vs-unlearn decisions** — when the leveling die reaches
+  `DECISION_PENDING`, Rapid Rolling enters `WaitingForUnlearn`, or Ascension shows
+  `CONFIRM_UNLEARN_S` / sibling unlearn confirms (Scroll of Fortune spend), Suite
+  stops Auto-Roll with a clear reason instead of calling `RollAbilities`,
+  `AdvanceRapidRoll`, or stall-recovery paths that can open or accept Unlearn.
+- **PopupAssist** stops a running Auto-Roll when an unlearn confirm appears; it never
+  Accepts or Cancels those dialogs — Cancel/Unlearn is always yours.
+- **Stall recovery** (`RecoverStuckRapidSession`) refuses to run while an unlearn
+  decision is pending.
+
+#### Added
+- `AscensionAPI.IsUnlearnOrKeepDecisionPending`, `IsUnlearnConfirmVisible`,
+  `IsDiceDecisionPending`, `IsDiceUnlearnRollOffered`,
+  `IsRapidRollingWaitingForUnlearn`, `GetUnlearnConfirmDialogs`.
+- `tests/test_unlearn_guard.lua`.
+
 ### 0.4.9 (2026-08-09) -- Wild Card dice clickability after level-ups
 
 #### Fixed
