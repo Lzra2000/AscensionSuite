@@ -3,6 +3,27 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.13 (2026-08-09) -- Wild Card dice no longer steals clicks
+
+#### Fixed
+- **Wild Card dice click-stealer after level-ups** — `EnsureDiceClickable` could leave
+  `WildCardDice` at `FULLSCREEN_DIALOG` with mouse enabled after Instant Dice Skip or
+  level-up spam even when the die was no longer in a clickable state (`READY_TO_ROLL`,
+  `DECISION_PENDING`, or a revealed keep-vs-unlearn decision). That invisible overlay
+  blocked Manastorm objective tracker buttons and other UI until dismissed. Suite now
+  disables mouse, restores native strata/level, and hides idle stranded dice when they
+  are not player-interactive; strata is only raised while a shown decision die needs
+  clicks.
+- **Unstick / auto-unstick / DiceGuard** clear stranded click stealers through
+  `ClearDiceClickStealer` before restoring mouse on a real leveling die.
+- **Auto-Roll** still halts on keep-vs-unlearn decisions (`0.4.10` rule); Suite never
+  auto-presses Unlearn, Lock, or `ConfirmOrUnlearnID`.
+
+#### Added
+- `AscensionAPI.ClearDiceClickStealer`.
+- `tests/test_dice_clickable.lua` coverage for hidden/non-interactive dice, click-stealer
+  recovery, and mid-reveal strata cleanup.
+
 ### 0.4.12 (2026-08-09) -- Push skips Tag rows; only Ability/Talent → Desired
 
 #### Fixed

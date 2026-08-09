@@ -10,7 +10,7 @@ if type(AscensionSuite) ~= "table" then
 end
 
 AscensionSuite.NAME = addonName
-AscensionSuite.VERSION = "0.4.12"
+AscensionSuite.VERSION = "0.4.13"
 
 local function OnAddonLoaded(name)
     if name ~= addonName then
