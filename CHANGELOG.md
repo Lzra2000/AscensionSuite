@@ -3,6 +3,33 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.5.4 (2026-08-09) -- Loadouts overlap + opaque parchment
+
+#### Fixed
+- **Loadouts meta overlap** — Import Archetype / Save / Reset sit on a second meta
+  row so they no longer draw over Author / category chips.
+- **Automate status over section title** — status stays inside a taller Automate
+  band; Spells and Talents title, search, filters, and list each keep their own row.
+- **Filter + Add collision** — search/id/Add on one row; Core/Optimal/Empowering/
+  Synergistic checkboxes on the next.
+- **Background bleed-through** — parchment / sidebar / inset list backdrops are
+  fully opaque so Ascension Character Advancement no longer shows through Suite
+  panes. DialogFrame fill is forced opaque; Suite frame level raised within
+  `FULLSCREEN_DIALOG` (Wild Card dice demote/restore guards from 0.5.2/0.5.3
+  unchanged).
+- **Footer clip / toast crush** — Duplicate fits under the builds list (New|Delete
+  then full-width Duplicate); Copy share / Import string and the status toast sit
+  on separate footer rows inside the frame.
+- **Section nav overflow** — “Enchants & Consumables” shortened; nav labels clip
+  inside the sidebar button width.
+
+#### Changed
+- Main window height **600** to fit reserved Loadouts layout bands.
+- Shared `NativeChrome.ApplyMetaStrip` for meta / automate strips.
+
+#### Added
+- `docs/sketch/ascension-suite-loadouts-overlap-fix-mockup.html` (+ screenshot).
+
 ### 0.5.3 (2026-08-09) -- READY_TO_ROLL dice click heal
 
 #### Fixed

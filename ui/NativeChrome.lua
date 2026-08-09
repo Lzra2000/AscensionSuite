@@ -60,28 +60,35 @@ local function ApplyBackdrop(frame, template, r, g, b, a, br, bg, bb, ba)
     return true
 end
 
+-- Opaque parchment: Ascension Character Advancement must not bleed through Suite panes.
 function NativeChrome.ApplyParchment(frame)
     return ApplyBackdrop(frame, NativeChrome.TOOLTIP_BACKDROP,
-        0.78, 0.70, 0.50, 0.92,
+        0.78, 0.70, 0.50, 1,
         0.45, 0.35, 0.14, 1)
 end
 
 function NativeChrome.ApplySidebar(frame)
     return ApplyBackdrop(frame, NativeChrome.TOOLTIP_BACKDROP,
-        0.12, 0.09, 0.04, 0.95,
+        0.12, 0.09, 0.04, 1,
         0.45, 0.35, 0.14, 1)
 end
 
 function NativeChrome.ApplyInsetList(frame)
     return ApplyBackdrop(frame, NativeChrome.TOOLTIP_BACKDROP,
-        0.95, 0.90, 0.72, 0.55,
-        0.55, 0.45, 0.18, 0.9)
+        0.95, 0.90, 0.72, 0.96,
+        0.55, 0.45, 0.18, 1)
 end
 
 function NativeChrome.ApplyToggleRow(frame)
     return ApplyBackdrop(frame, NativeChrome.TOOLTIP_BACKDROP_TIGHT,
-        0.95, 0.90, 0.72, 0.55,
-        0.55, 0.45, 0.18, 0.9)
+        0.95, 0.90, 0.72, 0.92,
+        0.55, 0.45, 0.18, 1)
+end
+
+function NativeChrome.ApplyMetaStrip(frame)
+    return ApplyBackdrop(frame, NativeChrome.TOOLTIP_BACKDROP_TIGHT,
+        0.95, 0.90, 0.72, 0.96,
+        0.55, 0.45, 0.18, 1)
 end
 
 function NativeChrome.ApplyNavButton(frame, selected)
