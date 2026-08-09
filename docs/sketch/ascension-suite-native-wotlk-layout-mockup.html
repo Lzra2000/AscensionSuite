@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AscensionSuite — native WotLK settings chrome</title>
+<style>
+  :root {
+    --page: #1a1510;
+    --ink: #1a1208;
+    --ink-soft: #3a2e1c;
+    --gold: #ffd100;
+    --gold-dim: #c8a03c;
+    --gold-line: #8a7028;
+    --muted: #5a4a30;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 22px 26px 48px;
+    font-family: "Friz Quadrata TT", "Trebuchet MS", serif;
+    color: var(--ink);
+    background:
+      radial-gradient(900px 480px at 70% -20%, #3a3020, transparent),
+      linear-gradient(180deg, #2a2218, #12100c 60%, #0a0906);
+  }
+  h1 { margin: 0 0 6px; font-size: 1.15rem; color: #f0e2c0; font-weight: normal; }
+  .lead { color: #9c927f; max-width: 78rem; line-height: 1.5; margin: 0 0 16px; font-size: .86rem; font-family: "Trebuchet MS", sans-serif; }
+  code { color: #edcd82; }
+  .stage { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+
+  /* DialogFrame-ish chrome */
+  .dialog {
+    width: 740px; height: 580px;
+    background:
+      linear-gradient(180deg, rgba(255,220,120,.08), transparent 40%),
+      repeating-linear-gradient(0deg, #b8a47a 0 2px, #c4b088 2px 4px);
+    border: 3px solid #6a5420;
+    box-shadow:
+      inset 0 0 0 2px #d4c090,
+      inset 0 0 0 5px #3a3018,
+      0 0 0 2px #1a1408,
+      0 16px 40px rgba(0,0,0,.7);
+    border-radius: 2px;
+    padding: 10px 12px 10px;
+    display: flex; flex-direction: column;
+    position: relative; overflow: hidden;
+  }
+  .titlebar {
+    display: flex; flex-direction: column; gap: 2px;
+    background: linear-gradient(180deg, #4a3a1c, #2a2010);
+    border: 1px solid var(--gold-line);
+    margin: -2px -4px 0; padding: 8px 32px 8px 12px;
+    box-shadow: inset 0 1px 0 rgba(255,220,100,.25);
+  }
+  .titlebar h2 {
+    margin: 0; font-size: 1rem; color: var(--gold);
+    text-shadow: 0 1px 0 #000, 0 0 6px rgba(255,200,0,.3);
+    letter-spacing: .3px; font-weight: normal;
+  }
+  .titlebar .subhead {
+    margin: 0; font-size: .72rem; color: #c8b896;
+    font-family: "Trebuchet MS", sans-serif; line-height: 1.35;
+  }
+  .close {
+    position: absolute; top: 10px; right: 12px; width: 26px; height: 26px;
+    border-radius: 50%; border: 2px solid #8a7028;
+    background: radial-gradient(circle at 35% 30%, #6a3a2a, #2a1008);
+    color: #f0d9a0; font-size: .9rem; line-height: 22px; text-align: center;
+    box-shadow: inset 0 1px 0 rgba(255,200,100,.3), 0 1px 2px #000;
+  }
+
+  .tabs { display: flex; gap: 2px; margin: 8px 0 0 4px; flex: none; }
+  .tab {
+    padding: 5px 14px 7px; font-size: .78rem; color: #e8d8a8;
+    background: linear-gradient(180deg, #5a4828, #2a2010);
+    border: 1px solid #6a5420; border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    text-shadow: 0 1px 0 #000;
+    font-family: "Trebuchet MS", sans-serif;
+  }
+  .tab.on {
+    color: var(--gold);
+    background: linear-gradient(180deg, #7a6028, #3a2c14);
+    border-color: var(--gold-line);
+    box-shadow: inset 0 1px 0 rgba(255,220,100,.35);
+  }
+  .tabline { height: 2px; background: linear-gradient(90deg, #6a5420, var(--gold-line), #6a5420); flex: none; }
+
+  .body {
+    flex: 1; min-height: 0; display: flex; gap: 0;
+    margin-top: 8px; border: 1px solid #6a5420;
+    background: linear-gradient(180deg, #d4c4a0, #b8a47a);
+    box-shadow: inset 0 0 20px rgba(80,50,10,.25);
+    overflow: hidden;
+  }
+
+  /* Left category list — OptionsFrame-style */
+  .sidebar {
+    width: 156px; flex: none;
+    background: linear-gradient(180deg, #3a3020, #241c10);
+    border-right: 2px solid #6a5420;
+    padding: 8px 6px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .side-lbl {
+    font-size: .62rem; color: #c8a03c; text-transform: uppercase;
+    letter-spacing: .08em; padding: 2px 4px 6px;
+    font-family: "Trebuchet MS", sans-serif;
+  }
+  .nav {
+    padding: 8px 10px; font-size: .78rem; color: #e8d8a8;
+    background: linear-gradient(180deg, #4a3a22, #2a2010);
+    border: 1px solid #6a5420; border-radius: 3px;
+    text-shadow: 0 1px 0 #000;
+    font-family: "Trebuchet MS", sans-serif;
+  }
+  .nav.on {
+    color: #1a1208; font-weight: bold;
+    background: linear-gradient(180deg, #e8c860, #b89030);
+    border-color: #f0d060;
+    text-shadow: none;
+    box-shadow: inset 0 1px 0 rgba(255,255,180,.4), 0 0 0 1px #6a5420;
+  }
+
+  .main {
+    flex: 1; min-width: 0; min-height: 0;
+    display: flex; flex-direction: column; padding: 10px 12px 8px;
+    overflow: hidden;
+  }
+  .main-head { flex: none; margin-bottom: 8px; }
+  .main-head h3 {
+    margin: 0 0 3px; font-size: .98rem; color: #4a3008;
+    text-shadow: 0 1px 0 rgba(255,240,180,.4);
+  }
+  .main-head .sub {
+    margin: 0; font-size: .74rem; color: var(--ink-soft);
+    font-family: "Trebuchet MS", sans-serif; line-height: 1.35;
+  }
+
+  .scroll {
+    flex: 1; min-height: 0; overflow: auto;
+    border: 1px solid #8a7028; background: rgba(255,248,220,.35);
+    box-shadow: inset 0 0 8px rgba(80,50,10,.2);
+    padding: 10px;
+    position: relative;
+  }
+  /* faux gold scrollbar */
+  .scroll::after {
+    content: ""; position: absolute; top: 4px; right: 3px; bottom: 4px; width: 8px;
+    background: linear-gradient(180deg, #c8a03c, #8a7028);
+    border: 1px solid #6a5420; border-radius: 2px; opacity: .85; pointer-events: none;
+  }
+
+  .sec {
+    font-size: .68rem; color: #6a4a18; text-transform: uppercase;
+    letter-spacing: .08em; margin: 0 0 8px;
+    font-family: "Trebuchet MS", sans-serif; font-weight: bold;
+  }
+  .sec + .sec, .toggles .sec { margin-top: 14px; }
+
+  .grid2 {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin-bottom: 4px; padding-right: 12px;
+  }
+  .toolbtn {
+    text-align: center; padding: 10px 8px; font-size: .78rem; color: #f0e2c0;
+    background: linear-gradient(180deg, #6a3a22 0%, #3a1a10 50%, #2a1008 100%);
+    border: 1px solid #9a6a3a;
+    box-shadow: inset 0 1px 0 rgba(255,200,100,.25), 0 1px 2px #000;
+    text-shadow: 0 1px 0 #000;
+    font-family: "Trebuchet MS", sans-serif;
+  }
+  .toolbtn:hover { filter: brightness(1.08); }
+
+  .toggles { padding-right: 12px; }
+  .toggle {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 9px 10px; margin-bottom: 7px;
+    border: 1px solid #8a7028; background: rgba(255,248,220,.5);
+    box-shadow: inset 0 1px 0 rgba(255,255,220,.35);
+  }
+  .box {
+    width: 18px; height: 18px; flex: none; margin-top: 1px;
+    border: 2px solid #6a5420; background: #1a1408;
+    box-shadow: inset 0 0 3px #000;
+    position: relative;
+  }
+  .box.on::after {
+    content: ""; position: absolute; inset: 2px;
+    background: linear-gradient(135deg, #f0d060, #c8a030);
+  }
+  .toggle .t {
+    font-size: .82rem; color: #6a3a08; font-weight: bold;
+    font-family: "Trebuchet MS", sans-serif;
+  }
+  .toggle .d {
+    font-size: .72rem; color: var(--muted); margin-top: 3px;
+    font-family: "Trebuchet MS", sans-serif; line-height: 1.35;
+  }
+
+  .counts {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;
+    margin-bottom: 10px; flex: none; padding-right: 0;
+  }
+  .card {
+    border: 1px solid #8a7028; background: rgba(255,248,220,.45);
+    padding: 6px 8px; text-align: center;
+  }
+  .card .l { font-size: .62rem; color: #5a4a30; text-transform: uppercase;
+    font-family: "Trebuchet MS", sans-serif; }
+  .card .v { font-size: 1rem; color: #2a1808; margin-top: 2px; }
+  .card.des .v { color: #1e5a28; }
+  .card.und .v { color: #6a3a10; }
+
+  .log {
+    border: 1px solid #8a7028; background: rgba(30,22,10,.12);
+    padding: 8px 10px; font-size: .72rem; color: #3a2e1c;
+    font-family: "Trebuchet MS", sans-serif; line-height: 1.45;
+    margin-bottom: 8px; max-height: 120px; overflow: auto;
+  }
+  .log .tag { color: #2a5a8a; font-weight: bold; }
+
+  .footer {
+    flex: none; display: flex; align-items: center; gap: 8px;
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid #8a7028;
+  }
+  .footer .status {
+    flex: 1; font-size: .72rem; color: var(--muted);
+    font-family: "Trebuchet MS", sans-serif;
+  }
+  .btn {
+    font-family: "Trebuchet MS", sans-serif; font-size: .76rem;
+    color: #f0e2c0; text-shadow: 0 1px 0 #000;
+    padding: 6px 14px; border-radius: 3px; cursor: default;
+    background: linear-gradient(180deg, #6a3a22 0%, #3a1a10 45%, #2a1008 100%);
+    border: 1px solid #9a6a3a;
+    box-shadow: inset 0 1px 0 rgba(255,200,100,.25), 0 1px 2px #000;
+  }
+  .btn.gold {
+    background: linear-gradient(180deg, #8a6820 0%, #5a4010 50%, #3a2808 100%);
+    border-color: #d4a840; color: #ffe89a;
+  }
+  .btn.quiet {
+    background: linear-gradient(180deg, #4a4030, #2a2418);
+    border-color: #6a5420; color: #e8d8a8;
+  }
+
+  /* Wishlist list */
+  .list {
+    flex: 1; min-height: 0; overflow: auto;
+    border: 1px solid #8a7028; background: rgba(255,248,220,.35);
+  }
+  .row {
+    display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 8px;
+    font-size: .78rem; border-bottom: 1px solid rgba(106,84,32,.35);
+    font-family: "Trebuchet MS", sans-serif;
+  }
+  .ico { width: 18px; height: 18px; border: 1px solid #6a5420; background: #4a3a22; flex: none; }
+  .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #1a1208; }
+  .badge { font-size: .64rem; color: #1e4a70; width: 56px; text-align: right; font-weight: bold; }
+  .badge.und { color: #6a3a10; }
+  .id { width: 52px; text-align: right; color: #5a4a30; font-size: .68rem; }
+  .xbtn {
+    width: 18px; height: 18px; font-size: .7rem; text-align: center; line-height: 16px;
+    color: #f0e2c0; border: 1px solid #9a6a3a;
+    background: linear-gradient(180deg, #6a3a22, #2a1008);
+  }
+
+  .aside {
+    width: 260px; font-size: .8rem; color: #9c927f; line-height: 1.45;
+    font-family: "Trebuchet MS", sans-serif;
+  }
+  .aside h3 { color: #c8a03c; font-size: .88rem; margin: 0 0 8px; }
+  .aside ul { margin: 0; padding-left: 1.1rem; }
+  .aside li { margin-bottom: 6px; }
+  .aside .note {
+    margin-top: 12px; padding: 10px; border: 1px solid #6a5420;
+    background: #1a1610; border-radius: 3px; font-size: .74rem; color: #c8b896;
+  }
+</style>
+</head>
+<body>
+  <h1>AscensionSuite — native WotLK settings layout (preview)</h1>
+  <p class="lead">
+    Same pattern as your Addon Settings screenshot: left <strong>Categories</strong>,
+    content with <strong>OPEN A WINDOW</strong> grid + <strong>TOGGLES</strong> (checkbox · title · description),
+    footer status + Cancel / Save — but rendered with <strong>3.3.5a-native</strong> DialogFrame /
+    parchment / <code>UIPanelButton</code> / <code>UICheckButton</code> chrome.
+    Confirm before any Lua.
+  </p>
+
+  <div class="stage">
+    <!-- ASSISTS · Windows & Tools (mirrors your screenshot) -->
+    <div class="dialog">
+      <div class="close">×</div>
+      <div class="titlebar">
+        <h2>AscensionSuite Settings</h2>
+        <p class="subhead">Timing, assists, wishlist sync, logbook, and tools for the whole suite.</p>
+      </div>
+      <div class="tabs">
+        <div class="tab">Wishlist</div>
+        <div class="tab">Loadouts</div>
+        <div class="tab on">Assists</div>
+      </div>
+      <div class="tabline"></div>
+
+      <div class="body">
+        <nav class="sidebar">
+          <div class="side-lbl">Categories</div>
+          <div class="nav">General</div>
+          <div class="nav">Automation</div>
+          <div class="nav">Logbook</div>
+          <div class="nav on">Windows &amp; Tools</div>
+          <div class="nav">Wishlist sync</div>
+        </nav>
+        <div class="main">
+          <div class="main-head">
+            <h3>Windows &amp; Tools</h3>
+            <p class="sub">Open suite panels and toggle optional diagnostics. All assists stay opt-in.</p>
+          </div>
+
+          <div class="scroll">
+            <div class="sec">Open a window</div>
+            <div class="grid2">
+              <div class="toolbtn">Wishlist</div>
+              <div class="toolbtn">Loadouts</div>
+              <div class="toolbtn">Commands guide</div>
+              <div class="toolbtn">Roll logbook</div>
+              <div class="toolbtn">Debug / Click Trace</div>
+              <div class="toolbtn">Error log</div>
+            </div>
+
+            <div class="toggles">
+              <div class="sec">Toggles</div>
+              <div class="toggle">
+                <div class="box on"></div>
+                <div>
+                  <div class="t">Detailed automation logging</div>
+                  <div class="d">Write Auto-Roll / Instant Skip decisions into the suite logbook.</div>
+                </div>
+              </div>
+              <div class="toggle">
+                <div class="box"></div>
+                <div>
+                  <div class="t">Log every button click</div>
+                  <div class="d">Trace UI clicks for stuck-dice or overlap debugging. Off by default.</div>
+                </div>
+              </div>
+              <div class="toggle">
+                <div class="box on"></div>
+                <div>
+                  <div class="t">Show Desired / Undesired badges</div>
+                  <div class="d">Mark wishlist rows from Rapid Desired vs Undesired lists.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="footer">
+            <span class="status">No unsaved changes.</span>
+            <button class="btn quiet">Cancel</button>
+            <button class="btn gold">Save changes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ASSISTS · Automation + counts + log -->
+    <div class="dialog">
+      <div class="close">×</div>
+      <div class="titlebar">
+        <h2>AscensionSuite Settings</h2>
+        <p class="subhead">Automation category — Desired / Undesired counts + roll logbook stay inside the frame.</p>
+      </div>
+      <div class="tabs">
+        <div class="tab">Wishlist</div>
+        <div class="tab">Loadouts</div>
+        <div class="tab on">Assists</div>
+      </div>
+      <div class="tabline"></div>
+
+      <div class="body">
+        <nav class="sidebar">
+          <div class="side-lbl">Categories</div>
+          <div class="nav">General</div>
+          <div class="nav on">Automation</div>
+          <div class="nav">Logbook</div>
+          <div class="nav">Windows &amp; Tools</div>
+          <div class="nav">Wishlist sync</div>
+        </nav>
+        <div class="main">
+          <div class="main-head">
+            <h3>Automation</h3>
+            <p class="sub">Opt-in assists for Wildcard Rapid / leveling dice. Never Draft, HoF, or store.</p>
+          </div>
+
+          <div class="counts">
+            <div class="card"><div class="l">Wishlist</div><div class="v">6</div></div>
+            <div class="card des"><div class="l">Desired</div><div class="v">0 / 6</div></div>
+            <div class="card und"><div class="l">Undesired</div><div class="v">2</div></div>
+          </div>
+
+          <div class="scroll">
+            <div class="sec">Assists</div>
+            <div class="toggles" style="padding-right:0;">
+              <div class="toggle">
+                <div class="box on"></div>
+                <div>
+                  <div class="t">Auto-Roll while leveling</div>
+                  <div class="d">Desired Ability/Talent targets only. Never Unlearn / Scroll of Fortune.</div>
+                </div>
+              </div>
+              <div class="toggle">
+                <div class="box on"></div>
+                <div>
+                  <div class="t">Instant skip WildCardDice animation</div>
+                  <div class="d">Speeds flipbooks only — never starts a roll alone.</div>
+                </div>
+              </div>
+              <div class="toggle">
+                <div class="box"></div>
+                <div>
+                  <div class="t">Accept Wildcard confirm popups</div>
+                  <div class="d">Mass roll / leveling confirms only — never Unlearn Accept.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sec" style="margin-top:12px;">Logbook</div>
+            <div class="log">
+              <div><span class="tag">[roll]</span> Desired miss · kept cage · continue</div>
+              <div><span class="tag">[skip]</span> Instant Dice skip · recovery idle</div>
+              <div><span class="tag">[push]</span> 2 Ability → Desired · 1 Tag skipped</div>
+              <div><span class="tag">[sync]</span> Rapid Desired 0 · Undesired 2</div>
+            </div>
+          </div>
+
+          <div class="footer">
+            <span class="status">No unsaved changes · Desired 0 of 6</span>
+            <button class="btn">Start</button>
+            <button class="btn quiet">Unstick</button>
+            <button class="btn gold">Save changes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WISHLIST -->
+    <div class="dialog" style="height:520px;">
+      <div class="close">×</div>
+      <div class="titlebar">
+        <h2>AscensionSuite</h2>
+        <p class="subhead">Wishlist · Desired / Undesired badges · all controls clipped inside DialogFrame.</p>
+      </div>
+      <div class="tabs">
+        <div class="tab on">Wishlist</div>
+        <div class="tab">Loadouts</div>
+        <div class="tab">Assists</div>
+      </div>
+      <div class="tabline"></div>
+
+      <div class="body" style="flex-direction:column; padding:10px 12px;">
+        <div style="display:flex;align-items:baseline;gap:8px;flex:none;margin-bottom:6px;">
+          <h3 style="margin:0;color:#4a3008;">Wishlist</h3>
+          <span style="margin:0 0 0 auto;font-size:.74rem;color:#3a2e1c;font-family:Trebuchet MS,sans-serif;">6 entries · Desired 0 · Undesired 2</span>
+        </div>
+        <div style="display:flex;gap:6px;margin:0 0 8px;flex:none;">
+          <input style="flex:1;border:1px solid #8a7028;background:rgba(255,248,220,.5);padding:5px 8px;font:inherit;font-size:.78rem;color:#1a1208;font-family:Trebuchet MS,sans-serif;" placeholder="Search…" />
+          <button class="btn quiet">Clear</button>
+        </div>
+        <div class="list">
+          <div class="row"><span class="ico"></span><span class="nm">Reave</span><span class="id">280990</span><span class="badge"></span><span class="xbtn">x</span></div>
+          <div class="row"><span class="ico"></span><span class="nm">Resonance Rune</span><span class="id">280960</span><span class="badge und">Undes.</span><span class="xbtn">x</span></div>
+          <div class="row"><span class="ico"></span><span class="nm">Solar Nova</span><span class="id">280940</span><span class="badge"></span><span class="xbtn">x</span></div>
+          <div class="row"><span class="ico"></span><span class="nm">Lava Lash</span><span class="id">60103</span><span class="badge">Desired</span><span class="xbtn">x</span></div>
+        </div>
+        <div class="footer" style="flex-wrap:wrap;">
+          <button class="btn gold">Push to Desired</button>
+          <button class="btn quiet">Sync from Rapid</button>
+          <button class="btn quiet">Clear tags</button>
+          <span class="status">Native buttons · no overlap outside the frame.</span>
+        </div>
+      </div>
+    </div>
+
+    <aside class="aside">
+      <h3>Maps to 3.3.5a templates</h3>
+      <ul>
+        <li><code>UIPanelDialogTemplate</code> / DialogFrame border + bg</li>
+        <li><code>CharacterFrameTabButtonTemplate</code></li>
+        <li>Sidebar: OptionsFrame category buttons</li>
+        <li><code>UIPanelButtonTemplate</code> (Open window / Save)</li>
+        <li><code>UICheckButtonTemplate</code> + GameFont highlight/normal</li>
+        <li><code>UIPanelScrollFrameTemplate</code> for toggles + log</li>
+      </ul>
+      <div class="note">
+        Layout = your settings screenshot.<br/>
+        Look = WotLK parchment / gold — not flat dark modern UI.<br/><br/>
+        Reply <strong>ja / perfekt</strong> to implement as <strong>v0.5.0</strong>,
+        or say what to change in the mockup first.
+      </div>
+    </aside>
+  </div>
+</body>
+</html>

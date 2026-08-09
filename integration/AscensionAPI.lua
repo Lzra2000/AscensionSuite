@@ -1089,6 +1089,185 @@ function API.CollectAllDesiredSelections(maxScan)
     return selections, scanned, widened
 end
 
+------------------------------------------------------------------------
+-- Undesired (Rapid Undesired column; read for badges / counts only)
+------------------------------------------------------------------------
+
+function API.IsUndesiredID(entryId, entryType)
+    local wc = WC()
+    if not wc then
+        return false
+    end
+    return Call(wc, { "IsUndesiredID" }, entryId, entryType) == true
+end
+
+function API.GetNumFilteredUndesiredEntries()
+    local wc = WC()
+    if not wc then
+        return 0
+    end
+    local count = Call(wc, { "GetNumFilteredUndesiredEntries" })
+    if type(count) == "number" then
+        return count
+    end
+    return 0
+end
+
+function API.GetFilteredUndesiredEntryAtIndex(index)
+    local position = tonumber(index)
+    if not position then
+        return nil
+    end
+    local wc = WC()
+    if not wc then
+        return nil
+    end
+    return TableOrNil(Call(wc, { "GetFilteredUndesiredEntryAtIndex" }, position))
+end
+
+function API.CollectUndesiredSelections(maxScan)
+    local selections = {}
+    local total = API.GetNumFilteredUndesiredEntries()
+    if total <= 0 then
+        return selections, 0
+    end
+
+    local limit = tonumber(maxScan)
+    if limit and limit < total then
+        total = limit
+    end
+
+    for index = 1, total do
+        local entry = API.GetFilteredUndesiredEntryAtIndex(index)
+        local entryId, entryType = EntryPair(entry)
+        if entryId and entryType and API.IsUndesiredID(entryId, entryType) then
+            selections[#selections + 1] = {
+                id = entryId,
+                type = entryType,
+                spellId = EntrySpellID(entry),
+                name = FirstString(entry.Name, entry.name),
+            }
+        end
+    end
+
+    return selections, total
+end
+
+function API.WidenUndesiredCandidates()
+    local frame = RapidRollingFrame()
+    if type(frame) ~= "table" or type(frame.UndesiredSearch) ~= "function" then
+        return nil
+    end
+
+    local searchBox = frame.UndesiredSearchBox
+    if type(searchBox) ~= "table" or type(searchBox.GetText) ~= "function" then
+        return nil
+    end
+
+    local ok, text = pcall(searchBox.GetText, searchBox)
+    if not ok or type(text) ~= "string" or text:match("^%s*$") then
+        return nil
+    end
+
+    if not pcall(frame.UndesiredSearch, frame, "") then
+        return nil
+    end
+
+    return function()
+        pcall(frame.UndesiredSearch, frame)
+    end
+end
+
+-- Ascension_WildCard's RapidRollUndesired[spec][type][id], confirmed with IsUndesiredID.
+function API.CollectSavedRapidUndesiredSelections()
+    local selections = {}
+    local saved = _G.RapidRollUndesired
+    if type(saved) ~= "table" then
+        return selections, 0
+    end
+
+    local buckets = {}
+    local specUtil = Namespace("SpecializationUtil")
+    if specUtil and type(specUtil.GetActiveSpecialization) == "function" then
+        local ok, specId = pcall(specUtil.GetActiveSpecialization)
+        if ok and specId ~= nil and type(saved[specId]) == "table" then
+            buckets[#buckets + 1] = saved[specId]
+        end
+    end
+
+    if #buckets == 0 then
+        for _, bucket in pairs(saved) do
+            if type(bucket) == "table" then
+                buckets[#buckets + 1] = bucket
+            end
+        end
+    end
+
+    local probed = 0
+    for bucketIndex = 1, #buckets do
+        for entryType, ids in pairs(buckets[bucketIndex]) do
+            if type(entryType) == "string" and type(ids) == "table" then
+                for entryId in pairs(ids) do
+                    local id = tonumber(entryId)
+                    if id and probed < MAX_SAVED_SELECTION_PROBES then
+                        probed = probed + 1
+                        if API.IsUndesiredID(id, entryType) then
+                            local entry = API.GetEntryByInternalID(id)
+                            selections[#selections + 1] = {
+                                id = id,
+                                type = entryType,
+                                spellId = EntrySpellID(entry),
+                                name = entry and FirstString(entry.Name, entry.name) or nil,
+                            }
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return selections, probed
+end
+
+function API.CollectAllUndesiredSelections(maxScan)
+    local restore = API.WidenUndesiredCandidates()
+    local widened = restore ~= nil
+
+    local ok, selections, scanned = pcall(API.CollectUndesiredSelections, maxScan)
+    if restore then
+        restore()
+    end
+    if not ok then
+        return {}, 0, widened
+    end
+
+    selections = selections or {}
+    scanned = scanned or 0
+
+    local seen = {}
+    for index = 1, #selections do
+        local row = selections[index]
+        seen[row.type .. ":" .. tostring(row.id)] = true
+    end
+
+    local saved = API.CollectSavedRapidUndesiredSelections()
+    for index = 1, #saved do
+        local row = saved[index]
+        local key = row.type .. ":" .. tostring(row.id)
+        if not seen[key] then
+            seen[key] = true
+            selections[#selections + 1] = row
+        end
+    end
+
+    return selections, scanned, widened
+end
+
+function API.CountUndesiredSelections(maxScan)
+    local selections = API.CollectAllUndesiredSelections(maxScan)
+    return #selections
+end
+
 -- Whether Rapid Rolling is usable at all for the active spec / game mode.
 function API.CanUseRapidRolling()
     if not API.IsWildcardModeActive() then

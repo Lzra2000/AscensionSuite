@@ -11,7 +11,7 @@ local DB = {}
 AscensionSuite.Database = DB
 
 local DEFAULTS = {
-    version = 7,
+    version = 8,
     assists = {
         autoRoll = false,
         autoRollContinue = false,
@@ -27,6 +27,10 @@ local DEFAULTS = {
     logbook = {},
     prefs = {
         loadoutsSelectedId = nil,
+        -- UI chrome prefs (not assist automation). Badges on by default; click
+        -- tracing stays off until the player opts in from Windows & Tools.
+        showWishlistBadges = true,
+        clickTrace = false,
     },
 }
 
@@ -80,8 +84,10 @@ local function EnsureDefaults(db)
     if type(db.prefs) ~= "table" then
         db.prefs = CopyTable(DEFAULTS.prefs)
     else
-        if db.prefs.loadoutsSelectedId == nil then
-            db.prefs.loadoutsSelectedId = DEFAULTS.prefs.loadoutsSelectedId
+        for key, value in pairs(DEFAULTS.prefs) do
+            if db.prefs[key] == nil then
+                db.prefs[key] = value
+            end
         end
     end
 
@@ -271,6 +277,21 @@ local function EnsureDefaults(db)
         db.version = 7
     end
 
+    -- v8 adds Settings-chrome prefs for wishlist badges and optional click trace.
+    if db.version < 8 then
+        if type(db.prefs) ~= "table" then
+            db.prefs = CopyTable(DEFAULTS.prefs)
+        else
+            if db.prefs.showWishlistBadges == nil then
+                db.prefs.showWishlistBadges = DEFAULTS.prefs.showWishlistBadges
+            end
+            if db.prefs.clickTrace == nil then
+                db.prefs.clickTrace = DEFAULTS.prefs.clickTrace
+            end
+        end
+        db.version = 8
+    end
+
     return db
 end
 
@@ -288,6 +309,10 @@ end
 
 function DB.GetAssists()
     return DB.Get().assists
+end
+
+function DB.GetPrefs()
+    return DB.Get().prefs
 end
 
 function DB.GetWishlist()

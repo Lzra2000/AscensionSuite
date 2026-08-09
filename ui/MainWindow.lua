@@ -1,6 +1,6 @@
 -- AscensionSuite: ui/MainWindow.lua
--- The /asuite window: a Wishlist tab (the panel the player edits) and an Assists
--- tab (toggles, Auto-Roll, profiles, logbook). Native Rapid UI stays authoritative.
+-- The /asuite window: Wishlist, Loadouts, and Assists (native WotLK settings
+-- chrome with Categories sidebar). Native Rapid UI stays authoritative.
 
 local AscensionSuite = _G.AscensionSuite
 if type(AscensionSuite) ~= "table" then
@@ -12,31 +12,98 @@ local MainWindow = {}
 AscensionSuite.MainWindow = MainWindow
 
 local FRAME_NAME = "AscensionSuiteMainWindow"
-local FRAME_WIDTH = 680
-local FRAME_HEIGHT = 524
-local CONTENT_WIDTH = 640
-local CONTENT_TOP = -88
-local LOG_LINES = 6
+local FRAME_WIDTH = 740
+local FRAME_HEIGHT = 580
+local CONTENT_INSET = 16
+local CONTENT_TOP = -78
+local SIDEBAR_WIDTH = 156
+local LOG_LINES = 8
+local LOG_LINES_FULL = 18
 
 local TAB_WISHLIST = 1
 local TAB_LOADOUTS = 2
 local TAB_ASSISTS = 3
 
+local CAT_GENERAL = "general"
+local CAT_AUTOMATION = "automation"
+local CAT_LOGBOOK = "logbook"
+local CAT_WINDOWS = "windows"
+local CAT_SYNC = "sync"
+
 local frame
 local tabs = {}
 local contents = {}
 local activeTab = TAB_WISHLIST
-local logHost
+local activeCategory = CAT_WINDOWS
+local titleLabel
+local subheadLabel
+local versionLabel
+
+-- Assists chrome
+local assistShell
+local categoryButtons = {}
+local categoryPages = {}
 local assistChecks = {}
+local prefChecks = {}
+local draftAssists = {}
+local draftPrefs = {}
+local assistsDirty = false
+local footerStatus
+local cancelButton
+local saveButton
+local startButton
+local stopButton
+local unstickButton
 local autoRollStatus
 local desiredStatus
-local stopButton
-local startButton
+local syncStatus
+local countWishlist
+local countDesired
+local countUndesired
+local logHost
+local logHostFull
+local categoryHeadTitle
+local categoryHeadSub
+
+local CATEGORIES = {
+    { id = CAT_GENERAL, label = "General" },
+    { id = CAT_AUTOMATION, label = "Automation" },
+    { id = CAT_LOGBOOK, label = "Logbook" },
+    { id = CAT_WINDOWS, label = "Windows & Tools" },
+    { id = CAT_SYNC, label = "Wishlist sync" },
+}
+
+local ASSIST_KEYS = {
+    "autoRoll",
+    "autoRollContinue",
+    "instantDiceSkip",
+    "instantSkillCardSkip",
+    "acceptWildcardPopups",
+    "captureRolls",
+    "autoUnstick",
+}
+
+local PREF_KEYS = {
+    "showWishlistBadges",
+    "clickTrace",
+}
+
+local function ContentWidth()
+    return FRAME_WIDTH - (CONTENT_INSET * 2)
+end
 
 local function GetAssists()
     local DB = AscensionSuite.Database
     if DB and DB.GetAssists then
         return DB.GetAssists()
+    end
+    return {}
+end
+
+local function GetPrefs()
+    local DB = AscensionSuite.Database
+    if DB and DB.GetPrefs then
+        return DB.GetPrefs()
     end
     return {}
 end
@@ -57,8 +124,6 @@ local function Print(message)
 end
 
 -- WotLK 3.3.5a CheckButton:GetChecked() returns 1 / nil, not true / false.
--- Comparing with == true wrote every toggle as off while the widget stayed
--- visually checked — Auto-Roll looked enabled and still reported "assist off".
 local function CheckButtonIsOn(check)
     if type(check) ~= "table" or type(check.GetChecked) ~= "function" then
         return false
@@ -67,53 +132,67 @@ local function CheckButtonIsOn(check)
     return value == 1 or value == true
 end
 
-local function CreateCheckbox(parent, label, assistKey, yOffset)
-    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-    check:SetPoint("TOPLEFT", 0, yOffset)
-    check:SetWidth(24)
-    check:SetHeight(24)
+local function CopyAssistDraft()
+    local assists = GetAssists()
+    draftAssists = {}
+    for index = 1, #ASSIST_KEYS do
+        local key = ASSIST_KEYS[index]
+        draftAssists[key] = assists[key] == true
+    end
+    local prefs = GetPrefs()
+    draftPrefs = {}
+    for index = 1, #PREF_KEYS do
+        local key = PREF_KEYS[index]
+        draftPrefs[key] = prefs[key] == true
+    end
+    -- Badges default on when missing.
+    if prefs.showWishlistBadges == nil then
+        draftPrefs.showWishlistBadges = true
+    end
+    assistsDirty = false
+end
 
-    local text = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    text:SetPoint("LEFT", check, "RIGHT", 4, 0)
-    text:SetText(label)
+local function MarkDirty()
+    assistsDirty = true
+    if footerStatus then
+        footerStatus:SetText("Unsaved changes.")
+        footerStatus:SetTextColor(0.82, 0.62, 0.22, 1)
+    end
+end
 
-    check:SetScript("OnClick", function(self)
-        local assists = GetAssists()
-        local on = CheckButtonIsOn(self)
-        assists[assistKey] = on
-
-        if assistKey == "autoRoll" then
-            local AutoRoller = AscensionSuite.AutoRoller
-            if not on then
-                if AutoRoller and AutoRoller.Stop then
-                    AutoRoller.Stop("assist_off")
-                end
-            elseif AutoRoller and AutoRoller.ClearLastError then
-                -- Drop a stale "assist switched off" line from the previous toggle.
-                AutoRoller.ClearLastError()
-            end
+local function SyncCheckGroup(group, on)
+    if type(group) ~= "table" then
+        return
+    end
+    for index = 1, #group do
+        local check = group[index]
+        if check and check.SetChecked then
+            check:SetChecked(on)
         end
+    end
+end
 
-        if assistKey == "instantDiceSkip" or assistKey == "instantSkillCardSkip" then
-            local AnimationSkip = AscensionSuite.AnimationSkip
-            if AnimationSkip and AnimationSkip.Refresh then
-                AnimationSkip.Refresh()
-            end
-        end
-
-        if assistKey == "autoUnstick" then
-            local AutoUnstick = AscensionSuite.AutoUnstick
-            if AutoUnstick and AutoUnstick.Refresh then
-                AutoUnstick.Refresh()
-            end
-        end
-
-        MainWindow.RefreshAutoRoll()
-        MainWindow.RefreshLogbook()
-    end)
-
-    assistChecks[assistKey] = check
-    return check
+local function RefreshFooterClean()
+    if not footerStatus then
+        return
+    end
+    if assistsDirty then
+        footerStatus:SetText("Unsaved changes.")
+        footerStatus:SetTextColor(0.82, 0.62, 0.22, 1)
+        return
+    end
+    local Wishlist = AscensionSuite.Wishlist
+    local desired, total = 0, 0
+    if Wishlist and Wishlist.CountDesired and Wishlist.Count then
+        desired = Wishlist.CountDesired() or 0
+        total = Wishlist.Count() or 0
+    end
+    if activeCategory == CAT_AUTOMATION then
+        footerStatus:SetText(string.format("No unsaved changes \194\183 Desired %d of %d", desired, total))
+    else
+        footerStatus:SetText("No unsaved changes.")
+    end
+    footerStatus:SetTextColor(0.35, 0.28, 0.18, 1)
 end
 
 local STOP_REASONS = {
@@ -145,9 +224,73 @@ function MainWindow.DescribeStopReason(reason)
     return STOP_REASONS[reason] or tostring(reason)
 end
 
--- Exposed for tests: WotLK GetChecked returns 1, not true.
 function MainWindow.CheckButtonIsOn(check)
     return CheckButtonIsOn(check)
+end
+
+function MainWindow.GetActiveCategory()
+    return activeCategory
+end
+
+local function ApplyAssistSideEffects(key, on)
+    if key == "autoRoll" then
+        local AutoRoller = AscensionSuite.AutoRoller
+        if not on then
+            if AutoRoller and AutoRoller.Stop then
+                AutoRoller.Stop("assist_off")
+            end
+        elseif AutoRoller and AutoRoller.ClearLastError then
+            AutoRoller.ClearLastError()
+        end
+    end
+
+    if key == "instantDiceSkip" or key == "instantSkillCardSkip" then
+        local AnimationSkip = AscensionSuite.AnimationSkip
+        if AnimationSkip and AnimationSkip.Refresh then
+            AnimationSkip.Refresh()
+        end
+    end
+
+    if key == "autoUnstick" then
+        local AutoUnstick = AscensionSuite.AutoUnstick
+        if AutoUnstick and AutoUnstick.Refresh then
+            AutoUnstick.Refresh()
+        end
+    end
+end
+
+local function SaveDraft()
+    local assists = GetAssists()
+    for index = 1, #ASSIST_KEYS do
+        local key = ASSIST_KEYS[index]
+        local on = draftAssists[key] == true
+        assists[key] = on
+        ApplyAssistSideEffects(key, on)
+    end
+
+    local prefs = GetPrefs()
+    for index = 1, #PREF_KEYS do
+        local key = PREF_KEYS[index]
+        prefs[key] = draftPrefs[key] == true
+    end
+
+    assistsDirty = false
+    MainWindow.RefreshAutoRoll()
+    MainWindow.RefreshLogbook()
+    MainWindow.RefreshWishlist()
+    RefreshFooterClean()
+    Print("Settings saved.")
+end
+
+local function CancelDraft()
+    CopyAssistDraft()
+    for key, group in pairs(assistChecks) do
+        SyncCheckGroup(group, draftAssists[key] == true)
+    end
+    for key, group in pairs(prefChecks) do
+        SyncCheckGroup(group, draftPrefs[key] == true)
+    end
+    RefreshFooterClean()
 end
 
 function MainWindow.RefreshAutoRoll()
@@ -171,26 +314,25 @@ function MainWindow.RefreshAutoRoll()
             else
                 autoRollStatus:SetText("Auto-Roll: running")
             end
-            autoRollStatus:SetTextColor(0.43, 0.81, 0.54, 1)
+            autoRollStatus:SetTextColor(0.15, 0.45, 0.22, 1)
         elseif not autoRollOn then
-            autoRollStatus:SetText("Auto-Roll: off (tick the checkbox, then Start)")
-            autoRollStatus:SetTextColor(0.54, 0.60, 0.67, 1)
+            autoRollStatus:SetText("Auto-Roll: off (enable, Save, then Start)")
+            autoRollStatus:SetTextColor(0.35, 0.28, 0.18, 1)
         elseif AutoRoller and AutoRoller.GetLastError and AutoRoller.GetLastError() then
             local err = AutoRoller.GetLastError()
-            -- Stale assist_off after the box was turned back on must not stick.
             if err == "assist_off" then
                 if AutoRoller.ClearLastError then
                     AutoRoller.ClearLastError()
                 end
                 autoRollStatus:SetText("Auto-Roll: ready — press Start")
-                autoRollStatus:SetTextColor(0.54, 0.60, 0.67, 1)
+                autoRollStatus:SetTextColor(0.35, 0.28, 0.18, 1)
             else
                 autoRollStatus:SetText("Auto-Roll stopped - " .. MainWindow.DescribeStopReason(err))
-                autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
+                autoRollStatus:SetTextColor(0.72, 0.22, 0.18, 1)
             end
         else
             autoRollStatus:SetText("Auto-Roll: ready — press Start")
-            autoRollStatus:SetTextColor(0.54, 0.60, 0.67, 1)
+            autoRollStatus:SetTextColor(0.35, 0.28, 0.18, 1)
         end
     end
 
@@ -202,19 +344,15 @@ function MainWindow.RefreshAutoRoll()
     end
 end
 
-function MainWindow.RefreshLogbook()
-    if not logHost then
-        return
-    end
-
+local function FormatLogLines(maxLines)
     local Logbook = AscensionSuite.Logbook
     if not Logbook or not Logbook.GetEntries then
-        return
+        return nil
     end
 
     local entries = Logbook.GetEntries()
     local lines = {}
-    local start = math.max(1, #entries - LOG_LINES + 1)
+    local start = math.max(1, #entries - maxLines + 1)
     for index = start, #entries do
         local row = entries[index]
         if row then
@@ -224,7 +362,6 @@ function MainWindow.RefreshLogbook()
             elseif row.rank and row.rank > 1 then
                 rank = string.format(" rank %d", row.rank)
             end
-
             lines[#lines + 1] = string.format("[%s] %s%s (%s)",
                 row.entryType or "?",
                 row.name or "?",
@@ -232,27 +369,37 @@ function MainWindow.RefreshLogbook()
                 tostring(row.spellId or row.entryId or "?"))
         end
     end
+    return lines
+end
 
-    if #lines == 0 then
-        local assists = GetAssists()
-        if assists.captureRolls == true then
-            logHost:SetText("Logbook empty — waiting for the next roll")
-        else
-            logHost:SetText("Logbook empty — tick Capture rolls above")
-        end
+function MainWindow.RefreshLogbook()
+    local lines = FormatLogLines(LOG_LINES)
+    local full = FormatLogLines(LOG_LINES_FULL)
+    local emptyText
+    local assists = GetAssists()
+    if assists.captureRolls == true then
+        emptyText = "Logbook empty — waiting for the next roll"
     else
-        logHost:SetText(table.concat(lines, "\n"))
+        emptyText = "Logbook empty — enable Capture rolls (Logbook), then Save"
+    end
+
+    if logHost then
+        if not lines or #lines == 0 then
+            logHost:SetText(emptyText)
+        else
+            logHost:SetText(table.concat(lines, "\n"))
+        end
+    end
+    if logHostFull then
+        if not full or #full == 0 then
+            logHostFull:SetText(emptyText)
+        else
+            logHostFull:SetText(table.concat(full, "\n"))
+        end
     end
 end
 
--- "Desired" is what the client confirms right now; the wishlist is the whole
--- list. They differ on purpose: outside Wildcard nothing is Desired at all, and
--- Auto-Roll gates on the confirmed subset.
 function MainWindow.RefreshDesiredStatus(note)
-    if not desiredStatus then
-        return
-    end
-
     local Wishlist = AscensionSuite.Wishlist
     if not Wishlist or not Wishlist.Count then
         return
@@ -260,18 +407,41 @@ function MainWindow.RefreshDesiredStatus(note)
 
     local desired = Wishlist.CountDesired()
     local total = Wishlist.Count()
-    local text = string.format("Desired: %d of %d on the wishlist", desired, total)
+    local undesired = 0
+    if Wishlist.CountUndesired then
+        undesired = Wishlist.CountUndesired() or 0
+    end
+
+    if countWishlist then
+        countWishlist:SetText(tostring(total))
+    end
+    if countDesired then
+        countDesired:SetText(string.format("%d / %d", desired, total))
+    end
+    if countUndesired then
+        countUndesired:SetText(tostring(undesired))
+    end
+
+    local text = string.format("Desired: %d of %d on the wishlist \194\183 Undesired: %d",
+        desired, total, undesired)
     if note then
         text = text .. "  |  " .. note
     elseif total > 0 and desired == 0 then
-        text = text .. "  |  open Wishlist tab → Push to Desired (Wildcard)"
+        text = text .. "  |  Wishlist tab → Push to Desired (Wildcard)"
     end
-    desiredStatus:SetText(text)
+
+    if desiredStatus then
+        desiredStatus:SetText(text)
+    end
+    if syncStatus then
+        syncStatus:SetText(text)
+    end
+
+    if not assistsDirty then
+        RefreshFooterClean()
+    end
 end
 
--- Everything that changes when a Desired mark lands, from any source. The panel
--- is refreshed whenever it exists, even if /asuite is hidden, so the next open
--- does not replay a stale empty list.
 function MainWindow.RefreshWishlist()
     local panel = GetWishlistPanel()
     if panel and panel.Refresh then
@@ -300,9 +470,9 @@ local function EnsureWishlistPanel()
 
     if not panel.GetFrame() then
         if panel.EnsureBuilt then
-            panel.EnsureBuilt(content, CONTENT_WIDTH)
+            panel.EnsureBuilt(content, ContentWidth())
         elseif panel.Create then
-            panel.Create(content, CONTENT_WIDTH)
+            panel.Create(content, ContentWidth())
         end
     end
 
@@ -320,9 +490,9 @@ local function EnsureLoadoutsPanel()
 
     if not loadoutsPanel.GetFrame() then
         if loadoutsPanel.EnsureBuilt then
-            loadoutsPanel.EnsureBuilt(content, CONTENT_WIDTH)
+            loadoutsPanel.EnsureBuilt(content, ContentWidth())
         elseif loadoutsPanel.Create then
-            loadoutsPanel.Create(content, CONTENT_WIDTH)
+            loadoutsPanel.Create(content, ContentWidth())
         end
     end
 
@@ -364,11 +534,15 @@ function MainWindow.InvalidateLayout()
 end
 
 local function RefreshAssistToggles()
-    local assists = GetAssists()
-    for key, check in pairs(assistChecks) do
-        check:SetChecked(assists[key] == true)
+    CopyAssistDraft()
+    for key, group in pairs(assistChecks) do
+        SyncCheckGroup(group, draftAssists[key] == true)
+    end
+    for key, group in pairs(prefChecks) do
+        SyncCheckGroup(group, draftPrefs[key] == true)
     end
     MainWindow.RefreshAutoRoll()
+    RefreshFooterClean()
 end
 
 local function SyncDesiredFromNative()
@@ -400,8 +574,6 @@ end
 local function StartAutoRoll()
     local AutoRoller = AscensionSuite.AutoRoller
     if AutoRoller and AutoRoller.Start then
-        -- A refused Start used to leave the status line reading "idle", which is
-        -- indistinguishable from the button not having been pressed.
         local ok, reason = AutoRoller.Start()
         if not ok and autoRollStatus then
             local detail = MainWindow.DescribeStopReason(reason)
@@ -414,7 +586,7 @@ local function StartAutoRoll()
                 detail = detail .. " — Wishlist tab → Clear tags"
             end
             autoRollStatus:SetText("Auto-Roll did not start - " .. detail)
-            autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
+            autoRollStatus:SetTextColor(0.72, 0.22, 0.18, 1)
             MainWindow.RefreshDesiredStatus()
             return
         end
@@ -431,13 +603,6 @@ local function StopAutoRoll()
     MainWindow.RefreshAutoRoll()
 end
 
--- Manual recovery when Ascension's Continue button is stuck gray (die on "?",
--- Scrolls Used visible, button disabled). Same path Auto-Roll uses after a stall.
---
--- The result goes to chat as well as the status line: the player pressing Unstick
--- is looking at the Rapid window, not at the Suite window behind it, so a line
--- they will actually see is the difference between "it worked" and "nothing
--- happened, press it again".
 local function UnstickRapid()
     local AutoRoller = AscensionSuite.AutoRoller
     if AutoRoller and AutoRoller.IsRunning and AutoRoller.IsRunning() and AutoRoller.Stop then
@@ -476,10 +641,10 @@ local function UnstickRapid()
             else
                 autoRollStatus:SetText("Rapid session cleared — try Roll again")
             end
-            autoRollStatus:SetTextColor(0.43, 0.81, 0.54, 1)
+            autoRollStatus:SetTextColor(0.15, 0.45, 0.22, 1)
         else
             autoRollStatus:SetText("Unstick failed — " .. MainWindow.DescribeStopReason(reason))
-            autoRollStatus:SetTextColor(0.88, 0.44, 0.44, 1)
+            autoRollStatus:SetTextColor(0.72, 0.22, 0.18, 1)
         end
     end
     MainWindow.RefreshAutoRoll()
@@ -491,8 +656,31 @@ function MainWindow.UnstickRapid()
 end
 
 ------------------------------------------------------------------------
--- Tabs
+-- Tabs / chrome titles
 ------------------------------------------------------------------------
+
+local function UpdateChromeForTab(index)
+    if not titleLabel then
+        return
+    end
+    if index == TAB_ASSISTS then
+        titleLabel:SetText("AscensionSuite Settings")
+        if subheadLabel then
+            subheadLabel:SetText("Timing, assists, wishlist sync, logbook, and tools for the whole suite.")
+            subheadLabel:Show()
+        end
+    else
+        titleLabel:SetText("AscensionSuite")
+        if subheadLabel then
+            if index == TAB_WISHLIST then
+                subheadLabel:SetText("Wishlist \194\183 Desired / Undesired badges \194\183 controls stay inside the frame.")
+            else
+                subheadLabel:SetText("Named builds, Apply \226\134\146 Desired, and archetype sections.")
+            end
+            subheadLabel:Show()
+        end
+    end
+end
 
 function MainWindow.SelectTab(index)
     if index ~= TAB_WISHLIST and index ~= TAB_LOADOUTS and index ~= TAB_ASSISTS then
@@ -526,6 +714,8 @@ function MainWindow.SelectTab(index)
         end
     end
 
+    UpdateChromeForTab(index)
+
     if index == TAB_WISHLIST then
         EnsureWishlistPanel()
         local panel = GetWishlistPanel()
@@ -539,6 +729,7 @@ function MainWindow.SelectTab(index)
             loadoutsPanel.Refresh()
         end
     else
+        MainWindow.SelectCategory(activeCategory)
         MainWindow.RefreshDesiredStatus()
         MainWindow.RefreshLogbook()
         MainWindow.RefreshAutoRoll()
@@ -566,71 +757,621 @@ local function CreateTab(parent, index, label)
 end
 
 ------------------------------------------------------------------------
--- Construction
+-- Assists: category chrome helpers
 ------------------------------------------------------------------------
 
+local function SetCategoryHighlight(id)
+    for catId, button in pairs(categoryButtons) do
+        if button then
+            if catId == id then
+                if button.SetBackdropColor then
+                    button:SetBackdropColor(0.85, 0.70, 0.28, 1)
+                end
+                if button._label then
+                    button._label:SetTextColor(0.12, 0.08, 0.02, 1)
+                end
+            else
+                if button.SetBackdropColor then
+                    button:SetBackdropColor(0.22, 0.16, 0.08, 0.95)
+                end
+                if button._label then
+                    button._label:SetTextColor(0.92, 0.85, 0.65, 1)
+                end
+            end
+        end
+    end
+end
+
+function MainWindow.SelectCategory(id)
+    if not categoryPages[id] then
+        id = CAT_WINDOWS
+    end
+    activeCategory = id
+    SetCategoryHighlight(id)
+
+    for catId, page in pairs(categoryPages) do
+        if page then
+            if catId == id then
+                page:Show()
+            else
+                page:Hide()
+            end
+        end
+    end
+
+    local titles = {
+        [CAT_GENERAL] = { "General", "Safety defaults and suite overview. Assists stay opt-in." },
+        [CAT_AUTOMATION] = { "Automation", "Opt-in assists for Wildcard Rapid / leveling dice. Never Draft, HoF, or store." },
+        [CAT_LOGBOOK] = { "Logbook", "Recent roll capture. Enable Capture rolls, then Save." },
+        [CAT_WINDOWS] = { "Windows & Tools", "Open suite panels and toggle optional diagnostics. All assists stay opt-in." },
+        [CAT_SYNC] = { "Wishlist sync", "Pull Ascension Rapid Desired marks into the Suite wishlist." },
+    }
+    local info = titles[id]
+    if categoryHeadTitle and info then
+        categoryHeadTitle:SetText(info[1])
+    end
+    if categoryHeadSub and info then
+        categoryHeadSub:SetText(info[2])
+    end
+
+    -- Footer action visibility: Start/Unstick on Automation; Cancel/Save always.
+    if startButton then
+        if id == CAT_AUTOMATION then
+            startButton:Show()
+            if stopButton then stopButton:Show() end
+            if unstickButton then unstickButton:Show() end
+        else
+            startButton:Hide()
+            if stopButton then stopButton:Hide() end
+            if unstickButton then unstickButton:Hide() end
+        end
+    end
+
+    RefreshFooterClean()
+    MainWindow.RefreshLogbook()
+    MainWindow.RefreshDesiredStatus()
+end
+
+local function CreateSectionLabel(parent, text, y)
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("TOPLEFT", 4, y)
+    label:SetText(string.upper(text))
+    label:SetTextColor(0.42, 0.30, 0.10, 1)
+    return label
+end
+
+local function CreateToggleRow(parent, y, title, description, onToggle)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetPoint("TOPLEFT", 0, y)
+    row:SetPoint("TOPRIGHT", 0, y)
+    row:SetHeight(40)
+
+    if row.SetBackdrop then
+        row:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true,
+            tileSize = 12,
+            edgeSize = 10,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 },
+        })
+        row:SetBackdropColor(0.95, 0.90, 0.72, 0.55)
+        row:SetBackdropBorderColor(0.55, 0.45, 0.18, 0.9)
+    end
+
+    local check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+    check:SetPoint("TOPLEFT", 4, -6)
+    check:SetWidth(24)
+    check:SetHeight(24)
+    check:SetScript("OnClick", function(self)
+        onToggle(CheckButtonIsOn(self))
+    end)
+
+    local titleFs = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    titleFs:SetPoint("TOPLEFT", check, "TOPRIGHT", 6, -2)
+    titleFs:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+    titleFs:SetJustifyH("LEFT")
+    titleFs:SetText(title)
+    titleFs:SetTextColor(0.42, 0.24, 0.04, 1)
+
+    local descFs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    descFs:SetPoint("TOPLEFT", titleFs, "BOTTOMLEFT", 0, -2)
+    descFs:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+    descFs:SetJustifyH("LEFT")
+    descFs:SetText(description)
+    descFs:SetTextColor(0.35, 0.28, 0.18, 1)
+
+    return check, -46
+end
+
+local function BindAssistCheck(check, key)
+    if type(assistChecks[key]) ~= "table" or assistChecks[key].SetChecked then
+        local prior = assistChecks[key]
+        assistChecks[key] = {}
+        if type(prior) == "table" and prior.SetChecked then
+            assistChecks[key][1] = prior
+        end
+    end
+    assistChecks[key][#assistChecks[key] + 1] = check
+    check:SetScript("OnClick", function(self)
+        local on = CheckButtonIsOn(self)
+        draftAssists[key] = on
+        SyncCheckGroup(assistChecks[key], on)
+        MarkDirty()
+    end)
+end
+
+local function BindPrefCheck(check, key)
+    if type(prefChecks[key]) ~= "table" or prefChecks[key].SetChecked then
+        local prior = prefChecks[key]
+        prefChecks[key] = {}
+        if type(prior) == "table" and prior.SetChecked then
+            prefChecks[key][1] = prior
+        end
+    end
+    prefChecks[key][#prefChecks[key] + 1] = check
+    check:SetScript("OnClick", function(self)
+        local on = CheckButtonIsOn(self)
+        draftPrefs[key] = on
+        SyncCheckGroup(prefChecks[key], on)
+        MarkDirty()
+    end)
+end
+
+local function CreateToolButton(parent, label, onClick)
+    local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    btn:SetHeight(28)
+    btn:SetText(label)
+    btn:SetScript("OnClick", onClick)
+    return btn
+end
+
+local function BuildCategoryPage(parent, id)
+    local page = CreateFrame("Frame", FRAME_NAME .. "Cat_" .. id, parent)
+    page:SetAllPoints(parent)
+    page:Hide()
+    categoryPages[id] = page
+    return page
+end
+
 local function BuildAssistContent(content)
-    CreateCheckbox(content, "Auto-Roll while leveling (Desired targets only)", "autoRoll", -4)
-    CreateCheckbox(content, "  ...and keep going after a Desired entry lands", "autoRollContinue", -28)
-    CreateCheckbox(content, "Instant skip WildCardDice animation", "instantDiceSkip", -52)
-    CreateCheckbox(content, "Instant skip SkillCard flipbook", "instantSkillCardSkip", -76)
-    CreateCheckbox(content, "Accept Wildcard confirm popups", "acceptWildcardPopups", -100)
-    CreateCheckbox(content, "Capture rolls into Logbook", "captureRolls", -124)
-    CreateCheckbox(content, "Auto-unstick gray Rapid Continue", "autoUnstick", -148)
+    assistShell = CreateFrame("Frame", FRAME_NAME .. "AssistShell", content)
+    assistShell:SetAllPoints(content)
 
-    startButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    startButton:SetWidth(90)
-    startButton:SetHeight(22)
-    startButton:SetPoint("TOPRIGHT", -90, -4)
-    startButton:SetText("Start")
-    startButton:SetScript("OnClick", StartAutoRoll)
+    local sidebar = CreateFrame("Frame", FRAME_NAME .. "Sidebar", assistShell)
+    sidebar:SetPoint("TOPLEFT", 0, 0)
+    sidebar:SetPoint("BOTTOMLEFT", 0, 0)
+    sidebar:SetWidth(SIDEBAR_WIDTH)
+    if sidebar.SetBackdrop then
+        sidebar:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true,
+            tileSize = 16,
+            edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        sidebar:SetBackdropColor(0.12, 0.09, 0.04, 0.95)
+        sidebar:SetBackdropBorderColor(0.45, 0.35, 0.14, 1)
+    end
 
-    stopButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    stopButton:SetWidth(90)
-    stopButton:SetHeight(22)
-    stopButton:SetPoint("LEFT", startButton, "RIGHT", 8, 0)
-    stopButton:SetText("Stop")
-    stopButton:SetScript("OnClick", StopAutoRoll)
+    local sideLabel = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    sideLabel:SetPoint("TOPLEFT", 10, -10)
+    sideLabel:SetText("CATEGORIES")
+    sideLabel:SetTextColor(0.78, 0.62, 0.24, 1)
 
-    local unstickButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    unstickButton:SetWidth(90)
+    local y = -28
+    for index = 1, #CATEGORIES do
+        local cat = CATEGORIES[index]
+        local btn = CreateFrame("Button", FRAME_NAME .. "Nav_" .. cat.id, sidebar)
+        btn:SetHeight(28)
+        btn:SetPoint("TOPLEFT", 8, y)
+        btn:SetPoint("TOPRIGHT", -8, y)
+        if btn.SetBackdrop then
+            btn:SetBackdrop({
+                bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                tile = true,
+                tileSize = 12,
+                edgeSize = 10,
+                insets = { left = 2, right = 2, top = 2, bottom = 2 },
+            })
+            btn:SetBackdropColor(0.22, 0.16, 0.08, 0.95)
+            btn:SetBackdropBorderColor(0.45, 0.35, 0.14, 1)
+        end
+        local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        lbl:SetPoint("LEFT", 10, 0)
+        lbl:SetText(cat.label)
+        lbl:SetTextColor(0.92, 0.85, 0.65, 1)
+        btn._label = lbl
+        btn:SetScript("OnClick", function()
+            MainWindow.SelectCategory(cat.id)
+        end)
+        categoryButtons[cat.id] = btn
+        y = y - 32
+    end
+
+    local main = CreateFrame("Frame", FRAME_NAME .. "AssistMain", assistShell)
+    main:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 8, 0)
+    main:SetPoint("BOTTOMRIGHT", assistShell, "BOTTOMRIGHT", 0, 36)
+
+    if main.SetBackdrop then
+        main:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true,
+            tileSize = 16,
+            edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        main:SetBackdropColor(0.78, 0.70, 0.50, 0.92)
+        main:SetBackdropBorderColor(0.45, 0.35, 0.14, 1)
+    end
+
+    categoryHeadTitle = main:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    categoryHeadTitle:SetPoint("TOPLEFT", 12, -10)
+    categoryHeadTitle:SetText("Windows & Tools")
+    categoryHeadTitle:SetTextColor(0.30, 0.20, 0.04, 1)
+
+    categoryHeadSub = main:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    categoryHeadSub:SetPoint("TOPLEFT", categoryHeadTitle, "BOTTOMLEFT", 0, -2)
+    categoryHeadSub:SetPoint("RIGHT", main, "RIGHT", -12, 0)
+    categoryHeadSub:SetJustifyH("LEFT")
+    categoryHeadSub:SetTextColor(0.28, 0.22, 0.12, 1)
+
+    local pageHost = CreateFrame("Frame", FRAME_NAME .. "PageHost", main)
+    pageHost:SetPoint("TOPLEFT", 10, -48)
+    pageHost:SetPoint("BOTTOMRIGHT", -10, 8)
+
+    -- Footer bar (outside parchment main, still inside assist shell)
+    local footer = CreateFrame("Frame", FRAME_NAME .. "AssistFooter", assistShell)
+    footer:SetPoint("TOPLEFT", main, "BOTTOMLEFT", 0, -4)
+    footer:SetPoint("BOTTOMRIGHT", assistShell, "BOTTOMRIGHT", 0, 0)
+
+    footerStatus = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    footerStatus:SetPoint("LEFT", 4, 0)
+    footerStatus:SetWidth(280)
+    footerStatus:SetJustifyH("LEFT")
+
+    saveButton = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+    saveButton:SetWidth(110)
+    saveButton:SetHeight(22)
+    saveButton:SetPoint("RIGHT", 0, 0)
+    saveButton:SetText("Save changes")
+    saveButton:SetScript("OnClick", SaveDraft)
+
+    cancelButton = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+    cancelButton:SetWidth(70)
+    cancelButton:SetHeight(22)
+    cancelButton:SetPoint("RIGHT", saveButton, "LEFT", -6, 0)
+    cancelButton:SetText("Cancel")
+    cancelButton:SetScript("OnClick", CancelDraft)
+
+    unstickButton = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+    unstickButton:SetWidth(70)
     unstickButton:SetHeight(22)
-    unstickButton:SetPoint("TOPRIGHT", stopButton, "BOTTOMRIGHT", 0, -28)
+    unstickButton:SetPoint("RIGHT", cancelButton, "LEFT", -6, 0)
     unstickButton:SetText("Unstick")
     unstickButton:SetScript("OnClick", UnstickRapid)
 
-    autoRollStatus = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    autoRollStatus:SetPoint("TOPRIGHT", unstickButton, "BOTTOMRIGHT", 0, -8)
-    autoRollStatus:SetWidth(240)
-    autoRollStatus:SetJustifyH("RIGHT")
+    stopButton = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+    stopButton:SetWidth(60)
+    stopButton:SetHeight(22)
+    stopButton:SetPoint("RIGHT", unstickButton, "LEFT", -6, 0)
+    stopButton:SetText("Stop")
+    stopButton:SetScript("OnClick", StopAutoRoll)
 
-    local loadoutsHint = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    loadoutsHint:SetPoint("TOPLEFT", 0, -188)
-    loadoutsHint:SetWidth(CONTENT_WIDTH)
-    loadoutsHint:SetJustifyH("LEFT")
-    loadoutsHint:SetText("Save and load named builds on the Loadouts tab.")
+    startButton = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+    startButton:SetWidth(60)
+    startButton:SetHeight(22)
+    startButton:SetPoint("RIGHT", stopButton, "LEFT", -6, 0)
+    startButton:SetText("Start")
+    startButton:SetScript("OnClick", StartAutoRoll)
 
-    local syncButton = CreateFrame("Button", FRAME_NAME .. "SyncButton", content, "UIPanelButtonTemplate")
-    syncButton:SetWidth(140)
-    syncButton:SetHeight(22)
-    syncButton:SetPoint("TOPRIGHT", 0, -206)
-    syncButton:SetText("Sync from Rapid")
-    syncButton:SetScript("OnClick", SyncDesiredFromNative)
+    --------------------------------------------------------------------
+    -- General
+    --------------------------------------------------------------------
+    local general = BuildCategoryPage(pageHost, CAT_GENERAL)
+    local g1 = general:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    g1:SetPoint("TOPLEFT", 4, -4)
+    g1:SetPoint("RIGHT", -4, 0)
+    g1:SetJustifyH("LEFT")
+    g1:SetText("AscensionSuite layers a player-owned Wishlist and opt-in assists on "
+        .. "Ascension's native Rapid Rolling UI. It does not rebuild Desired columns.")
+    g1:SetTextColor(0.20, 0.14, 0.06, 1)
 
-    desiredStatus = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    desiredStatus:SetPoint("TOPLEFT", 0, -240)
-    desiredStatus:SetWidth(CONTENT_WIDTH)
-    desiredStatus:SetJustifyH("LEFT")
+    local g2 = general:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    g2:SetPoint("TOPLEFT", g1, "BOTTOMLEFT", 0, -14)
+    g2:SetPoint("RIGHT", -4, 0)
+    g2:SetJustifyH("LEFT")
+    g2:SetText("Safety (always):\n"
+        .. "\226\128\162 Assists default off until you enable them and Save\n"
+        .. "\226\128\162 Suite never auto-Unlearns and never spends Scroll of Fortune\n"
+        .. "\226\128\162 No Draft / Hall of Fame / store automation\n"
+        .. "\226\128\162 Wild Card dice stay under this window while it is open")
+    g2:SetTextColor(0.30, 0.22, 0.10, 1)
 
-    local logLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    logLabel:SetPoint("TOPLEFT", 0, -270)
-    logLabel:SetText("Logbook (recent)")
+    CreateSectionLabel(general, "More assists", -130)
+    local gy = -148
+    local gCheck
+    gCheck = select(1, CreateToggleRow(general, gy,
+        "Instant skip SkillCard flipbook",
+        "Speeds SkillCard reveal flipbooks only.",
+        function() end))
+    BindAssistCheck(gCheck, "instantSkillCardSkip")
+    gy = gy - 46
+    gCheck = select(1, CreateToggleRow(general, gy,
+        "Auto-unstick gray Rapid Continue",
+        "Recover stuck Continue or an unclickable leveling die after a short wait.",
+        function() end))
+    BindAssistCheck(gCheck, "autoUnstick")
 
-    logHost = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    logHost:SetPoint("TOPLEFT", 0, -288)
-    logHost:SetWidth(CONTENT_WIDTH)
+    --------------------------------------------------------------------
+    -- Automation
+    --------------------------------------------------------------------
+    local auto = BuildCategoryPage(pageHost, CAT_AUTOMATION)
+
+    local counts = CreateFrame("Frame", nil, auto)
+    counts:SetPoint("TOPLEFT", 0, 0)
+    counts:SetPoint("TOPRIGHT", 0, 0)
+    counts:SetHeight(44)
+
+    local cardW = math.floor((ContentWidth() - SIDEBAR_WIDTH - 40) / 3)
+    local c1 = CreateFrame("Frame", nil, counts)
+    c1:SetWidth(cardW)
+    c1:SetHeight(40)
+    c1:SetPoint("TOPLEFT", 0, 0)
+    if c1.SetBackdrop then
+        c1:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 12, edgeSize = 10,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 },
+        })
+        c1:SetBackdropColor(0.95, 0.90, 0.72, 0.5)
+        c1:SetBackdropBorderColor(0.55, 0.45, 0.18, 0.9)
+    end
+    local c1l = c1:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    c1l:SetPoint("TOP", 0, -4)
+    c1l:SetText("WISHLIST")
+    c1l:SetTextColor(0.35, 0.28, 0.18, 1)
+    countWishlist = c1:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    countWishlist:SetPoint("BOTTOM", 0, 6)
+    countWishlist:SetText("0")
+
+    local c2 = CreateFrame("Frame", nil, counts)
+    c2:SetWidth(cardW)
+    c2:SetHeight(40)
+    c2:SetPoint("LEFT", c1, "RIGHT", 6, 0)
+    if c2.SetBackdrop then
+        c2:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 12, edgeSize = 10,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 },
+        })
+        c2:SetBackdropColor(0.95, 0.90, 0.72, 0.5)
+        c2:SetBackdropBorderColor(0.55, 0.45, 0.18, 0.9)
+    end
+    local c2l = c2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    c2l:SetPoint("TOP", 0, -4)
+    c2l:SetText("DESIRED")
+    c2l:SetTextColor(0.35, 0.28, 0.18, 1)
+    countDesired = c2:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    countDesired:SetPoint("BOTTOM", 0, 6)
+    countDesired:SetText("0 / 0")
+    countDesired:SetTextColor(0.12, 0.40, 0.18, 1)
+
+    local c3 = CreateFrame("Frame", nil, counts)
+    c3:SetWidth(cardW)
+    c3:SetHeight(40)
+    c3:SetPoint("LEFT", c2, "RIGHT", 6, 0)
+    if c3.SetBackdrop then
+        c3:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 12, edgeSize = 10,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 },
+        })
+        c3:SetBackdropColor(0.95, 0.90, 0.72, 0.5)
+        c3:SetBackdropBorderColor(0.55, 0.45, 0.18, 0.9)
+    end
+    local c3l = c3:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    c3l:SetPoint("TOP", 0, -4)
+    c3l:SetText("UNDESIRED")
+    c3l:SetTextColor(0.35, 0.28, 0.18, 1)
+    countUndesired = c3:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    countUndesired:SetPoint("BOTTOM", 0, 6)
+    countUndesired:SetText("0")
+    countUndesired:SetTextColor(0.55, 0.30, 0.10, 1)
+
+    CreateSectionLabel(auto, "Assists", -52)
+    local ay = -70
+    local check
+    check = select(1, CreateToggleRow(auto, ay,
+        "Auto-Roll while leveling",
+        "Desired Ability/Talent targets only. Never Unlearn / Scroll of Fortune.",
+        function() end))
+    BindAssistCheck(check, "autoRoll")
+    ay = ay - 46
+
+    check = select(1, CreateToggleRow(auto, ay,
+        "Keep going after a Desired hit",
+        "Close the session and start the next one instead of handing control back.",
+        function() end))
+    BindAssistCheck(check, "autoRollContinue")
+    ay = ay - 46
+
+    check = select(1, CreateToggleRow(auto, ay,
+        "Instant skip WildCardDice animation",
+        "Speeds flipbooks only — never starts a roll alone.",
+        function() end))
+    BindAssistCheck(check, "instantDiceSkip")
+    ay = ay - 46
+
+    check = select(1, CreateToggleRow(auto, ay,
+        "Accept Wildcard confirm popups",
+        "Mass roll / leveling confirms only — never Unlearn Accept.",
+        function() end))
+    BindAssistCheck(check, "acceptWildcardPopups")
+    ay = ay - 50
+
+    CreateSectionLabel(auto, "Logbook", ay)
+    ay = ay - 18
+
+    local logBox = CreateFrame("Frame", nil, auto)
+    logBox:SetPoint("TOPLEFT", 0, ay)
+    logBox:SetPoint("TOPRIGHT", 0, ay)
+    logBox:SetHeight(72)
+    if logBox.SetBackdrop then
+        logBox:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 12, edgeSize = 10,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        logBox:SetBackdropColor(0.15, 0.11, 0.06, 0.18)
+        logBox:SetBackdropBorderColor(0.55, 0.45, 0.18, 0.9)
+    end
+    logHost = logBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    logHost:SetPoint("TOPLEFT", 8, -8)
+    logHost:SetPoint("BOTTOMRIGHT", -8, 8)
     logHost:SetJustifyH("LEFT")
+    logHost:SetTextColor(0.22, 0.16, 0.08, 1)
+
+    autoRollStatus = auto:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    autoRollStatus:SetPoint("TOPLEFT", logBox, "BOTTOMLEFT", 0, -6)
+    autoRollStatus:SetPoint("RIGHT", auto, "RIGHT", 0, 0)
+    autoRollStatus:SetJustifyH("LEFT")
+
+    --------------------------------------------------------------------
+    -- Logbook category
+    --------------------------------------------------------------------
+    local logPage = BuildCategoryPage(pageHost, CAT_LOGBOOK)
+    CreateSectionLabel(logPage, "Capture", -4)
+    check = select(1, CreateToggleRow(logPage, -22,
+        "Capture rolls into Logbook",
+        "Write roll results (and assist decisions when detailed logging is on) into the suite logbook.",
+        function() end))
+    BindAssistCheck(check, "captureRolls")
+
+    CreateSectionLabel(logPage, "Recent rolls", -86)
+    local logFullBox = CreateFrame("Frame", nil, logPage)
+    logFullBox:SetPoint("TOPLEFT", 0, -104)
+    logFullBox:SetPoint("BOTTOMRIGHT", 0, 4)
+    if logFullBox.SetBackdrop then
+        logFullBox:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 12, edgeSize = 10,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        logFullBox:SetBackdropColor(0.15, 0.11, 0.06, 0.18)
+        logFullBox:SetBackdropBorderColor(0.55, 0.45, 0.18, 0.9)
+    end
+    logHostFull = logFullBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    logHostFull:SetPoint("TOPLEFT", 8, -8)
+    logHostFull:SetPoint("BOTTOMRIGHT", -8, 8)
+    logHostFull:SetJustifyH("LEFT")
+    logHostFull:SetTextColor(0.22, 0.16, 0.08, 1)
+
+    --------------------------------------------------------------------
+    -- Windows & Tools
+    --------------------------------------------------------------------
+    local windows = BuildCategoryPage(pageHost, CAT_WINDOWS)
+    CreateSectionLabel(windows, "Open a window", -4)
+
+    local grid = CreateFrame("Frame", nil, windows)
+    grid:SetPoint("TOPLEFT", 0, -22)
+    grid:SetPoint("TOPRIGHT", 0, -22)
+    grid:SetHeight(100)
+
+    local tools = {
+        { "Wishlist", function() MainWindow.SelectTab(TAB_WISHLIST) end },
+        { "Loadouts", function() MainWindow.SelectTab(TAB_LOADOUTS) end },
+        { "Commands guide", function()
+            Print("Slash: /asuite opens this window. Assists default off. Never auto-Unlearn.")
+            Print("Wishlist: Push to Desired / Sync from Rapid. Loadouts: Apply → Desired.")
+        end },
+        { "Roll logbook", function() MainWindow.SelectCategory(CAT_LOGBOOK) end },
+        { "Debug / Click Trace", function()
+            MainWindow.SelectCategory(CAT_WINDOWS)
+            Print("Toggle “Log every button click” below, then Save. Off by default.")
+        end },
+        { "Error log", function()
+            Print("Lua errors appear in the default client error frame (BugGrabber / !Swatter if installed).")
+        end },
+    }
+
+    local colW = math.floor(((ContentWidth() - SIDEBAR_WIDTH - 36) - 8) / 2)
+    for index = 1, #tools do
+        local spec = tools[index]
+        local btn = CreateToolButton(grid, spec[1], spec[2])
+        btn:SetWidth(colW)
+        local col = (index - 1) % 2
+        local row = math.floor((index - 1) / 2)
+        btn:SetPoint("TOPLEFT", col * (colW + 8), -(row * 34))
+    end
+
+    CreateSectionLabel(windows, "Toggles", -130)
+    local wy = -148
+    check = select(1, CreateToggleRow(windows, wy,
+        "Detailed automation logging",
+        "Write Auto-Roll / Instant Skip decisions into the suite logbook (Capture rolls).",
+        function() end))
+    -- Maps to captureRolls so one Save path covers Logbook + Windows diagnostics.
+    BindAssistCheck(check, "captureRolls")
+    wy = wy - 46
+
+    check = select(1, CreateToggleRow(windows, wy,
+        "Log every button click",
+        "Trace UI clicks for stuck-dice or overlap debugging. Off by default.",
+        function() end))
+    BindPrefCheck(check, "clickTrace")
+    wy = wy - 46
+
+    check = select(1, CreateToggleRow(windows, wy,
+        "Show Desired / Undesired badges",
+        "Mark wishlist rows from Rapid Desired vs Undesired lists.",
+        function() end))
+    BindPrefCheck(check, "showWishlistBadges")
+
+    --------------------------------------------------------------------
+    -- Wishlist sync
+    --------------------------------------------------------------------
+    local sync = BuildCategoryPage(pageHost, CAT_SYNC)
+    CreateSectionLabel(sync, "Sync", -4)
+    local syncBtn = CreateFrame("Button", FRAME_NAME .. "SyncButton", sync, "UIPanelButtonTemplate")
+    syncBtn:SetWidth(140)
+    syncBtn:SetHeight(24)
+    syncBtn:SetPoint("TOPLEFT", 0, -24)
+    syncBtn:SetText("Sync from Rapid")
+    syncBtn:SetScript("OnClick", SyncDesiredFromNative)
+
+    syncStatus = sync:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    syncStatus:SetPoint("LEFT", syncBtn, "RIGHT", 12, 0)
+    syncStatus:SetPoint("RIGHT", sync, "RIGHT", 0, 0)
+    syncStatus:SetJustifyH("LEFT")
+    syncStatus:SetTextColor(0.28, 0.22, 0.12, 1)
+
+    desiredStatus = syncStatus
+
+    local syncHelp = sync:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    syncHelp:SetPoint("TOPLEFT", syncBtn, "BOTTOMLEFT", 0, -16)
+    syncHelp:SetPoint("RIGHT", sync, "RIGHT", 0, 0)
+    syncHelp:SetJustifyH("LEFT")
+    syncHelp:SetText("Sync widens the Rapid Desired search temporarily, reads Ascension's "
+        .. "saved Desired toggles, and merges confirmed marks into your Suite wishlist. "
+        .. "It never clears Ascension Desired and never marks Undesired.")
+    syncHelp:SetTextColor(0.28, 0.22, 0.12, 1)
+
+    CopyAssistDraft()
+    MainWindow.SelectCategory(CAT_WINDOWS)
 end
+
+------------------------------------------------------------------------
+-- Construction
+------------------------------------------------------------------------
 
 local function EnsureFrame()
     if frame then
@@ -677,19 +1418,25 @@ local function EnsureFrame()
         insets = { left = 11, right = 12, top = 12, bottom = 11 },
     })
 
-    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 20, -18)
-    title:SetText("AscensionSuite")
+    titleLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleLabel:SetPoint("TOPLEFT", 20, -16)
+    titleLabel:SetText("AscensionSuite")
 
-    local version = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    version:SetPoint("LEFT", title, "RIGHT", 8, 0)
-    version:SetText("v" .. tostring(AscensionSuite.VERSION or "?"))
+    versionLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    versionLabel:SetPoint("LEFT", titleLabel, "RIGHT", 8, 0)
+    versionLabel:SetText("v" .. tostring(AscensionSuite.VERSION or "?"))
+
+    subheadLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    subheadLabel:SetPoint("TOPLEFT", titleLabel, "BOTTOMLEFT", 0, -2)
+    subheadLabel:SetPoint("RIGHT", frame, "RIGHT", -40, 0)
+    subheadLabel:SetJustifyH("LEFT")
+    subheadLabel:SetText("Wishlist, Loadouts, and opt-in assists.")
 
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -4, -4)
 
     local wishlistTab = CreateTab(frame, TAB_WISHLIST, "Wishlist")
-    wishlistTab:SetPoint("TOPLEFT", 14, -46)
+    wishlistTab:SetPoint("TOPLEFT", 14, -52)
 
     local loadoutsTab = CreateTab(frame, TAB_LOADOUTS, "Loadouts")
     loadoutsTab:SetPoint("LEFT", wishlistTab, "RIGHT", -14, 0)
@@ -701,17 +1448,18 @@ local function EnsureFrame()
         pcall(_G.PanelTemplates_SetNumTabs, frame, 3)
     end
 
+    local bodyTop = CONTENT_TOP
+    local bodyHeight = FRAME_HEIGHT + CONTENT_TOP - 18
     for index = 1, 3 do
         local content = CreateFrame("Frame", FRAME_NAME .. "Content" .. index, frame)
-        content:SetPoint("TOPLEFT", 20, CONTENT_TOP)
-        content:SetWidth(CONTENT_WIDTH)
-        content:SetHeight(FRAME_HEIGHT + CONTENT_TOP - 20)
+        content:SetPoint("TOPLEFT", CONTENT_INSET, bodyTop)
+        content:SetWidth(ContentWidth())
+        content:SetHeight(bodyHeight)
         content:Hide()
         contents[index] = content
     end
 
     BuildAssistContent(contents[TAB_ASSISTS])
-
     RefreshAssistToggles()
     return frame
 end

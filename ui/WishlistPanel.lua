@@ -161,6 +161,8 @@ local function ShowRowTooltip(row)
 
     if row._desired then
         GameTooltip:AddLine("Marked Desired in Ascension", 0.35, 0.71, 1)
+    elseif row._undesired then
+        GameTooltip:AddLine("Marked Undesired in Ascension Rapid", 0.72, 0.45, 0.18)
     elseif IsWildcard() then
         GameTooltip:AddLine("Right-click to toggle Desired", 0.6, 0.6, 0.6)
     else
@@ -317,10 +319,22 @@ local function CreateRow(parent, index)
     return row
 end
 
+local function BadgesEnabled()
+    local DB = AscensionSuite.Database
+    if DB and DB.GetPrefs then
+        local prefs = DB.GetPrefs()
+        if type(prefs) == "table" and prefs.showWishlistBadges == false then
+            return false
+        end
+    end
+    return true
+end
+
 local function FillRow(row, entry, position)
     row._item = entry.item
     row._displayId = entry.displayId
     row._desired = entry.desired
+    row._undesired = entry.undesired
     row._name = entry.name
 
     row._icon:SetTexture(entry.icon or PLACEHOLDER_ICON)
@@ -333,7 +347,13 @@ local function FillRow(row, entry, position)
 
     row._idLabel:SetText(tostring(entry.displayId or "?"))
 
-    if entry.desired then
+    if BadgesEnabled() and entry.desired then
+        row._badge:SetText("Desired")
+        row._badge:SetTextColor(0.35, 0.71, 1, 1)
+        row._badge:Show()
+    elseif BadgesEnabled() and entry.undesired then
+        row._badge:SetText("Undes.")
+        row._badge:SetTextColor(0.72, 0.45, 0.18, 1)
         row._badge:Show()
     else
         row._badge:Hide()
@@ -453,6 +473,33 @@ local function ClearTags()
     end
 end
 
+local function SyncFromRapid()
+    local DesiredSync = AscensionSuite.DesiredSync
+    if not DesiredSync or not DesiredSync.Sync then
+        WishlistPanel.Refresh("Desired sync is not available right now.")
+        return
+    end
+
+    local added, scanned, widened = DesiredSync.Sync()
+    local note
+    if scanned == 0 then
+        note = "no Desired candidates to scan - open Rapid Rolling first"
+    elseif added == 0 then
+        note = string.format("scanned %d, nothing new", scanned)
+    else
+        note = string.format("+%d from Rapid", added)
+    end
+    if widened then
+        note = note .. " (searched past your Rapid filter, then put it back)"
+    end
+    WishlistPanel.Refresh(note)
+
+    local MainWindow = AscensionSuite.MainWindow
+    if MainWindow and MainWindow.RefreshDesiredStatus then
+        MainWindow.RefreshDesiredStatus(note)
+    end
+end
+
 ------------------------------------------------------------------------
 -- Refresh
 ------------------------------------------------------------------------
@@ -532,10 +579,15 @@ function WishlistPanel.Refresh(note)
 
     local total = Wishlist.Count()
     local desired = Wishlist.CountDesired()
+    local undesired = 0
+    if Wishlist.CountUndesired then
+        undesired = Wishlist.CountUndesired() or 0
+    end
     filtered = Wishlist.Search(searchBox and searchBox:GetText() or nil)
 
     if countLabel then
-        countLabel:SetText(string.format("%d entries \194\183 %d Desired", total, desired))
+        countLabel:SetText(string.format("%d entries \194\183 Desired %d \194\183 Undesired %d",
+            total, desired, undesired))
     end
 
     if type(_G.FauxScrollFrame_Update) == "function" and scrollFrame then
@@ -773,17 +825,16 @@ local function BuildPanel(parent, width)
     clearButton:SetText("Clear list")
     clearButton:SetScript("OnClick", ClearList)
 
-    local clearTagsButton = CreateFrame("Button", FRAME_NAME .. "ClearTagsButton", panel, "UIPanelButtonTemplate")
-    clearTagsButton:SetWidth(90)
-    clearTagsButton:SetHeight(22)
-    clearTagsButton:SetPoint("RIGHT", clearButton, "LEFT", -8, 0)
-    clearTagsButton:SetText("Clear tags")
-    clearTagsButton:SetScript("OnClick", ClearTags)
+    -- Contained footer: Push / Sync / Clear tags stay inside the dialog body.
+    local footer = CreateFrame("Frame", FRAME_NAME .. "Footer", panel)
+    footer:SetPoint("TOPLEFT", listFrame, "BOTTOMLEFT", 0, -40)
+    footer:SetPoint("TOPRIGHT", listFrame, "BOTTOMRIGHT", 0, -40)
+    footer:SetHeight(52)
 
-    pushButton = CreateFrame("Button", FRAME_NAME .. "PushButton", panel, "UIPanelButtonTemplate")
-    pushButton:SetWidth(140)
-    pushButton:SetHeight(24)
-    pushButton:SetPoint("TOPLEFT", listFrame, "BOTTOMLEFT", 0, -44)
+    pushButton = CreateFrame("Button", FRAME_NAME .. "PushButton", footer, "UIPanelButtonTemplate")
+    pushButton:SetWidth(130)
+    pushButton:SetHeight(22)
+    pushButton:SetPoint("TOPLEFT", 0, 0)
     pushButton:SetText("Push to Desired")
     pushButton:SetScript("OnClick", PushToDesired)
     -- A disabled button with no explanation is the most common "the addon is
@@ -810,13 +861,27 @@ local function BuildPanel(parent, width)
         end
     end)
 
+    local syncButton = CreateFrame("Button", FRAME_NAME .. "SyncButton", footer, "UIPanelButtonTemplate")
+    syncButton:SetWidth(120)
+    syncButton:SetHeight(22)
+    syncButton:SetPoint("LEFT", pushButton, "RIGHT", 8, 0)
+    syncButton:SetText("Sync from Rapid")
+    syncButton:SetScript("OnClick", SyncFromRapid)
+
+    local clearTagsFooter = CreateFrame("Button", FRAME_NAME .. "ClearTagsFooter", footer, "UIPanelButtonTemplate")
+    clearTagsFooter:SetWidth(90)
+    clearTagsFooter:SetHeight(22)
+    clearTagsFooter:SetPoint("LEFT", syncButton, "RIGHT", 8, 0)
+    clearTagsFooter:SetText("Clear tags")
+    clearTagsFooter:SetScript("OnClick", ClearTags)
+
     statusLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    statusLabel:SetPoint("LEFT", pushButton, "RIGHT", 12, 0)
-    statusLabel:SetWidth(contentWidth - 164)
+    statusLabel:SetPoint("LEFT", clearTagsFooter, "RIGHT", 10, 0)
+    statusLabel:SetPoint("RIGHT", footer, "RIGHT", 0, 0)
     statusLabel:SetJustifyH("LEFT")
 
     hint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    hint:SetPoint("TOPLEFT", pushButton, "BOTTOMLEFT", 0, -14)
+    hint:SetPoint("TOPLEFT", footer, "BOTTOMLEFT", 0, -6)
     hint:SetWidth(contentWidth)
     hint:SetJustifyH("LEFT")
     hint:SetText("Left-click selects a row \194\183 right-click toggles Desired in Wildcard \194\183 Alt + right-click a spell "
