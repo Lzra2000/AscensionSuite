@@ -31,6 +31,10 @@ local H = {}
 
 local EQUIPMENT_ROW_HEIGHT = 28
 local MAX_EQUIPMENT_ROWS = 8
+local FOOTER_HEIGHT = 76
+local SHARE_VISIBLE_HEIGHT = 36
+local SHARE_SCROLL_CHILD_HEIGHT = 512
+local SECTION_TITLE_HEIGHT = 22
 local selectedId
 local activeSection = "SPELLS_AND_TALENTS"
 local displayRows = {}
@@ -162,6 +166,9 @@ local function RefreshShareBox()
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
         W.shareBox:SetText("")
+        if W.shareScroll and W.shareScroll.SetVerticalScroll then
+            W.shareScroll:SetVerticalScroll(0)
+        end
         return
     end
     local text = Loadouts.ExportString(selectedId) or ""
@@ -171,6 +178,9 @@ local function RefreshShareBox()
     end
     if W.shareBox.HighlightText then
         W.shareBox:HighlightText(0, 0)
+    end
+    if W.shareScroll and W.shareScroll.SetVerticalScroll then
+        W.shareScroll:SetVerticalScroll(0)
     end
 end
 
@@ -582,9 +592,9 @@ local function RefreshSectionContent(loadout)
                 if stubCount > 0 then
                     W.notesEdit:SetPoint("TOPLEFT", W.equipmentFrame, "BOTTOMLEFT", 0, -8)
                 else
-                    W.notesEdit:SetPoint("TOPLEFT", W.sectionTitle, "BOTTOMLEFT", 0, -8)
+                    W.notesEdit:SetPoint("TOPLEFT", W.sectionBody, "TOPLEFT", 0, -4)
                 end
-                W.notesEdit:SetPoint("BOTTOMRIGHT", W.sectionContent, "BOTTOMRIGHT", -4, 0)
+                W.notesEdit:SetPoint("BOTTOMRIGHT", W.sectionBody, "BOTTOMRIGHT", -4, 0)
             end
         end
         return
@@ -604,13 +614,13 @@ local function RefreshSectionContent(loadout)
             if W.notesEdit.ClearAllPoints then
                 W.notesEdit:ClearAllPoints()
                 W.notesEdit:SetPoint("TOPLEFT", W.prosPreview, "BOTTOMLEFT", 0, -6)
-                W.notesEdit:SetPoint("BOTTOMRIGHT", W.sectionContent, "BOTTOMRIGHT", -4, 0)
+                W.notesEdit:SetPoint("BOTTOMRIGHT", W.sectionBody, "BOTTOMRIGHT", -4, 0)
             end
         else
             if W.notesEdit.ClearAllPoints then
                 W.notesEdit:ClearAllPoints()
-                W.notesEdit:SetPoint("TOPLEFT", W.sectionTitle, "BOTTOMLEFT", 0, -8)
-                W.notesEdit:SetPoint("BOTTOMRIGHT", W.sectionContent, "BOTTOMRIGHT", -4, 0)
+                W.notesEdit:SetPoint("TOPLEFT", W.sectionBody, "TOPLEFT", 0, -4)
+                W.notesEdit:SetPoint("BOTTOMRIGHT", W.sectionBody, "BOTTOMRIGHT", -4, 0)
             end
         end
         W.notesEdit:SetText(raw)
@@ -696,6 +706,7 @@ function LoadoutsPanel.Refresh(note, good)
     RefreshNav()
     RefreshSectionContent(loadout)
     RefreshShareBox()
+    LoadoutsPanel.AnchorLayout()
 
     if note then
         SetStatus(note, good)
@@ -1420,8 +1431,7 @@ local function BuildPanel(parent, width)
 
     W.buildShell = CreateFrame("Frame", nil, W.panel)
     W.buildShell:SetPoint("TOPLEFT", W.listFrame, "TOPRIGHT", 8, 0)
-    W.buildShell:SetWidth(shellWidth)
-    W.buildShell:SetHeight(430)
+    W.buildShell:SetPoint("BOTTOMRIGHT", W.panel, "BOTTOMRIGHT", 0, 0)
     W.buildShell:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1435,8 +1445,7 @@ local function BuildPanel(parent, width)
 
     W.emptyPanel = CreateFrame("Frame", nil, W.panel)
     W.emptyPanel:SetPoint("TOPLEFT", W.listFrame, "TOPRIGHT", 8, 0)
-    W.emptyPanel:SetWidth(shellWidth)
-    W.emptyPanel:SetHeight(430)
+    W.emptyPanel:SetPoint("BOTTOMRIGHT", W.panel, "BOTTOMRIGHT", 0, 0)
     W.emptyPanel:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1582,6 +1591,7 @@ local function BuildPanel(parent, width)
     importButton:SetScript("OnClick", function() H.OnImportArchetype() end)
 
     local autoBar = CreateFrame("Frame", nil, W.mainColumn)
+    W.autoBar = autoBar
     autoBar:SetPoint("TOPLEFT", meta, "BOTTOMLEFT", 0, -4)
     autoBar:SetPoint("TOPRIGHT", meta, "BOTTOMRIGHT", 0, -4)
     autoBar:SetHeight(68)
@@ -1658,7 +1668,7 @@ local function BuildPanel(parent, width)
     local content = CreateFrame("Frame", nil, W.mainColumn)
     W.sectionContent = content
     content:SetPoint("TOPLEFT", autoBar, "BOTTOMLEFT", 0, -6)
-    content:SetPoint("BOTTOMRIGHT", W.mainColumn, "BOTTOMRIGHT", 0, 58)
+    content:SetPoint("TOPRIGHT", autoBar, "BOTTOMRIGHT", 0, -6)
 
     W.sectionTitle = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     W.sectionTitle:SetPoint("TOPLEFT", 4, -2)
@@ -1668,9 +1678,13 @@ local function BuildPanel(parent, width)
     W.sectionCount:SetPoint("TOPRIGHT", -4, -4)
     W.sectionCount:SetJustifyH("RIGHT")
 
-    W.filterBar = CreateFrame("Frame", nil, content)
-    W.filterBar:SetPoint("TOPLEFT", W.sectionTitle, "BOTTOMLEFT", 0, -8)
-    W.filterBar:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -24)
+    W.sectionBody = CreateFrame("Frame", nil, content)
+    W.sectionBody:SetPoint("TOPLEFT", 0, -SECTION_TITLE_HEIGHT)
+    W.sectionBody:SetPoint("BOTTOMRIGHT", 0, 0)
+
+    W.filterBar = CreateFrame("Frame", nil, W.sectionBody)
+    W.filterBar:SetPoint("TOPLEFT", 0, 0)
+    W.filterBar:SetPoint("TOPRIGHT", 0, 0)
     W.filterBar:SetHeight(24)
 
     local searchLabel = W.filterBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -1739,20 +1753,20 @@ local function BuildPanel(parent, width)
         H.OnAddSpellFromInput()
     end)
 
-    W.prosPreview = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    W.prosPreview:SetPoint("TOPLEFT", W.sectionTitle, "BOTTOMLEFT", 0, -8)
-    W.prosPreview:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -32)
+    W.prosPreview = W.sectionBody:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    W.prosPreview:SetPoint("TOPLEFT", 0, -4)
+    W.prosPreview:SetPoint("TOPRIGHT", 0, -32)
     W.prosPreview:SetJustifyH("LEFT")
     W.prosPreview:Hide()
 
     local spellHeight = VISIBLE_SPELL_ROWS * ROW_HEIGHT + LIST_INSET * 2
-    W.spellListFrame, W.spellScrollFrame = BuildScrollList(content, shellWidth - SIDEBAR_WIDTH - 16, spellHeight,
+    W.spellListFrame, W.spellScrollFrame = BuildScrollList(W.sectionBody, shellWidth - SIDEBAR_WIDTH - 16, spellHeight,
         CreateSpellRow, W.spellRows, VISIBLE_SPELL_ROWS, function() LoadoutsPanel.Refresh() end)
     W.spellListFrame:SetPoint("TOPLEFT", W.filterBar, "BOTTOMLEFT", 0, -6)
 
-    W.equipmentFrame = CreateFrame("Frame", nil, content)
-    W.equipmentFrame:SetPoint("TOPLEFT", W.filterBar, "BOTTOMLEFT", 0, -6)
-    W.equipmentFrame:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -40)
+    W.equipmentFrame = CreateFrame("Frame", nil, W.sectionBody)
+    W.equipmentFrame:SetPoint("TOPLEFT", 0, -4)
+    W.equipmentFrame:SetPoint("TOPRIGHT", 0, -4)
     W.equipmentFrame:SetHeight(MAX_EQUIPMENT_ROWS * EQUIPMENT_ROW_HEIGHT)
     W.equipmentFrame:Hide()
 
@@ -1782,44 +1796,61 @@ local function BuildPanel(parent, width)
         W.equipmentRows[index]:Hide()
     end
 
-    W.notesEdit = CreateFrame("EditBox", FRAME_NAME .. "Notes", content, "InputBoxTemplate")
+    W.notesEdit = CreateFrame("EditBox", FRAME_NAME .. "Notes", W.sectionBody, "InputBoxTemplate")
     W.notesEdit:SetPoint("TOPLEFT", W.filterBar, "BOTTOMLEFT", 0, -6)
-    W.notesEdit:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -4, 0)
+    W.notesEdit:SetPoint("BOTTOMRIGHT", W.sectionBody, "BOTTOMRIGHT", -4, 0)
     W.notesEdit:SetMultiLine(true)
     W.notesEdit:SetAutoFocus(false)
     W.notesEdit:SetMaxLetters(8000)
     W.notesEdit:Hide()
 
-    local foot = CreateFrame("Frame", nil, W.mainColumn)
-    foot:SetPoint("BOTTOMLEFT", 0, 0)
-    foot:SetPoint("BOTTOMRIGHT", 0, 0)
-    foot:SetHeight(54)
+    W.foot = CreateFrame("Frame", nil, W.mainColumn)
+    W.foot:SetPoint("BOTTOMLEFT", 0, 0)
+    W.foot:SetPoint("BOTTOMRIGHT", 0, 0)
+    W.foot:SetHeight(FOOTER_HEIGHT)
 
-    local copyButton = CreateFrame("Button", nil, foot, "UIPanelButtonTemplate")
-    copyButton:SetWidth(88)
-    copyButton:SetHeight(22)
-    copyButton:SetPoint("BOTTOMLEFT", 0, 28)
-    copyButton:SetText("Copy share")
-    copyButton:SetScript("OnClick", function() H.OnCopyShare() end)
+    content:SetPoint("BOTTOMLEFT", W.foot, "TOPLEFT", 0, -4)
+    content:SetPoint("BOTTOMRIGHT", W.foot, "TOPRIGHT", 0, -4)
 
-    local importShareButton = CreateFrame("Button", nil, foot, "UIPanelButtonTemplate")
-    importShareButton:SetWidth(96)
-    importShareButton:SetHeight(22)
-    importShareButton:SetPoint("LEFT", copyButton, "RIGHT", 8, 0)
-    importShareButton:SetText("Import string…")
-    importShareButton:SetScript("OnClick", function() H.OnImportShare() end)
+    W.shareScroll = CreateFrame("ScrollFrame", FRAME_NAME .. "ShareScroll", W.foot)
+    W.shareScroll:SetPoint("TOPLEFT", 0, -2)
+    W.shareScroll:SetPoint("TOPRIGHT", 0, -2)
+    W.shareScroll:SetHeight(SHARE_VISIBLE_HEIGHT)
 
-    W.shareBox = CreateFrame("EditBox", FRAME_NAME .. "Share", foot, "InputBoxTemplate")
-    W.shareBox:SetPoint("BOTTOMLEFT", copyButton, "TOPLEFT", 0, 4)
-    W.shareBox:SetPoint("BOTTOMRIGHT", foot, "BOTTOMRIGHT", 0, 28)
-    W.shareBox:SetHeight(44)
+    W.shareBox = CreateFrame("EditBox", FRAME_NAME .. "Share", W.shareScroll)
     W.shareBox:SetMultiLine(true)
     W.shareBox:SetAutoFocus(false)
     W.shareBox:SetMaxLetters(8000)
+    W.shareBox:SetWidth(shellWidth - SIDEBAR_WIDTH - 16)
+    W.shareBox:SetHeight(SHARE_SCROLL_CHILD_HEIGHT)
+    W.shareScroll:SetScrollChild(W.shareBox)
+    W.shareBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+    W.shareBox:SetScript("OnCursorChanged", function(self, _, y)
+        local scroll = W.shareScroll
+        if scroll and scroll.SetVerticalScroll and y then
+            scroll:SetVerticalScroll(-y)
+        end
+    end)
 
-    W.statusLabel = foot:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    W.statusLabel:SetPoint("TOPRIGHT", foot, "TOPRIGHT", 0, -2)
-    W.statusLabel:SetPoint("LEFT", importShareButton, "RIGHT", 12, 0)
+    W.copyShareButton = CreateFrame("Button", nil, W.foot, "UIPanelButtonTemplate")
+    W.copyShareButton:SetWidth(88)
+    W.copyShareButton:SetHeight(22)
+    W.copyShareButton:SetPoint("TOPLEFT", W.shareScroll, "BOTTOMLEFT", 0, -4)
+    W.copyShareButton:SetText("Copy share")
+    W.copyShareButton:SetScript("OnClick", function() H.OnCopyShare() end)
+
+    W.importShareButton = CreateFrame("Button", nil, W.foot, "UIPanelButtonTemplate")
+    W.importShareButton:SetWidth(96)
+    W.importShareButton:SetHeight(22)
+    W.importShareButton:SetPoint("LEFT", W.copyShareButton, "RIGHT", 8, 0)
+    W.importShareButton:SetText("Import string…")
+    W.importShareButton:SetScript("OnClick", function() H.OnImportShare() end)
+
+    W.statusLabel = W.foot:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    W.statusLabel:SetPoint("LEFT", W.importShareButton, "RIGHT", 12, 0)
+    W.statusLabel:SetPoint("RIGHT", W.foot, "RIGHT", 0, 0)
     W.statusLabel:SetJustifyH("RIGHT")
 
     LoadoutsPanel.Refresh()
@@ -1840,7 +1871,7 @@ function LoadoutsPanel.Create(parent, width)
     return LoadoutsPanel.EnsureBuilt(parent, width)
 end
 
-function LoadoutsPanel.InvalidateLayout()
+function LoadoutsPanel.AnchorLayout()
     if not W.panel or not W.panelParent then
         return
     end
@@ -1866,10 +1897,6 @@ function LoadoutsPanel.InvalidateLayout()
         end
     end
 
-    if W.buildShell then
-        W.buildShell:SetWidth(shellWidth)
-    end
-
     if W.spellListFrame then
         W.spellListFrame:SetWidth(detailWidth)
         local rowWidth = detailWidth - LIST_INSET - SCROLLBAR_WIDTH
@@ -1881,12 +1908,34 @@ function LoadoutsPanel.InvalidateLayout()
         end
     end
 
-    if W.shareBox and W.shareBox.SetWidth then
+    if W.foot then
+        W.foot:SetHeight(FOOTER_HEIGHT)
+    end
+
+    if W.shareScroll then
+        W.shareScroll:SetHeight(SHARE_VISIBLE_HEIGHT)
+    end
+
+    if W.shareBox and detailWidth > 0 then
         W.shareBox:SetWidth(detailWidth)
+        W.shareBox:SetHeight(SHARE_SCROLL_CHILD_HEIGHT)
     end
-    if W.statusLabel and W.statusLabel.SetWidth then
-        W.statusLabel:SetWidth(detailWidth * 0.55)
+
+    if W.statusLabel and W.statusLabel.SetWidth and detailWidth > 0 then
+        W.statusLabel:SetWidth(detailWidth * 0.45)
     end
+
+    if W.sectionContent and W.foot and W.autoBar then
+        W.sectionContent:ClearAllPoints()
+        W.sectionContent:SetPoint("TOPLEFT", W.autoBar, "BOTTOMLEFT", 0, -6)
+        W.sectionContent:SetPoint("TOPRIGHT", W.autoBar, "BOTTOMRIGHT", 0, -6)
+        W.sectionContent:SetPoint("BOTTOMLEFT", W.foot, "TOPLEFT", 0, -4)
+        W.sectionContent:SetPoint("BOTTOMRIGHT", W.foot, "TOPRIGHT", 0, -4)
+    end
+end
+
+function LoadoutsPanel.InvalidateLayout()
+    LoadoutsPanel.AnchorLayout()
 end
 
 function LoadoutsPanel.GetFrame()

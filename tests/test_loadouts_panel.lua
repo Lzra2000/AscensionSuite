@@ -80,6 +80,8 @@ function Frame:SetWidth(value) self._width = value end
 function Frame:GetWidth() return self._width or 0 end
 function Frame:SetHeight(value) self._height = value end
 function Frame:GetHeight() return self._height or 0 end
+function Frame:SetScrollChild(child) self._scrollChild = child end
+function Frame:SetVerticalScroll(value) self._verticalScroll = value end
 function Frame:EnableMouse() end
 function Frame:RegisterForClicks() end
 function Frame:CreateFontString() return NewFontString() end
@@ -247,5 +249,15 @@ assert(spellRow._tagButton ~= nil, "spell rows have tag cycle button")
 Loadouts.SetSelectedId(id)
 Panel.Refresh()
 assert(Panel.GetSelectedId() == id, "selection persisted to prefs")
+
+local shareScroll = _G.AscensionSuiteLoadoutsPanelShareScroll
+assert(shareScroll, "share export uses a scroll clip frame")
+local shareBox = _G.AscensionSuiteLoadoutsPanelShare
+assert(shareBox, "share export edit box exists")
+assert(shareScroll._scrollChild == shareBox, "share edit box is scroll child (clipped)")
+assert(shareBox:GetWidth() > 0, "share box has non-zero width after layout")
+
+Panel.InvalidateLayout()
+assert(shareBox:GetWidth() > 0, "share box width survives layout invalidation")
 
 print("OK: AscensionSuite loadouts panel test passed")
