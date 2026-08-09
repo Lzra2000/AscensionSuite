@@ -45,7 +45,7 @@ local ensurePending = false
 local ensureElapsed = 0
 local ENSURE_DEFER_SECONDS = 0.2
 local recoveryUntil = 0
-local RECOVERY_WINDOW_SECONDS = 3.0
+local RECOVERY_WINDOW_SECONDS = 1.5
 
 local function MarkDiceSkipRecovery()
     if not ShouldSkipDice() then
@@ -56,6 +56,66 @@ local function MarkDiceSkipRecovery()
         now = _G.GetTime()
     end
     recoveryUntil = now + RECOVERY_WINDOW_SECONDS
+end
+
+local function ShouldDeferDiceRecovery()
+    local API = AscensionSuite.AscensionAPI
+    if not API then
+        return false
+    end
+    if API.ShouldLetDiceHide and API.ShouldLetDiceHide() then
+        return true
+    end
+    if API.IsDiceRecoveryCooldownActive and API.IsDiceRecoveryCooldownActive() then
+        return true
+    end
+    if API.IsDiceFadingOut and API.IsDiceFadingOut() then
+        return true
+    end
+    return false
+end
+
+local function ScheduleEnsureDiceClickable(forceDecision)
+    local API = AscensionSuite.AscensionAPI
+    if not API or not API.EnsureDiceClickable then
+        return
+    end
+
+    if not forceDecision and ShouldDeferDiceRecovery() then
+        if API.ClearDiceClickStealer then
+            API.ClearDiceClickStealer()
+        end
+        if API.ClearDiceHoverArtifacts then
+            API.ClearDiceHoverArtifacts()
+        end
+        return
+    end
+
+    if not ensureFrame and type(CreateFrame) == "function" then
+        ensureFrame = CreateFrame("Frame")
+        ensureFrame:SetScript("OnUpdate", function(self, delta)
+            if not ensurePending then
+                return
+            end
+            ensureElapsed = ensureElapsed + (delta or 0)
+            if ensureElapsed < ENSURE_DEFER_SECONDS then
+                return
+            end
+            ensurePending = false
+            ensureElapsed = 0
+            if ShouldDeferDiceRecovery() then
+                if API.ClearDiceClickStealer then
+                    API.ClearDiceClickStealer()
+                end
+                return
+            end
+            MarkDiceSkipRecovery()
+            API.EnsureDiceClickable()
+        end)
+    end
+
+    ensurePending = true
+    ensureElapsed = 0
 end
 
 function AnimationSkip.IsRecoveryActive()
@@ -92,33 +152,6 @@ local function SetFlipBookSpeed(flipBook, speed)
     end
     local ok = pcall(flipBook.SetSpeed, flipBook, speed)
     return ok
-end
-
-local function ScheduleEnsureDiceClickable()
-    local API = AscensionSuite.AscensionAPI
-    if not API or not API.EnsureDiceClickable then
-        return
-    end
-
-    if not ensureFrame and type(CreateFrame) == "function" then
-        ensureFrame = CreateFrame("Frame")
-        ensureFrame:SetScript("OnUpdate", function(self, delta)
-            if not ensurePending then
-                return
-            end
-            ensureElapsed = ensureElapsed + (delta or 0)
-            if ensureElapsed < ENSURE_DEFER_SECONDS then
-                return
-            end
-            ensurePending = false
-            ensureElapsed = 0
-            MarkDiceSkipRecovery()
-            API.EnsureDiceClickable()
-        end)
-    end
-
-    ensurePending = true
-    ensureElapsed = 0
 end
 
 ------------------------------------------------------------------------
@@ -177,12 +210,10 @@ function AnimationSkip.SkipRoulette(scrollFrame)
 
     if type(group.Finish) == "function" then
         local ok = pcall(group.Finish, group)
-        ScheduleEnsureDiceClickable()
         return ok
     end
     if type(group.Stop) == "function" then
         local ok = pcall(group.Stop, group)
-        ScheduleEnsureDiceClickable()
         return ok
     end
     return false
@@ -202,14 +233,12 @@ local function AttachDice()
     if type(dice.OnShow) == "function" then
         hooksecurefunc(dice, "OnShow", function(self)
             AnimationSkip.ApplyDiceSpeeds(self)
-            ScheduleEnsureDiceClickable()
         end)
     end
 
     if type(dice.PlayFlipBook) == "function" then
         hooksecurefunc(dice, "PlayFlipBook", function(self)
             AnimationSkip.ApplyDiceSpeeds(self)
-            ScheduleEnsureDiceClickable()
         end)
     end
 
@@ -219,15 +248,9 @@ local function AttachDice()
         end)
     end
 
-    if type(dice.OnFinishedCollapse) == "function" then
-        hooksecurefunc(dice, "OnFinishedCollapse", function()
-            ScheduleEnsureDiceClickable()
-        end)
-    end
-
     if type(dice.SetInternalID) == "function" then
         hooksecurefunc(dice, "SetInternalID", function()
-            ScheduleEnsureDiceClickable()
+            ScheduleEnsureDiceClickable(true)
         end)
     end
 

@@ -41,8 +41,11 @@ CreateFrame = function()
     return frame
 end
 
+local canRollAbilities = true
+
 _G.C_Wildcard = {
     IsGameModeActive = function() return true end,
+    CanRollAbilities = function() return canRollAbilities end,
 }
 _G.C_GameMode = {
     GetGameMode = function() return 1 end,
@@ -396,5 +399,73 @@ mouseEnabled = false
 API.EnsureDiceClickable()
 assert(rollButtonMouseEnabled == true, "RollButton mouse restored")
 assert(scrollCountMouseEnabled == true, "ScrollCount mouse restored")
+
+-- Fading die: EnsureDiceClickable must not re-show or RegisterOnClick.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "IDLE" end
+mouseEnabled = false
+registerCalls = 0
+diceAlpha = 0.4
+_G.WildCardDice.BaseFrameFadeOut = {
+    IsPlaying = function() return true end,
+}
+canRollAbilities = false
+healed = API.EnsureDiceClickable()
+assert(registerCalls == 0, "fading die RegisterOnClick not called")
+assert(diceAlpha == 0.4, "fading die alpha not forced to 1")
+assert(mouseEnabled == false, "fading die mouse not re-enabled")
+_G.WildCardDice.BaseFrameFadeOut = nil
+canRollAbilities = true
+
+-- ShouldLetDiceHide after level-up when no roll and no decision.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "IDLE" end
+canRollAbilities = false
+assert(API.ShouldLetDiceHide() == true, "idle die should hide when no roll")
+canRollAbilities = true
+
+-- HideLingeringDice clears hover artifacts.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "IDLE" end
+highlightShown = true
+tooltipHidden = false
+canRollAbilities = false
+assert(API.HideLingeringDice() == true, "lingering die hidden")
+assert(diceShown == false, "HideLingeringDice hides die")
+assert(highlightShown == false, "hide path clears highlight")
+assert(tooltipHidden == true, "hide path clears tooltip")
+canRollAbilities = true
+
+-- DiceGuard debounce: burst events coalesce; fading die not re-shown.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "READY_TO_ROLL" end
+mouseEnabled = false
+registerCalls = 0
+diceAlpha = 0.5
+_G.WildCardDice.BaseFrameFadeOut = {
+    IsPlaying = function() return true end,
+}
+canRollAbilities = false
+local guardRuns = 0
+local origEnsure = API.EnsureDiceClickable
+API.EnsureDiceClickable = function()
+    guardRuns = guardRuns + 1
+    return origEnsure()
+end
+for frame, fn in pairs(eventScripts) do
+    fn(frame, "PLAYER_LEVEL_UP", 42)
+    fn(frame, "WILDCARD_ENTRY_LEARNED", 1, 0)
+    fn(frame, "WILDCARD_ROLL_READY")
+end
+for frame, fn in pairs(updateScripts) do
+    if fn then
+        fn(frame, 0.15)
+    end
+end
+assert(guardRuns <= 1, "burst guard events coalesce to one ensure")
+assert(registerCalls == 0, "guard does not RegisterOnClick on fading die")
+API.EnsureDiceClickable = origEnsure
+_G.WildCardDice.BaseFrameFadeOut = nil
+canRollAbilities = true
 
 print("OK: AscensionSuite dice clickable test passed")

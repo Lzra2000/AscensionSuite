@@ -3,6 +3,26 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.16 (2026-08-09) -- Wild Card dice fades out after level-up
+
+#### Fixed
+- **Wild Card dice linger / hover thrash after level-up** — DiceGuard and Instant
+  Dice Skip recovery no longer fight Ascension's `BaseFrameFadeOut` / hide path by
+  re-`Show`ing, `RegisterOnClick`ing, raising strata, or sanitizing hover every guard
+  tick. When `CanRollAbilities` is false and no keep-vs-unlearn decision is up, Suite
+  only clears click stealers and hover artifacts and lets the client fade the die.
+- **DiceGuard debounce** — `PLAYER_LEVEL_UP` and roll events coalesce; a 2s cooldown
+  after a successful hide/fade stops hammering recovery for 5–10s.
+- **Stuck die watchdog** — non-interactive dice still visible ~1s after level-up settle
+  are hidden promptly instead of lingering through native fade.
+- **Instant Dice Skip** — collapse / reel finish no longer schedules open-ended
+  `EnsureDiceClickable` loops; decision recovery still runs on `SetInternalID`.
+
+#### Added
+- `AscensionAPI.IsDiceFadingOut`, `ShouldLetDiceHide`, `HideLingeringDice`,
+  `IsDiceStuckVisibleNonInteractive`, `MarkLevelUpDiceSettle`, `NoteDiceRecoveryHide`.
+- `tests/test_dice_clickable.lua` coverage for fading die, debounce, and hide hover clear.
+
 ### 0.4.15 (2026-08-09) -- Auto-dismiss unlearn confirm during assists
 
 #### Fixed

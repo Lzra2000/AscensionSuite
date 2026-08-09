@@ -1500,6 +1500,190 @@ local function DiceIsIdle(dice)
     return false
 end
 
+local DICE_RECOVERY_COOLDOWN_SECONDS = 2.0
+local DICE_STUCK_VISIBLE_SECONDS = 1.0
+local DICE_LEVEL_UP_SETTLE_SECONDS = 0.35
+local diceRecoveryCooldownUntil = 0
+local diceStuckSince = 0
+local levelUpSettleUntil = 0
+local lastHoverSanitizeAt = 0
+local HOVER_SANITIZE_COOLDOWN_SECONDS = 0.5
+
+local function SuiteNow()
+    if type(_G.GetTime) == "function" then
+        return _G.GetTime()
+    end
+    return 0
+end
+
+local function DiceFadeAnimationPlaying(dice)
+    if type(dice) ~= "table" then
+        return false
+    end
+    local fade = dice.BaseFrameFadeOut
+    if type(fade) == "table" and type(fade.IsPlaying) == "function" then
+        local ok, playing = pcall(fade.IsPlaying, fade)
+        if ok and playing == true then
+            return true
+        end
+    end
+    return false
+end
+
+-- Ascension is mid BaseFrameFadeOut / alpha fade after a completed leveling roll.
+function API.IsDiceFadingOut(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" then
+        return false
+    end
+    if DiceFadeAnimationPlaying(dice) then
+        return true
+    end
+    if type(dice.GetAlpha) == "function" then
+        local ok, alpha = pcall(dice.GetAlpha, dice)
+        if ok and alpha and alpha > 0 and alpha < 0.95 then
+            return true
+        end
+    end
+    return false
+end
+
+function API.IsDiceRecoveryCooldownActive()
+    local now = SuiteNow()
+    if now <= 0 then
+        return false
+    end
+    return now < diceRecoveryCooldownUntil
+end
+
+function API.NoteDiceRecoveryHide()
+    local now = SuiteNow()
+    if now > 0 then
+        diceRecoveryCooldownUntil = now + DICE_RECOVERY_COOLDOWN_SECONDS
+    end
+    diceStuckSince = 0
+end
+
+function API.MarkLevelUpDiceSettle()
+    local now = SuiteNow()
+    if now > 0 then
+        levelUpSettleUntil = now + DICE_LEVEL_UP_SETTLE_SECONDS
+    end
+end
+
+local function DiceStuckCandidate(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" or dice.isRapidRolling then
+        return false
+    end
+    if not DiceIsShown(dice) then
+        return false
+    end
+    if API.DiceShouldAcceptClicks(dice) then
+        return false
+    end
+    if API.IsDiceFadingOut(dice) then
+        return false
+    end
+    if API.IsUnlearnOrKeepDecisionPending() then
+        return false
+    end
+    return true
+end
+
+local function TrackDiceStuckVisible(dice)
+    if DiceStuckCandidate(dice) then
+        if diceStuckSince <= 0 then
+            diceStuckSince = SuiteNow()
+        end
+    else
+        diceStuckSince = 0
+    end
+end
+
+-- Shown die with no interactive state lingering after level-up settle (Suite stall).
+function API.IsDiceStuckVisibleNonInteractive(dice)
+    local now = SuiteNow()
+    if now <= 0 then
+        return false
+    end
+    TrackDiceStuckVisible(dice)
+    if diceStuckSince <= 0 then
+        return false
+    end
+    if now < levelUpSettleUntil then
+        return false
+    end
+    return (now - diceStuckSince) >= DICE_STUCK_VISIBLE_SECONDS
+end
+
+-- Ascension is hiding the die or no roll / keep-vs-unlearn is up — do not re-show.
+function API.ShouldLetDiceHide(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" then
+        return true
+    end
+    if API.IsDiceFadingOut(dice) then
+        return true
+    end
+    if API.IsUnlearnOrKeepDecisionPending() then
+        return false
+    end
+    if API.DiceShouldAcceptClicks(dice) then
+        return false
+    end
+    if not DiceIsShown(dice) then
+        return true
+    end
+    if dice.isRapidRolling then
+        return false
+    end
+    if not API.CanRollAbilities() then
+        return true
+    end
+    if DiceIsIdle(dice) then
+        return true
+    end
+    return false
+end
+
+function API.HideLingeringDice(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" then
+        return false
+    end
+
+    API.ClearDiceHoverArtifacts(dice)
+
+    local hidden = false
+    if DiceIsShown(dice) and not API.DiceShouldAcceptClicks(dice) then
+        if type(dice.Hide) == "function" then
+            pcall(dice.Hide, dice)
+            hidden = true
+        end
+    end
+
+    if API.ClearDiceClickStealer(dice) then
+        hidden = true
+    end
+
+    if hidden then
+        API.NoteDiceRecoveryHide()
+    end
+    return hidden
+end
+
+local function MaybeSanitizeDiceHoverAfterRecovery(dice)
+    local now = SuiteNow()
+    if now > 0 and (now - lastHoverSanitizeAt) < HOVER_SANITIZE_COOLDOWN_SECONDS then
+        return false
+    end
+    if now > 0 then
+        lastHoverSanitizeAt = now
+    end
+    return API.SanitizeDiceHover(dice)
+end
+
 local function DiceStrataWasRaised(dice)
     if type(dice) ~= "table" then
         return false
@@ -1648,6 +1832,7 @@ function API.ClearDiceClickStealer(dice)
     if DiceIsShown(dice) and DiceIsIdle(dice) and not dice.pendingReveal and not dice.isRapidRolling then
         if type(dice.Hide) == "function" then
             pcall(dice.Hide, dice)
+            API.NoteDiceRecoveryHide()
             cleared = true
         end
     end
@@ -1952,6 +2137,23 @@ function API.EnsureDiceClickable()
         return false
     end
 
+    if API.IsDiceStuckVisibleNonInteractive(dice) then
+        return API.HideLingeringDice(dice)
+    end
+
+    if API.ShouldLetDiceHide(dice) then
+        local cleared = API.ClearDiceClickStealer(dice)
+        API.ClearDiceHoverArtifacts(dice)
+        if cleared then
+            API.NoteDiceRecoveryHide()
+        end
+        return cleared
+    end
+
+    if API.IsDiceRecoveryCooldownActive() then
+        return API.ClearDiceClickStealer(dice)
+    end
+
     local cleared = API.ClearDiceClickStealer(dice)
     local healed = false
     local shownOk, shown = false, false
@@ -1960,6 +2162,10 @@ function API.EnsureDiceClickable()
     end
 
     if shownOk and shown == true and API.DiceShouldAcceptClicks(dice) then
+        if API.IsDiceFadingOut(dice) then
+            return cleared
+        end
+
         local needsMouse = API.IsDiceShownUnclickable()
         if needsMouse then
             if type(dice.RegisterOnClick) == "function" then
@@ -1979,9 +2185,12 @@ function API.EnsureDiceClickable()
         end
     end
 
-    local affordances = SyncDiceDecisionAffordances(dice)
-    if cleared or healed or affordances then
-        API.SanitizeDiceHover(dice)
+    local affordances = false
+    if not API.IsDiceFadingOut(dice) then
+        affordances = SyncDiceDecisionAffordances(dice)
+    end
+    if healed or affordances then
+        MaybeSanitizeDiceHoverAfterRecovery(dice)
     end
     return healed or affordances or cleared
 end
@@ -2178,7 +2387,7 @@ function API.RecoverDiceInteraction()
                 pcall(dice.SetAlpha, dice, 1)
             end
             SyncDiceDecisionAffordances(dice)
-            API.SanitizeDiceHover(dice)
+            MaybeSanitizeDiceHoverAfterRecovery(dice)
             if type(dice.IsMouseEnabled) == "function" then
                 local mouseOk, enabled = pcall(dice.IsMouseEnabled, dice)
                 if mouseOk and enabled == true then
