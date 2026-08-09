@@ -3,6 +3,15 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.8 (2026-08-09) -- Wishlist icon fetch matches native CA/Rapid
+
+#### Fixed
+- **Wishlist row icons** — `GetEntryIcon` now prefixes Ascension's short `entry.Icon`
+  filenames with `Interface\Icons\` (same as native `SetCharacterAdvancementEntry`),
+  resolves spell textures via `GetEntryTooltipSpellID` instead of treating internal
+  entry ids as spell ids, and accepts an internal-id hint so spell-id collisions
+  cannot pick the wrong entry. Wishlist `Describe` passes that hint for book rows.
+
 ### 0.4.7 (2026-08-09) -- Loadouts UI overlap fix: share footer, clipped export, tab chrome
 
 #### Fixed

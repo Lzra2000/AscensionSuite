@@ -492,7 +492,7 @@ function Wishlist.Describe(item)
             local entry = api.ResolveEntryByInternalID(item.entryId)
             if type(entry) == "table" then
                 resolvedName = api.GetEntryName(item.entryId)
-                resolvedIcon = api.GetEntryIcon(item.entryId)
+                resolvedIcon = api.GetEntryIcon(item.entryId, item.entryId)
             end
         end
         if (not resolvedName or not resolvedIcon) and lookupId then

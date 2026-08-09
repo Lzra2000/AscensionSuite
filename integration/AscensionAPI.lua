@@ -126,6 +126,32 @@ local function FirstTexture(...)
     return nil
 end
 
+-- Ascension CA entries store the blp name only; native widgets prefix
+-- Interface\Icons\ before SetTexture (SpellIconTemplateMixin:SetCharacterAdvancementEntry).
+local ICON_TEXTURE_ROOT = "Interface\\Icons\\"
+
+local function NormalizeIconTexture(texture)
+    if type(texture) ~= "string" or texture == "" then
+        return nil
+    end
+    if texture:find("\\") or texture:find("/") then
+        return texture
+    end
+    local lower = texture:lower()
+    if lower:sub(1, 9) == "interface" then
+        return texture
+    end
+    return ICON_TEXTURE_ROOT .. texture
+end
+
+local function EntryIconFromFields(entry)
+    if type(entry) ~= "table" then
+        return nil
+    end
+    return NormalizeIconTexture(FirstTexture(
+        entry.Icon, entry.icon, entry.texture, entry.Texture, entry.spellIcon))
+end
+
 local function FirstNumber(...)
     for index = 1, select("#", ...) do
         local value = tonumber(select(index, ...))
@@ -391,20 +417,37 @@ end
 -- Presentation (dual-read fields, GetSpellInfo fallback)
 ------------------------------------------------------------------------
 
-function API.GetEntryIcon(spellOrEntryId)
-    local entry = API.ResolveEntry(spellOrEntryId)
+function API.GetEntryIcon(spellOrEntryId, internalId)
+    local entry = nil
+    if internalId ~= nil then
+        entry = API.ResolveEntryByInternalID(internalId)
+    end
+    if not entry then
+        entry = API.ResolveEntry(spellOrEntryId)
+    end
+
     if entry then
-        local icon = FirstTexture(entry.Icon, entry.icon, entry.texture, entry.Texture, entry.spellIcon)
+        local icon = EntryIconFromFields(entry)
         if icon then
             return icon
+        end
+
+        local spellId = API.GetEntryTooltipSpellID(spellOrEntryId, internalId)
+        if spellId and GetSpellInfo then
+            local _, _, texture = GetSpellInfo(spellId)
+            icon = NormalizeIconTexture(texture)
+            if icon then
+                return icon
+            end
         end
     end
 
     local id = tonumber(spellOrEntryId)
     if id and GetSpellInfo then
         local _, _, texture = GetSpellInfo(id)
-        if texture and texture ~= "" then
-            return texture
+        local icon = NormalizeIconTexture(texture)
+        if icon then
+            return icon
         end
     end
 
@@ -1072,12 +1115,12 @@ function API.DescribeRolledEntry(internalId, newRank, preRollRank)
     if spellId and GetSpellInfo then
         local spellName, _, spellIcon = GetSpellInfo(spellId)
         name = FirstString(spellName)
-        icon = FirstTexture(spellIcon)
+        icon = NormalizeIconTexture(spellIcon)
     end
 
     if entry then
         name = name or FirstString(entry.Name, entry.name, entry.spellName, entry.displayName)
-        icon = icon or FirstTexture(entry.Icon, entry.icon, entry.texture, entry.Texture, entry.spellIcon)
+        icon = icon or EntryIconFromFields(entry)
     end
 
     return {
