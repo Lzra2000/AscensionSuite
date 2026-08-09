@@ -134,21 +134,27 @@ C_Wildcard = {
 local diceShown = false
 local diceCoreState = "IDLE"
 local rollButtonVisible = false
+local diceInternalID = nil
 
 _G.WildCardDice = {
     isRapidRolling = false,
     pendingReveal = nil,
     IsShown = function() return diceShown end,
+    GetInternalID = function() return diceInternalID end,
     Core = {
         State = {
             IDLE = "IDLE",
             READY_TO_ROLL = "READY_TO_ROLL",
             DECISION_PENDING = "DECISION_PENDING",
+            REVEALING = "REVEALING",
         },
         GetState = function() return diceCoreState end,
     },
     RollButton = {
         IsVisible = function() return rollButtonVisible end,
+    },
+    Icon = {
+        IsShown = function() return diceInternalID ~= nil end,
     },
 }
 
@@ -156,6 +162,7 @@ dofile(ROOT .. "/core/Database.lua")
 dofile(ROOT .. "/integration/AscensionAPI.lua")
 dofile(ROOT .. "/core/Wishlist.lua")
 dofile(ROOT .. "/automation/AutoRoller.lua")
+dofile(ROOT .. "/automation/AnimationSkip.lua")
 dofile(ROOT .. "/automation/PopupAssist.lua")
 
 AscensionSuite.Database.Init()
@@ -176,6 +183,20 @@ for index = 1, #denyList do
     assert(not PopupAssist.IsAllowlisted(denyList[index]),
         denyList[index] .. " must not be allowlisted")
 end
+
+-- Revealed internalID on leveling die (REVEALING after Instant Dice Skip).
+diceShown = true
+diceCoreState = "REVEALING"
+diceInternalID = 42
+rollButtonVisible = false
+assert(API.IsDiceKeepOrUnlearnDecisionUp() == true, "revealed internalID blocks rolls")
+assert(API.IsUnlearnOrKeepDecisionPending() == true, "revealed internalID blocks assists")
+ok, err = API.AdvanceRapidRoll(true)
+assert(ok == false and err == "unlearn_decision",
+    "AdvanceRapidRoll must refuse revealed internalID, got " .. tostring(ok) .. " / " .. tostring(err))
+diceInternalID = nil
+diceCoreState = "IDLE"
+diceShown = false
 
 -- DECISION_PENDING on the leveling die.
 diceShown = true
@@ -229,7 +250,7 @@ assert(AutoRoller.GetLastError() == "unlearn_decision",
     "reports unlearn_decision, got " .. tostring(AutoRoller.GetLastError()))
 assert(rollCalls == 0, "Auto-Roll must not spend scrolls while decision is up")
 
--- PopupAssist halts a running Auto-Roll when an unlearn confirm appears.
+-- PopupAssist dismisses unlearn confirm during Auto-Roll (Cancel, never Accept).
 AutoRoller.ClearLastError()
 diceCoreState = "IDLE"
 rollButtonVisible = false
@@ -248,7 +269,33 @@ RunPendingUpdates()
 assert(AutoRoller.IsRunning() == false, "popup must stop Auto-Roll")
 assert(AutoRoller.GetLastError() == "unlearn_decision",
     "popup stop reason, got " .. tostring(AutoRoller.GetLastError()))
-assert(#clicks == 0, "must not accept unlearn confirm")
-assert(StaticPopup_FindVisible("CONFIRM_UNLEARN_S"), "dialog left for the player")
+assert(#clicks == 1, "must cancel unlearn confirm, got " .. #clicks)
+assert(clicks[1].index == 2, "must click Cancel (button 2), got " .. tostring(clicks[1].index))
+assert(not StaticPopup_FindVisible("CONFIRM_UNLEARN_S"), "dialog must be dismissed")
+
+-- Text-based detection for Scroll of Fortune I / II phrasing.
+_G.STATICPOPUP_NUMDIALOGS = 1
+_G.StaticPopup1 = {
+    which = "CONFIRM_UNLEARN_S",
+    text = { GetText = function()
+        return "Are you sure you want to unlearn Amplify Magic? It will cost 1 Scroll of Fortune."
+    end },
+    IsShown = function() return true end,
+}
+assert(API.IsUnlearnConfirmVisible() == true, "scroll-of-fortune text detected")
+assert(API.StaticPopupTextLooksLikeUnlearnTokenSpend(
+    "Are you sure you want to unlearn X? It will cost 1 Scroll of Fortune II.") == true,
+    "Scroll of Fortune II text detected")
+_G.StaticPopup1 = nil
+visible = nil
+
+-- Instant Dice Skip recovery window also dismisses without Auto-Roll running.
+clicks = {}
+AscensionSuite.AnimationSkip.IsRecoveryActive = function() return true end
+StaticPopup_Show("CONFIRM_UNLEARN_S", nil, nil, Noop)
+RunPendingUpdates()
+assert(#clicks == 1 and clicks[1].index == 2, "skip recovery must cancel unlearn confirm")
+assert(not StaticPopup_FindVisible("CONFIRM_UNLEARN_S"), "skip recovery dismisses dialog")
+AscensionSuite.AnimationSkip.IsRecoveryActive = function() return false end
 
 print("OK: AscensionSuite unlearn guard test passed")

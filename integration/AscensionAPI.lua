@@ -1196,6 +1196,9 @@ function API.RollAbilities()
     if not ok then
         return false, ok
     end
+    if API.IsUnlearnOrKeepDecisionPending() then
+        return false, "unlearn_decision"
+    end
     local wc = WC()
     if not wc then
         return false, "no_wildcard_api"
@@ -1473,6 +1476,22 @@ local function DiceIsShown(dice)
     return ok and shown == true
 end
 
+-- Leveling die already revealed a spell (internalID set): rolling again opens
+-- ConfirmOrUnlearnID / CONFIRM_UNLEARN_* (Scroll of Fortune I or II).
+function API.IsDiceKeepOrUnlearnDecisionUp(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" or dice.isRapidRolling then
+        return false
+    end
+    if not DiceIsShown(dice) or dice.pendingReveal then
+        return false
+    end
+    if GetDiceInternalID(dice) then
+        return true
+    end
+    return API.IsDiceRevealedDecisionShown(dice)
+end
+
 local function DiceIsIdle(dice)
     local state, states = GetDiceCoreState(dice)
     if state and states and states.IDLE then
@@ -1704,15 +1723,113 @@ function API.GetUnlearnConfirmDialogs()
     return names
 end
 
-function API.IsUnlearnConfirmVisible()
-    local findVisible = _G.StaticPopup_FindVisible
-    if type(findVisible) ~= "function" then
+local function StaticPopupFrameText(dialog)
+    if type(dialog) ~= "table" then
+        return nil
+    end
+    local textFrame = dialog.text
+    if type(textFrame) == "table" and type(textFrame.GetText) == "function" then
+        local ok, text = pcall(textFrame.GetText, textFrame)
+        if ok and type(text) == "string" and text ~= "" then
+            return text
+        end
+    end
+    return nil
+end
+
+function API.StaticPopupTextLooksLikeUnlearnTokenSpend(text)
+    if type(text) ~= "string" or text == "" then
         return false
     end
-    for name in pairs(UNLEARN_CONFIRM_DIALOGS) do
-        local dialog = findVisible(name)
-        if type(dialog) == "table" and dialog.which == name then
-            return true, name
+    local lower = string.lower(text)
+    if not string.find(lower, "unlearn", 1, true) then
+        return false
+    end
+    if string.find(lower, "scroll of fortune", 1, true) then
+        return true
+    end
+    return false
+end
+
+local function DialogLooksLikeUnlearnConfirm(dialog)
+    if type(dialog) ~= "table" or not dialog.which then
+        return false
+    end
+    if UNLEARN_CONFIRM_DIALOGS[dialog.which] == true then
+        return true
+    end
+    return API.StaticPopupTextLooksLikeUnlearnTokenSpend(StaticPopupFrameText(dialog))
+end
+
+function API.IsUnlearnConfirmVisible()
+    local findVisible = _G.StaticPopup_FindVisible
+    if type(findVisible) == "function" then
+        for name in pairs(UNLEARN_CONFIRM_DIALOGS) do
+            local dialog = findVisible(name)
+            if type(dialog) == "table" and dialog.which == name then
+                return true, name
+            end
+        end
+    end
+
+    local numDialogs = _G.STATICPOPUP_NUMDIALOGS or 4
+    for index = 1, numDialogs do
+        local dialog = _G["StaticPopup" .. index]
+        if type(dialog) == "table" and type(dialog.IsShown) == "function" then
+            local shownOk, shown = pcall(dialog.IsShown, dialog)
+            if shownOk and shown == true and DialogLooksLikeUnlearnConfirm(dialog) then
+                return true, dialog.which
+            end
+        end
+    end
+    return false
+end
+
+-- Cancel button only — never Accept / Unlearn (SECURITY.md).
+function API.CancelVisibleUnlearnConfirm()
+    local visible, which = API.IsUnlearnConfirmVisible()
+    if not visible then
+        return false
+    end
+
+    local dialog
+    local findVisible = _G.StaticPopup_FindVisible
+    if which and type(findVisible) == "function" then
+        dialog = findVisible(which)
+    end
+
+    if type(dialog) ~= "table" then
+        local numDialogs = _G.STATICPOPUP_NUMDIALOGS or 4
+        for index = 1, numDialogs do
+            local frame = _G["StaticPopup" .. index]
+            if type(frame) == "table" and type(frame.IsShown) == "function" then
+                local shownOk, shown = pcall(frame.IsShown, frame)
+                if shownOk and shown == true and DialogLooksLikeUnlearnConfirm(frame) then
+                    dialog = frame
+                    which = frame.which
+                    break
+                end
+            end
+        end
+    end
+
+    if type(dialog) ~= "table" then
+        return false
+    end
+
+    local onClick = _G.StaticPopup_OnClick
+    if type(onClick) == "function" then
+        local ok = pcall(onClick, dialog, 2)
+        if ok then
+            return true, which
+        end
+    end
+
+    local hide = _G.StaticPopup_Hide
+    if type(hide) == "function" then
+        local ok = pcall(hide, dialog)
+        if ok then
+            return true, which
         end
     end
     return false
@@ -1749,6 +1866,9 @@ end
 -- CONFIRM_UNLEARN_*, Rapid WaitingForUnlearn, or the leveling RollButton offer.
 function API.IsUnlearnOrKeepDecisionPending()
     if API.IsUnlearnConfirmVisible() then
+        return true
+    end
+    if API.IsDiceKeepOrUnlearnDecisionUp() then
         return true
     end
     if API.IsDiceDecisionPending() then

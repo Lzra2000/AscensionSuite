@@ -167,6 +167,14 @@ local function Tick(delta)
         return
     end
 
+    if api.IsUnlearnConfirmVisible and api.IsUnlearnConfirmVisible() then
+        if api.CancelVisibleUnlearnConfirm then
+            api.CancelVisibleUnlearnConfirm()
+        end
+        AutoRoller.Stop("unlearn_decision")
+        return
+    end
+
     if api.IsUnlearnOrKeepDecisionPending and api.IsUnlearnOrKeepDecisionPending() then
         AutoRoller.Stop("unlearn_decision")
         return

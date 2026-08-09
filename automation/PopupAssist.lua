@@ -19,10 +19,35 @@ local ALLOWLIST = {
     CONFIRM_WILDCARD_LEVELING = true,
 }
 
+local DISMISS_MESSAGE = "Unlearn confirm dismissed — Suite never spends Scroll of Fortune."
+local dismissAnnounced = false
+local dismissBecauseAssist = false
+
+local function PrintOnce(message)
+    local chat = _G.DEFAULT_CHAT_FRAME
+    if chat and type(chat.AddMessage) == "function" then
+        chat:AddMessage("|cff6ba8e8AscensionSuite|r " .. tostring(message))
+    end
+end
+
+local function ShouldDismissUnlearnConfirm()
+    local AutoRoller = AscensionSuite.AutoRoller
+    if AutoRoller and AutoRoller.IsRunning and AutoRoller.IsRunning() then
+        return true
+    end
+    local AnimationSkip = AscensionSuite.AnimationSkip
+    if AnimationSkip and AnimationSkip.IsRecoveryActive and AnimationSkip.IsRecoveryActive() then
+        return true
+    end
+    return false
+end
+
 local function StopAutoRollForUnlearnDialog(which)
     local API = AscensionSuite.AscensionAPI
-    if API and API.IsUnlearnConfirmDialog and not API.IsUnlearnConfirmDialog(which) then
-        return
+    if API and API.IsUnlearnConfirmDialog and which and not API.IsUnlearnConfirmDialog(which) then
+        if not API.IsUnlearnConfirmVisible or not API.IsUnlearnConfirmVisible() then
+            return
+        end
     end
     local AutoRoller = AscensionSuite.AutoRoller
     if AutoRoller and AutoRoller.IsRunning and AutoRoller.IsRunning() and AutoRoller.Stop then
@@ -30,9 +55,39 @@ local function StopAutoRollForUnlearnDialog(which)
     end
 end
 
+local function DismissUnlearnConfirmIfNeeded(which)
+    local API = AscensionSuite.AscensionAPI
+    if not API then
+        return
+    end
+
+    local isUnlearn = false
+    if which and API.IsUnlearnConfirmDialog and API.IsUnlearnConfirmDialog(which) then
+        isUnlearn = true
+    elseif API.IsUnlearnConfirmVisible and API.IsUnlearnConfirmVisible() then
+        isUnlearn = true
+    end
+    if not isUnlearn then
+        return
+    end
+
+    if not dismissBecauseAssist and not ShouldDismissUnlearnConfirm() then
+        return
+    end
+
+    if API.CancelVisibleUnlearnConfirm and API.CancelVisibleUnlearnConfirm() then
+        if not dismissAnnounced then
+            dismissAnnounced = true
+            PrintOnce(DISMISS_MESSAGE)
+        end
+    end
+    dismissBecauseAssist = false
+end
+
 local hooked = false
 local dispatcher
 local pending = {}
+local unlearnPending = false
 local dispatching = false
 
 local function GetAssists()
@@ -111,8 +166,18 @@ local function Queue(which)
             PopupAssist.AcceptVisible(queued[index])
         end
 
+        if unlearnPending then
+            unlearnPending = false
+            DismissUnlearnConfirmIfNeeded(nil)
+        end
+
         dispatching = false
     end)
+end
+
+local function QueueUnlearnDismiss(which)
+    unlearnPending = true
+    Queue(which or "__unlearn__")
 end
 
 function PopupAssist.Init()
@@ -124,6 +189,13 @@ function PopupAssist.Init()
     hooksecurefunc("StaticPopup_Show", function(which)
         if ALLOWLIST[which] and ShouldAccept() then
             Queue(which)
+        end
+        local API = AscensionSuite.AscensionAPI
+        if which and API and API.IsUnlearnConfirmDialog and API.IsUnlearnConfirmDialog(which) then
+            if ShouldDismissUnlearnConfirm() then
+                dismissBecauseAssist = true
+            end
+            QueueUnlearnDismiss(which)
         end
         StopAutoRollForUnlearnDialog(which)
     end)
