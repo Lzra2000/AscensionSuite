@@ -329,6 +329,38 @@ local function EnsureLoadoutsPanel()
     end
 end
 
+function MainWindow.InvalidateLayout()
+    if not frame then
+        return
+    end
+
+    for tabIndex = 1, #tabs do
+        local tab = tabs[tabIndex]
+        if tab and type(_G.PanelTemplates_TabResize) == "function" then
+            pcall(_G.PanelTemplates_TabResize, tab, 0)
+        end
+    end
+
+    if type(_G.PanelTemplates_SetTab) == "function" and frame.selectedTab then
+        pcall(_G.PanelTemplates_SetTab, frame, frame.selectedTab)
+    end
+
+    EnsureWishlistPanel()
+    EnsureLoadoutsPanel()
+
+    local wishlistPanel = GetWishlistPanel()
+    if wishlistPanel and wishlistPanel.InvalidateLayout then
+        wishlistPanel.InvalidateLayout()
+    end
+
+    local loadoutsPanel = GetLoadoutsPanel()
+    if loadoutsPanel and loadoutsPanel.AnchorLayout then
+        loadoutsPanel.AnchorLayout()
+    elseif loadoutsPanel and loadoutsPanel.InvalidateLayout then
+        loadoutsPanel.InvalidateLayout()
+    end
+end
+
 local function RefreshAssistToggles()
     local assists = GetAssists()
     for key, check in pairs(assistChecks) do
@@ -447,8 +479,11 @@ function MainWindow.SelectTab(index)
     end
     activeTab = index
 
-    if frame and type(_G.PanelTemplates_SetTab) == "function" then
-        pcall(_G.PanelTemplates_SetTab, frame, index)
+    if frame then
+        frame.selectedTab = index
+        if type(_G.PanelTemplates_SetTab) == "function" then
+            pcall(_G.PanelTemplates_SetTab, frame, index)
+        end
     end
 
     for tabIndex = 1, #contents do
@@ -591,6 +626,9 @@ local function EnsureFrame()
     end)
     frame:Hide()
 
+    frame.numTabs = 3
+    frame.selectedTab = activeTab
+
     frame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -651,6 +689,7 @@ end
 function MainWindow.Show()
     local win = EnsureFrame()
     win:Show()
+    MainWindow.InvalidateLayout()
     MainWindow.SelectTab(activeTab)
 
     if activeTab == TAB_LOADOUTS then

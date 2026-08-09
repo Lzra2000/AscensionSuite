@@ -3,6 +3,22 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.7 (2026-08-09) -- Loadouts UI overlap fix: share footer, clipped export, tab chrome
+
+#### Fixed
+- **ASUITE2 share string overlap** — export lives in a clipped `ScrollFrame` multi-line
+  `EditBox` (tall scroll child, visible band only); long strings no longer paint over
+  Equipment titles, stub rows, or the section sidebar.
+- **Share footer band** — fixed-height footer (`Copy share` / `Import string…`) anchored
+  below section content; spells, equipment notes, and icons stay above it.
+- **Stray Wishlist tab chrome** — `/asuite` sets `numTabs` / `selectedTab` for
+  `PanelTemplates`, re-sizes tabs on show, and refreshes panel layout so the red tab
+  highlight does not float past the window edge after tab switches.
+- **Build shell height** — loadouts detail column anchors to the panel bottom instead
+  of a fixed 430px height that could overflow the tab content area.
+- **Section body** — equipment icon rows and notes scroll/clip inside `sectionBody`
+  above the footer; `AnchorLayout` re-anchors on refresh and tab round-trips.
+
 ### 0.4.6 (2026-08-09) -- Loadouts polish: Stop, selection memory, scope toggle, Clear Desired
 
 #### Added
