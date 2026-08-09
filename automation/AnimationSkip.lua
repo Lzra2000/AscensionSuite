@@ -47,6 +47,24 @@ local ENSURE_DEFER_SECONDS = 0.2
 local recoveryUntil = 0
 local RECOVERY_WINDOW_SECONDS = 1.5
 
+local function GetAssists()
+    local DB = AscensionSuite.Database
+    if DB and DB.GetAssists then
+        return DB.GetAssists()
+    end
+    return {}
+end
+
+local function ShouldSkipDice()
+    local assists = GetAssists()
+    return assists and assists.instantDiceSkip == true
+end
+
+local function ShouldSkipSkillCard()
+    local assists = GetAssists()
+    return assists and assists.instantSkillCardSkip == true
+end
+
 local function MarkDiceSkipRecovery()
     if not ShouldSkipDice() then
         return
@@ -126,24 +144,6 @@ function AnimationSkip.IsRecoveryActive()
         return false
     end
     return _G.GetTime() < recoveryUntil
-end
-
-local function GetAssists()
-    local DB = AscensionSuite.Database
-    if DB and DB.GetAssists then
-        return DB.GetAssists()
-    end
-    return {}
-end
-
-local function ShouldSkipDice()
-    local assists = GetAssists()
-    return assists and assists.instantDiceSkip == true
-end
-
-local function ShouldSkipSkillCard()
-    local assists = GetAssists()
-    return assists and assists.instantSkillCardSkip == true
 end
 
 local function SetFlipBookSpeed(flipBook, speed)

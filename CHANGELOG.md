@@ -3,6 +3,14 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.18 (2026-08-09) -- Instant Dice Skip recovery fix
+
+#### Fixed
+- **Instant Dice Skip recovery crash** — `MarkDiceSkipRecovery` called
+  `ShouldSkipDice` before its `local function` declaration, so Lua 5.1 resolved
+  a nil global and errored whenever dice-skip recovery ran. Helpers are now
+  declared above the recovery path.
+
 ### 0.4.17 (2026-08-09) -- Dice under Suite; Push refuse reasons
 
 #### Fixed
