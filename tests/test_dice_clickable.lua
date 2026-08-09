@@ -68,6 +68,9 @@ local function ResetDiceVisuals()
     rollButtonVisible = false
     rollButtonEnabled = false
     updateRollButtonCalls = 0
+    frameStrata = "MEDIUM"
+    frameLevel = 1
+    diceShown = true
 end
 
 _G.WildCardDice = {
@@ -84,6 +87,9 @@ _G.WildCardDice = {
     SetAlpha = function(_, alpha) diceAlpha = alpha end,
     SetFrameStrata = function(_, strata) frameStrata = strata end,
     SetFrameLevel = function(_, level) frameLevel = level end,
+    GetFrameStrata = function() return frameStrata end,
+    GetFrameLevel = function() return frameLevel end,
+    Hide = function() diceShown = false end,
     GetInternalID = function() return internalID end,
     UpdateRollButton = function()
         updateRollButtonCalls = updateRollButtonCalls + 1
@@ -230,5 +236,49 @@ for frame, fn in pairs(updateScripts) do
     end
 end
 assert(mouseEnabled == true, "deferred guard tick restores mouse")
+
+-- Hidden READY_TO_ROLL die must not get mouse enabled.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "READY_TO_ROLL" end
+diceShown = false
+mouseEnabled = false
+registerCalls = 0
+assert(API.EnsureDiceClickable() == false, "hidden die is not touched")
+assert(mouseEnabled == false, "hidden die mouse stays off")
+assert(registerCalls == 0, "hidden die RegisterOnClick not called")
+
+-- Stranded IDLE die at FULLSCREEN_DIALOG with mouse on steals clicks — clear it.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "IDLE" end
+frameStrata = "FULLSCREEN_DIALOG"
+frameLevel = 128
+mouseEnabled = true
+diceShown = true
+assert(API.ClearDiceClickStealer() == true, "idle click stealer cleared")
+assert(mouseEnabled == false, "click stealer mouse disabled")
+assert(frameStrata == "MEDIUM", "click stealer strata restored")
+assert(diceShown == false, "idle click stealer hidden")
+
+-- RecoverDiceInteraction clears stranded click stealers (Manastorm tracker regression).
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "IDLE" end
+frameStrata = "FULLSCREEN_DIALOG"
+mouseEnabled = true
+diceShown = true
+ok, reason = API.RecoverDiceInteraction()
+assert(ok == true and reason == "click_stealer_cleared",
+    "recover clears click stealer, got " .. tostring(reason))
+assert(mouseEnabled == false, "recover disables stealer mouse")
+assert(diceShown == false, "recover hides idle stealer")
+
+-- Mid-reveal REVEALING without icon: EnsureDiceClickable must not enable mouse.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "REVEALING" end
+frameStrata = "FULLSCREEN_DIALOG"
+mouseEnabled = true
+diceShown = true
+assert(API.EnsureDiceClickable() == true, "mid-reveal clears click stealer")
+assert(mouseEnabled == false, "mid-reveal mouse disabled")
+assert(frameStrata == "MEDIUM", "mid-reveal strata restored")
 
 print("OK: AscensionSuite dice clickable test passed")

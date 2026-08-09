@@ -1343,11 +1343,6 @@ local function IsTerminal(state)
     return state and RAPID_TERMINAL_PHASES[state.Phase]
 end
 
-local function DiceIsShown()
-    local dice = _G.WildCardDice
-    return dice and dice.IsShown and dice:IsShown()
-end
-
 local function GetDiceCoreState(dice)
     dice = dice or _G.WildCardDice
     local core = dice and dice.Core
@@ -1363,6 +1358,7 @@ end
 
 local DICE_DECISION_STRATA = "FULLSCREEN_DIALOG"
 local DICE_DECISION_FRAME_LEVEL = 128
+local DICE_NATIVE_STRATA = "MEDIUM"
 
 local function FrameChildIsShown(frame)
     if type(frame) ~= "table" or type(frame.IsShown) ~= "function" then
@@ -1408,7 +1404,141 @@ function API.IsDiceRevealedDecisionShown(dice)
     return false
 end
 
+local function CaptureDiceNativeLayering(dice)
+    if type(dice) ~= "table" then
+        return
+    end
+    if not dice._asuiteNativeStrata and type(dice.GetFrameStrata) == "function" then
+        local ok, strata = pcall(dice.GetFrameStrata, dice)
+        if ok and strata and strata ~= DICE_DECISION_STRATA then
+            dice._asuiteNativeStrata = strata
+        end
+    end
+    if not dice._asuiteNativeStrata then
+        dice._asuiteNativeStrata = DICE_NATIVE_STRATA
+    end
+    if not dice._asuiteNativeLevel and type(dice.GetFrameLevel) == "function" then
+        local ok, level = pcall(dice.GetFrameLevel, dice)
+        if ok and level and level < DICE_DECISION_FRAME_LEVEL then
+            dice._asuiteNativeLevel = level
+        end
+    end
+    local rollButton = dice.RollButton
+    if type(rollButton) == "table" and not dice._asuiteRollButtonLevel
+        and type(rollButton.GetFrameLevel) == "function" then
+        local ok, level = pcall(rollButton.GetFrameLevel, rollButton)
+        if ok and level and level < DICE_DECISION_FRAME_LEVEL then
+            dice._asuiteRollButtonLevel = level
+        end
+    end
+end
+
+local function RestoreDiceNativeLayering(dice)
+    if type(dice) ~= "table" then
+        return false
+    end
+    local restored = false
+    local strata = dice._asuiteNativeStrata or DICE_NATIVE_STRATA
+    if type(dice.GetFrameStrata) == "function" and type(dice.SetFrameStrata) == "function" then
+        local ok, current = pcall(dice.GetFrameStrata, dice)
+        if ok and current == DICE_DECISION_STRATA then
+            pcall(dice.SetFrameStrata, dice, strata)
+            restored = true
+        end
+    elseif type(dice.SetFrameStrata) == "function" then
+        pcall(dice.SetFrameStrata, dice, strata)
+        restored = true
+    end
+    local level = dice._asuiteNativeLevel
+    if level and type(dice.SetFrameLevel) == "function" then
+        pcall(dice.SetFrameLevel, dice, level)
+        restored = true
+    end
+    local rollButton = dice.RollButton
+    if type(rollButton) == "table" and dice._asuiteRollButtonLevel
+        and type(rollButton.SetFrameLevel) == "function" then
+        pcall(rollButton.SetFrameLevel, rollButton, dice._asuiteRollButtonLevel)
+        restored = true
+    end
+    dice._asuiteStrataRaised = nil
+    return restored
+end
+
+local function DiceIsShown(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" or type(dice.IsShown) ~= "function" then
+        return false
+    end
+    local ok, shown = pcall(dice.IsShown, dice)
+    return ok and shown == true
+end
+
+local function DiceIsIdle(dice)
+    local state, states = GetDiceCoreState(dice)
+    if state and states and states.IDLE then
+        return state == states.IDLE
+    end
+    return false
+end
+
+local function DiceStrataWasRaised(dice)
+    if type(dice) ~= "table" then
+        return false
+    end
+    if dice._asuiteStrataRaised then
+        return true
+    end
+    if type(dice.GetFrameStrata) == "function" then
+        local ok, strata = pcall(dice.GetFrameStrata, dice)
+        return ok and strata == DICE_DECISION_STRATA
+    end
+    return false
+end
+
+-- Shown die at FULLSCREEN_DIALOG with mouse on but not in a clickable state steals
+-- clicks from Manastorm tracker dice and other UI after level-ups / animation skip.
+function API.ClearDiceClickStealer(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" then
+        return false
+    end
+    if API.DiceShouldAcceptClicks(dice) then
+        return false
+    end
+
+    local cleared = false
+
+    if type(dice.IsMouseEnabled) == "function" and type(dice.EnableMouse) == "function" then
+        local mouseOk, enabled = pcall(dice.IsMouseEnabled, dice)
+        if mouseOk and enabled == true then
+            pcall(dice.EnableMouse, dice, false)
+            cleared = true
+        end
+    end
+
+    if DiceStrataWasRaised(dice) then
+        if RestoreDiceNativeLayering(dice) then
+            cleared = true
+        end
+    end
+
+    if DiceIsShown(dice) and DiceIsIdle(dice) and not dice.pendingReveal and not dice.isRapidRolling then
+        if type(dice.Hide) == "function" then
+            pcall(dice.Hide, dice)
+            cleared = true
+        end
+    end
+
+    return cleared
+end
+
 local function RaiseDiceAboveClutter(dice)
+    if type(dice) ~= "table" or not DiceIsShown(dice) or not API.DiceShouldAcceptClicks(dice) then
+        return false
+    end
+
+    CaptureDiceNativeLayering(dice)
+
     if type(dice.SetFrameStrata) == "function" then
         pcall(dice.SetFrameStrata, dice, DICE_DECISION_STRATA)
     end
@@ -1419,25 +1549,31 @@ local function RaiseDiceAboveClutter(dice)
     if type(rollButton) == "table" and type(rollButton.SetFrameLevel) == "function" then
         pcall(rollButton.SetFrameLevel, rollButton, DICE_DECISION_FRAME_LEVEL + 1)
     end
+    dice._asuiteStrataRaised = true
+    return true
 end
 
--- Refresh RollButton state and lift strata for a stranded post-reveal decision die.
+-- Refresh RollButton state and lift strata for a shown, clickable post-reveal die.
 local function SyncDiceDecisionAffordances(dice)
     dice = dice or _G.WildCardDice
     if type(dice) ~= "table" then
+        return false
+    end
+    if not DiceIsShown(dice) or not API.DiceShouldAcceptClicks(dice) then
         return false
     end
     if not API.IsDiceRevealedDecisionShown(dice) and not API.IsDiceDecisionPending(dice) then
         return false
     end
 
-    RaiseDiceAboveClutter(dice)
+    local affordances = RaiseDiceAboveClutter(dice)
 
     if API.IsDiceUnlearnRollOffered(dice) and type(dice.UpdateRollButton) == "function" then
         pcall(dice.UpdateRollButton, dice)
+        affordances = true
     end
 
-    return true
+    return affordances
 end
 
 -- Character Advancement unlearn / reset confirms from patch-B StaticPopup.lua.
@@ -1593,6 +1729,7 @@ function API.EnsureDiceClickable()
         return false
     end
 
+    local cleared = API.ClearDiceClickStealer(dice)
     local healed = false
     local shownOk, shown = false, false
     if type(dice.IsShown) == "function" then
@@ -1620,7 +1757,7 @@ function API.EnsureDiceClickable()
     end
 
     local affordances = SyncDiceDecisionAffordances(dice)
-    return healed or affordances
+    return healed or affordances or cleared
 end
 
 -- Mirrors WildCardRapidRollingMixin:IsRapidRollingDiceActive. A shown die with
@@ -1735,6 +1872,7 @@ function API.RecoverStuckRapidSession()
     local dice = _G.WildCardDice
     if type(dice) == "table" then
         dice.pendingReveal = nil
+        API.ClearDiceClickStealer(dice)
         if type(dice.Hide) == "function" then
             pcall(dice.Hide, dice)
         end
@@ -1784,6 +1922,10 @@ function API.RecoverDiceInteraction()
     local ok, reason = RequireWildcard()
     if not ok then
         return false, reason
+    end
+
+    if API.ClearDiceClickStealer() then
+        return true, "click_stealer_cleared"
     end
 
     if API.EnsureDiceClickable() then
