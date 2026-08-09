@@ -2,6 +2,9 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
+**v0.5.1** applies that native WotLK parchment / gold chrome to **every** `/asuite`
+tab — Wishlist, Loadouts, and Assists — so no layer is left on flat-dark panels.
+
 **v0.5.0** redesigns **`/asuite` Assists** as a native WotLK settings window
 (Categories sidebar, parchment panels, Cancel/Save drafts, Desired/Undesired
 counts and badges) while keeping all assists opt-in and safety rules unchanged.
@@ -32,7 +35,8 @@ and **auto-unstick** recover unclickable leveling dice as well as gray Rapid Con
 Three tabs:
 
 ### Wishlist
-- Search + scrollable list (icon, name, id; Desired badge when synced)
+- Parchment list inside the DialogFrame (same chrome as Assists)
+- Search + scrollable list (icon, name, id; Desired / Undes. badges when synced)
 - **Left-click** selects a row; **right-click** toggles Desired in Wildcard
 - Add by spell / entry id (client chrome 1:1 via AscensionAPI)
 - The row you just added, removed or toggled lights up — including when the edit came from the Character Advancement book
@@ -40,7 +44,8 @@ Three tabs:
 - **Push to Desired** — merges the list into Ascension Desired in Wildcard; click it anytime the list has rows and it says why if Wildcard is not active
 
 ### Loadouts
-- Archetype-style sidebar: Overview, Spells and Talents, Equipment, Pros and Cons, Itemization, Rotation, Enchants and Consumables, Macros, WeakAuras, Additional Notes
+- Same native parchment shell as Assists; OptionsFrame-style **Sections** sidebar
+- Archetype-style sections: Overview, Spells and Talents, Equipment, Pros and Cons, Itemization, Rotation, Enchants and Consumables, Macros, WeakAuras, Additional Notes
 - **Import Archetype…** pulls spells + section text from the active/draft native build (C_BuildCreator / C_BuildEditor seam only)
 - Automation strip: **Apply → Desired**, **Clear Desired (filtered)**, **Start / Stop Auto-Roll** (only when Auto-Roll assist is on), **Sync from Rapid**, **→ Wishlist**
 - Spells and Talents: Core/Optimal/Empowering/Synergistic filters, class grouping, Desired badges, **tag cycling** (Alt+click) — only this section drives automation

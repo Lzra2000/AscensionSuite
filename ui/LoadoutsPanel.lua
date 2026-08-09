@@ -54,6 +54,10 @@ local function GetAPI()
     return AscensionSuite.AscensionAPI
 end
 
+local function Chrome()
+    return AscensionSuite.NativeChrome
+end
+
 local function ScrollOffset(scroll)
     if scroll and type(_G.FauxScrollFrame_GetOffset) == "function" then
         return tonumber(_G.FauxScrollFrame_GetOffset(scroll)) or 0
@@ -82,11 +86,11 @@ local function SetStatus(text, good)
     end
     W.statusLabel:SetText(text or "")
     if good == true then
-        W.statusLabel:SetTextColor(0.43, 0.81, 0.54, 1)
+        W.statusLabel:SetTextColor(0.15, 0.45, 0.22, 1)
     elseif good == false then
-        W.statusLabel:SetTextColor(0.88, 0.44, 0.44, 1)
+        W.statusLabel:SetTextColor(0.72, 0.22, 0.18, 1)
     else
-        W.statusLabel:SetTextColor(0.65, 0.61, 0.53, 1)
+        W.statusLabel:SetTextColor(0.35, 0.28, 0.18, 1)
     end
 end
 
@@ -96,11 +100,11 @@ local function SetAutoStatus(text, good)
     end
     W.autoStatusLabel:SetText(text or "")
     if good == true then
-        W.autoStatusLabel:SetTextColor(0.43, 0.81, 0.54, 1)
+        W.autoStatusLabel:SetTextColor(0.15, 0.45, 0.22, 1)
     elseif good == false then
-        W.autoStatusLabel:SetTextColor(0.88, 0.44, 0.44, 1)
+        W.autoStatusLabel:SetTextColor(0.72, 0.22, 0.18, 1)
     else
-        W.autoStatusLabel:SetTextColor(0.65, 0.61, 0.53, 1)
+        W.autoStatusLabel:SetTextColor(0.35, 0.28, 0.18, 1)
     end
 end
 
@@ -679,6 +683,7 @@ end
 
 local function RefreshNav()
     local Loadouts = GetLoadouts()
+    local NC = Chrome()
     if not Loadouts then
         return
     end
@@ -686,12 +691,20 @@ local function RefreshNav()
         local button = W.navButtons[index]
         local key = Loadouts.SECTION_ORDER[index]
         if button and key then
-            if key == activeSection then
-                button._select:Show()
-                button._label:SetTextColor(1, 0.82, 0.2, 1)
-            else
+            local selected = (key == activeSection)
+            if NC and NC.ApplyNavButton then
+                NC.ApplyNavButton(button, selected)
+            end
+            if button._select then
                 button._select:Hide()
-                button._label:SetTextColor(0.78, 0.72, 0.59, 1)
+            end
+            if button._accent then
+                button._accent:Hide()
+            end
+            if selected then
+                button._label:SetTextColor(0.12, 0.08, 0.02, 1)
+            else
+                button._label:SetTextColor(0.92, 0.85, 0.65, 1)
             end
         end
     end
@@ -1232,23 +1245,25 @@ local function CreateListRow(parent, index)
 
     local stripe = row:CreateTexture(nil, "BACKGROUND")
     stripe:SetAllPoints()
-    stripe:SetTexture(1, 1, 1, 0.03)
+    stripe:SetTexture(0.55, 0.42, 0.18, 0.12)
     row._stripe = stripe
 
     local select = row:CreateTexture(nil, "BACKGROUND", nil, 1)
     select:SetAllPoints()
-    select:SetTexture(1, 0.82, 0.2, 0.16)
+    select:SetTexture(0.85, 0.70, 0.28, 0.28)
     select:Hide()
     row._select = select
 
     local nameLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     nameLabel:SetPoint("TOPLEFT", 6, -4)
     nameLabel:SetJustifyH("LEFT")
+    nameLabel:SetTextColor(0.12, 0.08, 0.02, 1)
     row._nameLabel = nameLabel
 
     local metaLabel = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     metaLabel:SetPoint("TOPLEFT", nameLabel, "BOTTOMLEFT", 0, -1)
     metaLabel:SetJustifyH("LEFT")
+    metaLabel:SetTextColor(0.35, 0.28, 0.18, 1)
     row._metaLabel = metaLabel
 
     row:SetScript("OnClick", function()
@@ -1265,18 +1280,18 @@ local function CreateSpellRow(parent, index)
 
     local stripe = row:CreateTexture(nil, "BACKGROUND")
     stripe:SetAllPoints()
-    stripe:SetTexture(1, 1, 1, 0.03)
+    stripe:SetTexture(0.55, 0.42, 0.18, 0.12)
     row._stripe = stripe
 
     local select = row:CreateTexture(nil, "BACKGROUND", nil, 1)
     select:SetAllPoints()
-    select:SetTexture(1, 0.82, 0.2, 0.16)
+    select:SetTexture(0.85, 0.70, 0.28, 0.28)
     select:Hide()
     row._select = select
 
     local highlight = row:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetAllPoints()
-    highlight:SetTexture(1, 0.82, 0.2, 0.12)
+    highlight:SetTexture(0.85, 0.70, 0.28, 0.18)
 
     local group = CreateFrame("Frame", nil, row)
     group:SetAllPoints()
@@ -1285,7 +1300,7 @@ local function CreateSpellRow(parent, index)
 
     local groupLabel = group:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     groupLabel:SetPoint("LEFT", 8, 0)
-    groupLabel:SetTextColor(0.49, 0.77, 0.35, 1)
+    groupLabel:SetTextColor(0.30, 0.42, 0.14, 1)
     row._groupLabel = groupLabel
 
     local remove = CreateFrame("Button", FRAME_NAME .. "SpellRow" .. index .. "Remove", row, "UIPanelButtonTemplate")
@@ -1315,7 +1330,7 @@ local function CreateSpellRow(parent, index)
     badge:SetPoint("RIGHT", -30, 0)
     badge:SetWidth(48)
     badge:SetJustifyH("RIGHT")
-    badge:SetTextColor(0.35, 0.71, 1, 1)
+    badge:SetTextColor(0.12, 0.29, 0.44, 1)
     badge:SetText("Desired")
     row._badge = badge
 
@@ -1323,7 +1338,7 @@ local function CreateSpellRow(parent, index)
     knownBadge:SetPoint("RIGHT", badge, "LEFT", -6, 0)
     knownBadge:SetWidth(44)
     knownBadge:SetJustifyH("RIGHT")
-    knownBadge:SetTextColor(0.38, 0.82, 0.53, 1)
+    knownBadge:SetTextColor(0.12, 0.42, 0.22, 1)
     knownBadge:SetText("Known")
     row._knownBadge = knownBadge
 
@@ -1331,6 +1346,7 @@ local function CreateSpellRow(parent, index)
     tagLabel:SetPoint("RIGHT", knownBadge, "LEFT", -6, 0)
     tagLabel:SetWidth(64)
     tagLabel:SetJustifyH("RIGHT")
+    tagLabel:SetTextColor(0.35, 0.28, 0.18, 1)
     row._tagLabel = tagLabel
 
     local tagButton = CreateFrame("Button", FRAME_NAME .. "SpellRow" .. index .. "Tag", spell)
@@ -1346,6 +1362,7 @@ local function CreateSpellRow(parent, index)
     nameLabel:SetPoint("LEFT", icon, "RIGHT", 8, 0)
     nameLabel:SetPoint("RIGHT", tagLabel, "LEFT", -8, 0)
     nameLabel:SetJustifyH("LEFT")
+    nameLabel:SetTextColor(0.12, 0.08, 0.02, 1)
     row._nameLabel = nameLabel
 
     row:SetScript("OnEnter", function()
@@ -1372,16 +1389,10 @@ local function BuildScrollList(parent, width, height, rowMaker, rowStore, visibl
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetWidth(width)
     frame:SetHeight(height)
-    frame:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true,
-        tileSize = 16,
-        edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    frame:SetBackdropColor(0.04, 0.035, 0.025, 0.92)
-    frame:SetBackdropBorderColor(0.45, 0.38, 0.20, 1)
+    local NC = Chrome()
+    if NC and NC.ApplyInsetList then
+        NC.ApplyInsetList(frame)
+    end
 
     local scroll = CreateFrame("ScrollFrame", nil, frame, "FauxScrollFrameTemplate")
     scroll:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -LIST_INSET, -LIST_INSET)
@@ -1411,23 +1422,22 @@ end
 
 local function CreateNavButton(parent, key, yOffset)
     local Loadouts = GetLoadouts()
+    local NC = Chrome()
     local button = CreateFrame("Button", nil, parent)
-    button:SetPoint("TOPLEFT", 0, yOffset)
-    button:SetPoint("TOPRIGHT", 0, yOffset)
-    button:SetHeight(34)
+    button:SetPoint("TOPLEFT", 4, yOffset)
+    button:SetPoint("TOPRIGHT", -4, yOffset)
+    button:SetHeight(32)
+    if NC and NC.ApplyNavButton then
+        NC.ApplyNavButton(button, false)
+    end
 
+    -- Legacy textures kept hidden; chrome uses SetBackdrop like Assists categories.
     local select = button:CreateTexture(nil, "BACKGROUND")
-    select:SetPoint("TOPLEFT", 0, 0)
-    select:SetPoint("BOTTOMRIGHT", 0, 0)
-    select:SetTexture(0.16, 0.14, 0.09, 0.9)
+    select:SetAllPoints()
     select:Hide()
     button._select = select
 
     local accent = button:CreateTexture(nil, "BACKGROUND", nil, 1)
-    accent:SetWidth(2)
-    accent:SetPoint("TOPLEFT", 0, 0)
-    accent:SetPoint("BOTTOMLEFT", 0, 0)
-    accent:SetTexture(1, 0.82, 0.2, 1)
     accent:Hide()
     button._accent = accent
 
@@ -1435,6 +1445,7 @@ local function CreateNavButton(parent, key, yOffset)
     label:SetPoint("TOPLEFT", 10, -6)
     label:SetJustifyH("LEFT")
     label:SetText(Loadouts and Loadouts.GetSectionLabel(key) or key)
+    label:SetTextColor(0.92, 0.85, 0.65, 1)
     button._label = label
 
     local hint = Loadouts and Loadouts.SECTION_HINTS and Loadouts.SECTION_HINTS[key]
@@ -1442,7 +1453,7 @@ local function CreateNavButton(parent, key, yOffset)
         local hintLabel = button:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         hintLabel:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -1)
         hintLabel:SetText(hint)
-        hintLabel:SetTextColor(0.44, 0.42, 0.33, 1)
+        hintLabel:SetTextColor(0.70, 0.62, 0.42, 1)
         button._hint = hintLabel
     end
 
@@ -1459,15 +1470,17 @@ local function BuildPanel(parent, width)
     W.panelParent = parent
     W.panelWidth = contentWidth
 
+    local NC = Chrome()
     local shellWidth = contentWidth - LIST_WIDTH - 8
 
     local listLabel = W.panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    listLabel:SetPoint("TOPLEFT", 0, 0)
-    listLabel:SetText("Saved builds")
+    listLabel:SetPoint("TOPLEFT", 4, -2)
+    listLabel:SetText("SAVED BUILDS")
+    listLabel:SetTextColor(0.42, 0.30, 0.10, 1)
 
     W.listFrame, W.scrollFrame = BuildScrollList(W.panel, LIST_WIDTH, VISIBLE_LIST_ROWS * ROW_HEIGHT + LIST_INSET * 2,
         CreateListRow, W.listRows, VISIBLE_LIST_ROWS, function() LoadoutsPanel.Refresh() end)
-    W.listFrame:SetPoint("TOPLEFT", 0, -16)
+    W.listFrame:SetPoint("TOPLEFT", 4, -18)
 
     local newButton = CreateFrame("Button", nil, W.panel, "UIPanelButtonTemplate")
     newButton:SetWidth(58)
@@ -1492,42 +1505,29 @@ local function BuildPanel(parent, width)
 
     W.buildShell = CreateFrame("Frame", nil, W.panel)
     W.buildShell:SetPoint("TOPLEFT", W.listFrame, "TOPRIGHT", 8, 0)
-    W.buildShell:SetPoint("BOTTOMRIGHT", W.panel, "BOTTOMRIGHT", 0, 0)
-    W.buildShell:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true,
-        tileSize = 16,
-        edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    W.buildShell:SetBackdropColor(0.035, 0.03, 0.02, 0.95)
-    W.buildShell:SetBackdropBorderColor(0.45, 0.38, 0.20, 1)
+    W.buildShell:SetPoint("BOTTOMRIGHT", W.panel, "BOTTOMRIGHT", -4, 4)
+    if NC and NC.ApplyParchment then
+        NC.ApplyParchment(W.buildShell)
+    end
 
     W.emptyPanel = CreateFrame("Frame", nil, W.panel)
     W.emptyPanel:SetPoint("TOPLEFT", W.listFrame, "TOPRIGHT", 8, 0)
-    W.emptyPanel:SetPoint("BOTTOMRIGHT", W.panel, "BOTTOMRIGHT", 0, 0)
-    W.emptyPanel:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true,
-        tileSize = 16,
-        edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    W.emptyPanel:SetBackdropColor(0.035, 0.03, 0.02, 0.95)
-    W.emptyPanel:SetBackdropBorderColor(0.45, 0.38, 0.20, 1)
+    W.emptyPanel:SetPoint("BOTTOMRIGHT", W.panel, "BOTTOMRIGHT", -4, 4)
+    if NC and NC.ApplyParchment then
+        NC.ApplyParchment(W.emptyPanel)
+    end
     W.emptyPanel:Hide()
 
     local emptyTitle = W.emptyPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     emptyTitle:SetPoint("TOP", 0, -48)
-    emptyTitle:SetTextColor(1, 0.82, 0.2, 1)
+    emptyTitle:SetTextColor(0.30, 0.20, 0.04, 1)
     emptyTitle:SetText("No saved builds yet")
 
     local emptyHint = W.emptyPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     emptyHint:SetPoint("TOP", emptyTitle, "BOTTOM", 0, -10)
     emptyHint:SetWidth(shellWidth - 48)
     emptyHint:SetJustifyH("CENTER")
+    emptyHint:SetTextColor(0.28, 0.22, 0.12, 1)
     emptyHint:SetText("Create a build or import an archetype to automate Desired and Auto-Roll.")
 
     local emptyNewButton = CreateFrame("Button", nil, W.emptyPanel, "UIPanelButtonTemplate")
@@ -1541,19 +1541,17 @@ local function BuildPanel(parent, width)
     W.sectionSidebar:SetWidth(SIDEBAR_WIDTH)
     W.sectionSidebar:SetPoint("TOPLEFT", 4, -4)
     W.sectionSidebar:SetPoint("BOTTOMLEFT", 4, 4)
-    W.sectionSidebar:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true,
-        tileSize = 16,
-        edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 },
-    })
-    W.sectionSidebar:SetBackdropColor(0.10, 0.09, 0.06, 1)
-    W.sectionSidebar:SetBackdropBorderColor(0.35, 0.30, 0.18, 1)
+    if NC and NC.ApplySidebar then
+        NC.ApplySidebar(W.sectionSidebar)
+    end
+
+    local sideLabel = W.sectionSidebar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    sideLabel:SetPoint("TOPLEFT", 10, -8)
+    sideLabel:SetText("SECTIONS")
+    sideLabel:SetTextColor(0.78, 0.62, 0.24, 1)
 
     local Loadouts = GetLoadouts()
-    local y = -4
+    local y = -26
     for index = 1, #(Loadouts and Loadouts.SECTION_ORDER or {}) do
         local key = Loadouts.SECTION_ORDER[index]
         W.navButtons[index] = CreateNavButton(W.sectionSidebar, key, y)
@@ -1571,7 +1569,7 @@ local function BuildPanel(parent, width)
 
     W.nameLabel = meta:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     W.nameLabel:SetPoint("LEFT", 8, 0)
-    W.nameLabel:SetTextColor(1, 0.82, 0.2, 1)
+    W.nameLabel:SetTextColor(0.30, 0.20, 0.04, 1)
     W.nameLabel:SetText("No build selected")
 
     W.nameEdit = CreateFrame("EditBox", FRAME_NAME .. "NameEdit", meta, "InputBoxTemplate")
@@ -1656,21 +1654,14 @@ local function BuildPanel(parent, width)
     autoBar:SetPoint("TOPLEFT", meta, "BOTTOMLEFT", 0, -4)
     autoBar:SetPoint("TOPRIGHT", meta, "BOTTOMRIGHT", 0, -4)
     autoBar:SetHeight(68)
-    autoBar:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true,
-        tileSize = 16,
-        edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 },
-    })
-    autoBar:SetBackdropColor(0.04, 0.08, 0.06, 1)
-    autoBar:SetBackdropBorderColor(0.12, 0.23, 0.16, 1)
+    if NC and NC.ApplyInsetList then
+        NC.ApplyInsetList(autoBar)
+    end
 
     local autoLabel = autoBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     autoLabel:SetPoint("TOPLEFT", 8, -6)
     autoLabel:SetText("AUTOMATE")
-    autoLabel:SetTextColor(0.42, 0.67, 0.48, 1)
+    autoLabel:SetTextColor(0.42, 0.30, 0.10, 1)
 
     local applyButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
     applyButton:SetWidth(108)
@@ -1733,11 +1724,12 @@ local function BuildPanel(parent, width)
 
     W.sectionTitle = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     W.sectionTitle:SetPoint("TOPLEFT", 4, -2)
-    W.sectionTitle:SetTextColor(1, 0.82, 0.2, 1)
+    W.sectionTitle:SetTextColor(0.30, 0.20, 0.04, 1)
 
     W.sectionCount = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     W.sectionCount:SetPoint("TOPRIGHT", -4, -4)
     W.sectionCount:SetJustifyH("RIGHT")
+    W.sectionCount:SetTextColor(0.35, 0.28, 0.18, 1)
 
     W.sectionBody = CreateFrame("Frame", nil, content)
     W.sectionBody:SetPoint("TOPLEFT", 0, -SECTION_TITLE_HEIGHT)
@@ -1751,6 +1743,7 @@ local function BuildPanel(parent, width)
     local searchLabel = W.filterBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     searchLabel:SetPoint("TOPLEFT", 0, 2)
     searchLabel:SetText("Search")
+    searchLabel:SetTextColor(0.30, 0.20, 0.04, 1)
 
     W.spellSearchBox = CreateFrame("EditBox", FRAME_NAME .. "SpellSearch", W.filterBar, "InputBoxTemplate")
     W.spellSearchBox:SetHeight(22)
@@ -1788,6 +1781,7 @@ local function BuildPanel(parent, width)
         local text = W.filterBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         text:SetPoint("LEFT", check, "RIGHT", 2, 0)
         text:SetText(def.label)
+        text:SetTextColor(0.20, 0.14, 0.06, 1)
         check:SetScript("OnClick", function()
             spellFilters[def.key] = CheckButtonIsOn(check)
             LoadoutsPanel.Refresh()
@@ -1847,6 +1841,7 @@ local function BuildPanel(parent, width)
         local nameLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         nameLabel:SetPoint("LEFT", icon, "RIGHT", 8, 0)
         nameLabel:SetJustifyH("LEFT")
+        nameLabel:SetTextColor(0.12, 0.08, 0.02, 1)
         row._nameLabel = nameLabel
 
         return row

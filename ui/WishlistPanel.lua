@@ -54,6 +54,10 @@ local function GetWishlist()
     return AscensionSuite.Wishlist
 end
 
+local function Chrome()
+    return AscensionSuite.NativeChrome
+end
+
 local function IsWildcard()
     local api = GetAPI()
     return api ~= nil and api.IsWildcardModeActive() == true
@@ -250,24 +254,24 @@ local function CreateRow(parent, index)
 
     local stripe = row:CreateTexture(nil, "BACKGROUND")
     stripe:SetAllPoints()
-    stripe:SetTexture(1, 1, 1, 0.03)
+    stripe:SetTexture(0.55, 0.42, 0.18, 0.12)
     row._stripe = stripe
 
     local select = row:CreateTexture(nil, "BACKGROUND", nil, 1)
     select:SetAllPoints()
-    select:SetTexture(1, 0.82, 0.2, 0.16)
+    select:SetTexture(0.85, 0.70, 0.28, 0.28)
     select:Hide()
     row._select = select
 
     local touch = row:CreateTexture(nil, "BORDER")
     touch:SetAllPoints()
-    touch:SetTexture(1, 0.82, 0.2, 0.22)
+    touch:SetTexture(0.85, 0.70, 0.28, 0.35)
     touch:Hide()
     row._touch = touch
 
     local highlight = row:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetAllPoints()
-    highlight:SetTexture(1, 0.82, 0.2, 0.12)
+    highlight:SetTexture(0.85, 0.70, 0.28, 0.18)
 
     local icon = row:CreateTexture(nil, "ARTWORK")
     icon:SetWidth(20)
@@ -290,7 +294,7 @@ local function CreateRow(parent, index)
     badge:SetPoint("RIGHT", remove, "LEFT", -6, 0)
     badge:SetWidth(56)
     badge:SetJustifyH("RIGHT")
-    badge:SetTextColor(0.35, 0.71, 1, 1)
+    badge:SetTextColor(0.12, 0.29, 0.44, 1)
     badge:SetText("Desired")
     row._badge = badge
 
@@ -298,12 +302,14 @@ local function CreateRow(parent, index)
     idLabel:SetPoint("RIGHT", badge, "LEFT", -8, 0)
     idLabel:SetWidth(60)
     idLabel:SetJustifyH("RIGHT")
+    idLabel:SetTextColor(0.35, 0.28, 0.18, 1)
     row._idLabel = idLabel
 
     local nameLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     nameLabel:SetPoint("LEFT", icon, "RIGHT", 8, 0)
     nameLabel:SetPoint("RIGHT", idLabel, "LEFT", -8, 0)
     nameLabel:SetJustifyH("LEFT")
+    nameLabel:SetTextColor(0.12, 0.08, 0.02, 1)
     row._nameLabel = nameLabel
 
     row:SetScript("OnEnter", ShowRowTooltip)
@@ -340,20 +346,20 @@ local function FillRow(row, entry, position)
     row._icon:SetTexture(entry.icon or PLACEHOLDER_ICON)
     row._nameLabel:SetText(entry.name)
     if entry.resolved then
-        row._nameLabel:SetTextColor(1, 0.92, 0.78, 1)
+        row._nameLabel:SetTextColor(0.12, 0.08, 0.02, 1)
     else
-        row._nameLabel:SetTextColor(0.61, 0.57, 0.50, 1)
+        row._nameLabel:SetTextColor(0.42, 0.36, 0.26, 1)
     end
 
     row._idLabel:SetText(tostring(entry.displayId or "?"))
 
     if BadgesEnabled() and entry.desired then
         row._badge:SetText("Desired")
-        row._badge:SetTextColor(0.35, 0.71, 1, 1)
+        row._badge:SetTextColor(0.12, 0.29, 0.44, 1)
         row._badge:Show()
     elseif BadgesEnabled() and entry.undesired then
         row._badge:SetText("Undes.")
-        row._badge:SetTextColor(0.72, 0.45, 0.18, 1)
+        row._badge:SetTextColor(0.42, 0.24, 0.06, 1)
         row._badge:Show()
     else
         row._badge:Hide()
@@ -644,13 +650,13 @@ function WishlistPanel.Refresh(note)
         local text, good = DefaultStatus(total, desired)
         if note then
             statusLabel:SetText(note)
-            statusLabel:SetTextColor(1, 0.82, 0.3, 1)
+            statusLabel:SetTextColor(0.82, 0.62, 0.22, 1)
         else
             statusLabel:SetText(text)
             if good then
-                statusLabel:SetTextColor(0.43, 0.81, 0.54, 1)
+                statusLabel:SetTextColor(0.15, 0.45, 0.22, 1)
             else
-                statusLabel:SetTextColor(0.65, 0.61, 0.53, 1)
+                statusLabel:SetTextColor(0.35, 0.28, 0.18, 1)
             end
         end
     end
@@ -705,22 +711,26 @@ local function BuildPanel(parent, width)
     panelParent = parent
     panelWidth = contentWidth
 
+    local NC = Chrome()
     local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 0, 0)
+    title:SetPoint("TOPLEFT", 8, -6)
     title:SetText("Wishlist")
+    title:SetTextColor(0.30, 0.20, 0.04, 1)
 
     countLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    countLabel:SetPoint("TOPRIGHT", 0, -4)
+    countLabel:SetPoint("TOPRIGHT", -8, -10)
     countLabel:SetJustifyH("RIGHT")
+    countLabel:SetTextColor(0.28, 0.22, 0.12, 1)
 
     local searchLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    searchLabel:SetPoint("TOPLEFT", 0, -28)
+    searchLabel:SetPoint("TOPLEFT", 8, -34)
     searchLabel:SetText("Search")
+    searchLabel:SetTextColor(0.30, 0.20, 0.04, 1)
 
     searchBox = CreateFrame("EditBox", FRAME_NAME .. "Search", panel, "InputBoxTemplate")
     searchBox:SetHeight(22)
-    searchBox:SetWidth(contentWidth - 170)
-    searchBox:SetPoint("TOPLEFT", 60, -24)
+    searchBox:SetWidth(contentWidth - 186)
+    searchBox:SetPoint("TOPLEFT", 68, -30)
     searchBox:SetAutoFocus(false)
     searchBox:SetMaxLetters(40)
     searchBox:SetScript("OnTextChanged", function()
@@ -737,7 +747,7 @@ local function BuildPanel(parent, width)
     local clearSearch = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     clearSearch:SetWidth(80)
     clearSearch:SetHeight(22)
-    clearSearch:SetPoint("TOPRIGHT", 0, -24)
+    clearSearch:SetPoint("TOPRIGHT", -8, -30)
     clearSearch:SetText("Clear")
     clearSearch:SetScript("OnClick", function()
         if searchBox then
@@ -748,19 +758,12 @@ local function BuildPanel(parent, width)
     end)
 
     listFrame = CreateFrame("Frame", FRAME_NAME .. "List", panel)
-    listFrame:SetPoint("TOPLEFT", 0, -54)
-    listFrame:SetWidth(contentWidth)
+    listFrame:SetPoint("TOPLEFT", 8, -60)
+    listFrame:SetWidth(contentWidth - 16)
     listFrame:SetHeight(VISIBLE_ROWS * ROW_HEIGHT + LIST_INSET * 2)
-    listFrame:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true,
-        tileSize = 16,
-        edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    listFrame:SetBackdropColor(0.04, 0.035, 0.025, 0.92)
-    listFrame:SetBackdropBorderColor(0.45, 0.38, 0.20, 1)
+    if NC and NC.ApplyInsetList then
+        NC.ApplyInsetList(listFrame)
+    end
 
     -- Only the scrollbar strip is mouse-active. A full-width FauxScrollFrame sits
     -- above row buttons in 3.3.5a and eats clicks even when the thumb is narrow.
@@ -779,7 +782,8 @@ local function BuildPanel(parent, width)
         end
     end)
 
-    local rowWidth = contentWidth - LIST_INSET - SCROLLBAR_WIDTH
+    local listWidth = contentWidth - 16
+    local rowWidth = listWidth - LIST_INSET - SCROLLBAR_WIDTH
     for index = 1, VISIBLE_ROWS do
         local row = CreateRow(listFrame, index)
         row:SetWidth(rowWidth)
@@ -793,11 +797,13 @@ local function BuildPanel(parent, width)
     emptyLabel:SetPoint("TOPLEFT", 16, -16)
     emptyLabel:SetWidth(rowWidth - 24)
     emptyLabel:SetJustifyH("LEFT")
+    emptyLabel:SetTextColor(0.35, 0.28, 0.18, 1)
     emptyLabel:Hide()
 
     local addLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     addLabel:SetPoint("TOPLEFT", listFrame, "BOTTOMLEFT", 0, -12)
     addLabel:SetText("Spell / entry id")
+    addLabel:SetTextColor(0.30, 0.20, 0.04, 1)
 
     addBox = CreateFrame("EditBox", FRAME_NAME .. "Add", panel, "InputBoxTemplate")
     addBox:SetHeight(22)
@@ -825,7 +831,7 @@ local function BuildPanel(parent, width)
     clearButton:SetText("Clear list")
     clearButton:SetScript("OnClick", ClearList)
 
-    -- Contained footer: Push / Sync / Clear tags stay inside the dialog body.
+    -- Contained footer: Push / Sync / Clear tags stay inside the parchment body.
     local footer = CreateFrame("Frame", FRAME_NAME .. "Footer", panel)
     footer:SetPoint("TOPLEFT", listFrame, "BOTTOMLEFT", 0, -40)
     footer:SetPoint("TOPRIGHT", listFrame, "BOTTOMRIGHT", 0, -40)
@@ -882,8 +888,9 @@ local function BuildPanel(parent, width)
 
     hint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("TOPLEFT", footer, "BOTTOMLEFT", 0, -6)
-    hint:SetWidth(contentWidth)
+    hint:SetWidth(contentWidth - 16)
     hint:SetJustifyH("LEFT")
+    hint:SetTextColor(0.35, 0.28, 0.18, 1)
     hint:SetText("Left-click selects a row \194\183 right-click toggles Desired in Wildcard \194\183 Alt + right-click a spell "
         .. "in the Character Advancement book to add or remove it here (the row lights up) \194\183 x removes it from "
         .. "the Suite wishlist only.")
@@ -933,8 +940,9 @@ function WishlistPanel.InvalidateLayout()
     panel:SetAllPoints(panelParent)
 
     if panelWidth and listFrame then
-        listFrame:SetWidth(panelWidth)
-        local rowWidth = panelWidth - LIST_INSET - SCROLLBAR_WIDTH
+        local listWidth = panelWidth - 16
+        listFrame:SetWidth(listWidth)
+        local rowWidth = listWidth - LIST_INSET - SCROLLBAR_WIDTH
         for index = 1, VISIBLE_ROWS do
             local row = rows[index]
             if row then
@@ -945,13 +953,13 @@ function WishlistPanel.InvalidateLayout()
             emptyLabel:SetWidth(rowWidth - 24)
         end
         if searchBox and searchBox.SetWidth then
-            searchBox:SetWidth(panelWidth - 170)
+            searchBox:SetWidth(panelWidth - 186)
         end
         if statusLabel and statusLabel.SetWidth then
-            statusLabel:SetWidth(panelWidth - 164)
+            statusLabel:SetWidth(panelWidth - 180)
         end
         if hint and hint.SetWidth then
-            hint:SetWidth(panelWidth)
+            hint:SetWidth(panelWidth - 16)
         end
     end
 end
