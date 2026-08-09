@@ -94,7 +94,10 @@ local function EntryTypeIsMeta(api, entryType)
     return entryType == "Tag" or entryType == "Suggestion"
 end
 
-local function RefuseReasonForPush(api, entryType, resolveErr, canAdd)
+local function RefuseReasonForPush(api, entryId, entryType, resolveErr)
+    if api and api.DescribeCanAddRefuse then
+        return api.DescribeCanAddRefuse(entryId, entryType, resolveErr)
+    end
     if resolveErr then
         return resolveErr
     end
@@ -107,10 +110,7 @@ local function RefuseReasonForPush(api, entryType, resolveErr, canAdd)
     if not EntryTypeEligible(api, entryType) then
         return "type_not_desired"
     end
-    if canAdd == false then
-        return "can_add_false"
-    end
-    return "refused"
+    return "can_add_false"
 end
 
 local function NormalizeId(value)
@@ -450,7 +450,7 @@ local function PushRowsToDesired(rows)
                 failed = failed + 1
                 refuses[#refuses + 1] = {
                     name = label,
-                    reason = RefuseReasonForPush(api, entryType, nil, false),
+                    reason = RefuseReasonForPush(api, entryId, entryType, resolveErr),
                 }
             else
                 local added, addReason = api.AddDesiredID(entryId, entryType)
@@ -1186,7 +1186,7 @@ function Loadouts.ToggleEntryDesired(id, rawRow)
         end
 
         if not api.CanAddDesiredID or not api.CanAddDesiredID(entryId, entryType) then
-            return false, RefuseReasonForPush(api, entryType, nil, false), label
+            return false, RefuseReasonForPush(api, entryId, entryType, nil), label
         end
 
         local added, addReason = api.AddDesiredID(entryId, entryType)
@@ -1774,6 +1774,12 @@ function Loadouts.FormatRefuseSummary(refuses, maxNames)
         tag_not_desired = "Tag",
         type_not_desired = "not Ability/Talent",
         can_add_false = "cannot mark Desired",
+        already_known = "already learned",
+        already_desired = "already Desired",
+        bad_pair = "bad id/type pair",
+        desired_cap = "Desired cap reached",
+        not_wildcard_mode = "not Wildcard",
+        no_wildcard_api = "Wildcard API missing",
         unresolved = "unresolved",
         incomplete_entry = "unresolved",
         invalid_item = "unresolved",

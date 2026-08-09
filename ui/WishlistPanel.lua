@@ -492,6 +492,21 @@ end
 -- updateFunction(self) -- and a frame reaching SetText raises a Lua error, which
 -- is what used to happen the moment a wishlist grew past eight rows and the
 -- player scrolled it.
+function WishlistPanel.HideTooltips()
+    if GameTooltip then
+        GameTooltip:Hide()
+    end
+    for index = 1, #rows do
+        local row = rows[index]
+        if type(row) == "table" and type(row.GetScript) == "function" then
+            local onLeave = row:GetScript("OnLeave")
+            if type(onLeave) == "function" then
+                onLeave(row)
+            end
+        end
+    end
+end
+
 function WishlistPanel.Refresh(note)
     if type(note) ~= "string" then
         note = nil
@@ -509,6 +524,10 @@ function WishlistPanel.Refresh(note)
     if TouchExpired() then
         touchedKey = nil
         touchedUntil = nil
+    end
+
+    if GameTooltip then
+        GameTooltip:Hide()
     end
 
     local total = Wishlist.Count()
