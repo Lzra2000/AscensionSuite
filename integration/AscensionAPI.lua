@@ -1320,6 +1320,90 @@ local function GetDiceCoreState(dice)
     return state, core.State
 end
 
+-- Character Advancement unlearn / reset confirms from patch-B StaticPopup.lua.
+-- PopupAssist must never accept these; Auto-Roll must halt while any is visible.
+local UNLEARN_CONFIRM_DIALOGS = {
+    CONFIRM_UNLEARN_S = true,
+    CONFIRM_UNLEARN_ALL_S = true,
+    DRAFT_UNLEARN_CONFIRM = true,
+    UNLEARN_SKILL = true,
+    UNLEARN_SKILLID = true,
+    CONFIRM_RESET_BUILD = true,
+    CONFIRM_RESET_BUILD_NO_COST = true,
+}
+
+function API.IsUnlearnConfirmDialog(which)
+    return UNLEARN_CONFIRM_DIALOGS[which] == true
+end
+
+function API.GetUnlearnConfirmDialogs()
+    local names = {}
+    for name in pairs(UNLEARN_CONFIRM_DIALOGS) do
+        names[#names + 1] = name
+    end
+    table.sort(names)
+    return names
+end
+
+function API.IsUnlearnConfirmVisible()
+    local findVisible = _G.StaticPopup_FindVisible
+    if type(findVisible) ~= "function" then
+        return false
+    end
+    for name in pairs(UNLEARN_CONFIRM_DIALOGS) do
+        local dialog = findVisible(name)
+        if type(dialog) == "table" and dialog.which == name then
+            return true, name
+        end
+    end
+    return false
+end
+
+function API.IsDiceDecisionPending(dice)
+    local state, states = GetDiceCoreState(dice)
+    if state and states then
+        return state == states.DECISION_PENDING
+    end
+    return false
+end
+
+-- Leveling die RollButton (Unlearn and Roll) is only shown for keep-vs-unlearn.
+function API.IsDiceUnlearnRollOffered(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" or dice.isRapidRolling then
+        return false
+    end
+    local rollButton = dice.RollButton
+    if type(rollButton) ~= "table" or type(rollButton.IsVisible) ~= "function" then
+        return false
+    end
+    local ok, visible = pcall(rollButton.IsVisible, rollButton)
+    return ok and visible == true
+end
+
+function API.IsRapidRollingWaitingForUnlearn(state)
+    state = state or API.GetRapidRollingState()
+    return state and state.Phase == "WaitingForUnlearn"
+end
+
+-- Keep-vs-unlearn / Scroll-of-Fortune spend is up: DECISION_PENDING die, visible
+-- CONFIRM_UNLEARN_*, Rapid WaitingForUnlearn, or the leveling RollButton offer.
+function API.IsUnlearnOrKeepDecisionPending()
+    if API.IsUnlearnConfirmVisible() then
+        return true
+    end
+    if API.IsDiceDecisionPending() then
+        return true
+    end
+    if API.IsRapidRollingWaitingForUnlearn() then
+        return true
+    end
+    if API.IsDiceUnlearnRollOffered() and DiceIsShown() then
+        return true
+    end
+    return false
+end
+
 -- READY_TO_ROLL (golden d20) and DECISION_PENDING (confirm/reroll) are the only
 -- Core states Ascension wires to RegisterOnClick. A shown die in either state
 -- with EnableMouse false is the level-up / animation-skip hang players report.
@@ -1435,6 +1519,10 @@ end
 -- a terminal result. Calling Roll in that state is a silent no-op that used to
 -- look like success to Auto-Roll.
 function API.IsRapidRollingAdvanceBlocked(state)
+    if API.IsUnlearnOrKeepDecisionPending() then
+        return true, "unlearn_decision"
+    end
+
     state = state or API.GetRapidRollingState()
     if IsInFlight(state) then
         return true, "roll_in_flight"
@@ -1491,6 +1579,10 @@ function API.RecoverStuckRapidSession()
     local ok, reason = RequireWildcard()
     if not ok then
         return false, reason
+    end
+
+    if API.IsUnlearnOrKeepDecisionPending() then
+        return false, "unlearn_decision"
     end
 
     local frame = RapidRollingFrame()
@@ -1597,6 +1689,10 @@ function API.AdvanceRapidRoll(skipConfirm)
     local ok, reason = RequireWildcard()
     if not ok then
         return false, reason
+    end
+
+    if API.IsUnlearnOrKeepDecisionPending() then
+        return false, "unlearn_decision"
     end
 
     -- The native Roll button already encodes every phase rule, so drive it when
