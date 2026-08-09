@@ -307,6 +307,7 @@ assert(mouseEnabled == false, "hidden die mouse stays off")
 assert(registerCalls == 0, "hidden die RegisterOnClick not called")
 
 -- Stranded IDLE die at FULLSCREEN_DIALOG with mouse on steals clicks — clear it.
+-- Ascension's native strata is FULLSCREEN_DIALOG; Suite must not demote it to MEDIUM.
 ResetDiceVisuals()
 _G.WildCardDice.Core.GetState = function() return "IDLE" end
 frameStrata = "FULLSCREEN_DIALOG"
@@ -315,7 +316,7 @@ mouseEnabled = true
 diceShown = true
 assert(API.ClearDiceClickStealer() == true, "idle click stealer cleared")
 assert(mouseEnabled == false, "click stealer mouse disabled")
-assert(frameStrata == "MEDIUM", "click stealer strata restored")
+assert(frameStrata == "FULLSCREEN_DIALOG", "native FULLSCREEN_DIALOG left alone")
 assert(diceShown == false, "idle click stealer hidden")
 
 -- RecoverDiceInteraction clears stranded click stealers (Manastorm tracker regression).
@@ -338,7 +339,7 @@ mouseEnabled = true
 diceShown = true
 assert(API.EnsureDiceClickable() == true, "mid-reveal clears click stealer")
 assert(mouseEnabled == false, "mid-reveal mouse disabled")
-assert(frameStrata == "MEDIUM", "mid-reveal strata restored")
+assert(frameStrata == "FULLSCREEN_DIALOG", "mid-reveal keeps Ascension native strata")
 assert(onLeaveCalls >= 1 or tooltipHidden == true, "mid-reveal hover artifacts cleared")
 
 -- ClearDiceHoverArtifacts hides tooltip and highlight.
@@ -406,16 +407,28 @@ _G.WildCardDice.Core.GetState = function() return "IDLE" end
 mouseEnabled = false
 registerCalls = 0
 diceAlpha = 0.4
-_G.WildCardDice.BaseFrameFadeOut = {
-    IsPlaying = function() return true end,
-}
+_G.WildCardDice.FadeMode = "OUT"
 canRollAbilities = false
 healed = API.EnsureDiceClickable()
 assert(registerCalls == 0, "fading die RegisterOnClick not called")
 assert(diceAlpha == 0.4, "fading die alpha not forced to 1")
 assert(mouseEnabled == false, "fading die mouse not re-enabled")
-_G.WildCardDice.BaseFrameFadeOut = nil
+_G.WildCardDice.FadeMode = nil
 canRollAbilities = true
+
+-- Appear fade-IN must NOT be treated as fading out (alpha mid is normal).
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "READY_TO_ROLL" end
+_G.WildCardDice.FadeMode = "IN"
+diceAlpha = 0.4
+mouseEnabled = false
+registerCalls = 0
+assert(API.IsDiceFadingOut() == false, "FadeMode IN is not fading out")
+assert(API.ResolveDiceGuardMode() == "heal", "appear fade-IN still heals")
+healed = API.EnsureDiceClickable()
+assert(healed == true, "fade-IN READY_TO_ROLL is healed")
+assert(mouseEnabled == true, "fade-IN mouse restored")
+_G.WildCardDice.FadeMode = nil
 
 -- ShouldLetDiceHide after level-up when no roll and no decision.
 ResetDiceVisuals()
@@ -436,15 +449,32 @@ assert(highlightShown == false, "hide path clears highlight")
 assert(tooltipHidden == true, "hide path clears tooltip")
 canRollAbilities = true
 
+-- Recovery cooldown must not block healing a new READY_TO_ROLL die.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "READY_TO_ROLL" end
+API.NoteDiceRecoveryHide()
+mouseEnabled = false
+registerCalls = 0
+assert(API.IsDiceRecoveryCooldownActive() == true
+    or type(_G.GetTime) ~= "function"
+    or _G.GetTime() == 0
+    or API.ResolveDiceGuardMode() == "heal",
+    "cooldown active or sandbox GetTime unavailable")
+_G.GetTime = function() return 100 end
+API.NoteDiceRecoveryHide()
+assert(API.IsDiceRecoveryCooldownActive() == true, "cooldown armed")
+assert(API.ResolveDiceGuardMode() == "heal", "cooldown still allows heal mode")
+healed = API.EnsureDiceClickable()
+assert(healed == true, "cooldown does not block READY_TO_ROLL heal")
+assert(mouseEnabled == true, "cooldown heal restores mouse")
+
 -- DiceGuard debounce: burst events coalesce; fading die not re-shown.
 ResetDiceVisuals()
 _G.WildCardDice.Core.GetState = function() return "READY_TO_ROLL" end
 mouseEnabled = false
 registerCalls = 0
 diceAlpha = 0.5
-_G.WildCardDice.BaseFrameFadeOut = {
-    IsPlaying = function() return true end,
-}
+_G.WildCardDice.FadeMode = "OUT"
 canRollAbilities = false
 local guardRuns = 0
 local origEnsure = API.EnsureDiceClickable
@@ -465,7 +495,23 @@ end
 assert(guardRuns <= 1, "burst guard events coalesce to one ensure")
 assert(registerCalls == 0, "guard does not RegisterOnClick on fading die")
 API.EnsureDiceClickable = origEnsure
-_G.WildCardDice.BaseFrameFadeOut = nil
+_G.WildCardDice.FadeMode = nil
 canRollAbilities = true
+
+-- Suite-raised flag only: native FULLSCREEN_DIALOG is not a Suite raise.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "REVEALING" end
+frameStrata = "FULLSCREEN_DIALOG"
+_G.WildCardDice._asuiteStrataRaised = nil
+mouseEnabled = true
+API.ClearDiceClickStealer()
+assert(frameStrata == "FULLSCREEN_DIALOG", "without Suite flag strata untouched")
+_G.WildCardDice._asuiteStrataRaised = true
+_G.WildCardDice._asuiteNativeStrata = "FULLSCREEN_DIALOG"
+frameStrata = "FULLSCREEN_DIALOG"
+mouseEnabled = true
+diceShown = true
+API.ClearDiceClickStealer()
+assert(_G.WildCardDice._asuiteStrataRaised == nil, "Suite raise flag cleared")
 
 print("OK: AscensionSuite dice clickable test passed")

@@ -1,5 +1,6 @@
 -- AscensionSuite: tests/test_suite_dice_strata.lua
--- WildCardDice demotes below AscensionSuiteMainWindow while /asuite is open.
+-- WildCardDice demotes below AscensionSuiteMainWindow while /asuite is open,
+-- restores Ascension native layering on close, and never mutates rapid dice.
 
 unpack = unpack or table.unpack
 
@@ -23,6 +24,8 @@ local diceShown = true
 local frameStrata
 local frameLevel
 local rollButtonLevel
+local suiteShown = true
+local hoverClears = 0
 
 local rollButton = {
     SetFrameLevel = function(_, level)
@@ -31,6 +34,7 @@ local rollButton = {
 }
 
 _G.WildCardDice = {
+    isRapidRolling = false,
     IsShown = function()
         return diceShown
     end,
@@ -54,13 +58,20 @@ _G.WildCardDice = {
         end,
     },
     DiceEmptyEnter = { IsShown = function() return true end },
-    Highlight = { Hide = function() end },
+    Highlight = {
+        Hide = function()
+            hoverClears = hoverClears + 1
+        end,
+    },
     OnLeave = function() end,
+    IsMouseEnabled = function() return true end,
+    EnableMouse = function() end,
+    RegisterOnClick = function() end,
 }
 
 _G.AscensionSuiteMainWindow = {
     IsShown = function()
-        return true
+        return suiteShown
     end,
     GetFrameLevel = function()
         return 130
@@ -81,10 +92,32 @@ assert(API.DemoteDiceBelowSuite() == true, "demote runs on shown die")
 assert(frameStrata == "DIALOG", "demoted to DIALOG under Suite")
 assert(frameLevel == 128, "frame level below Suite 130")
 assert(rollButtonLevel == 129, "roll button above die but below Suite")
+assert(_G.WildCardDice._asuiteDemotedForSuite == true, "demote flag set")
+
+local clearsAfterFirst = hoverClears
+assert(API.DemoteDiceBelowSuite() == true, "idempotent demote returns true")
+assert(hoverClears == clearsAfterFirst, "idempotent demote does not re-clear hover")
 
 frameStrata = "FULLSCREEN_DIALOG"
 frameLevel = 128
+_G.WildCardDice._asuiteDemotedForSuite = nil
+_G.WildCardDice._asuiteNativeStrata = nil
 assert(API.SyncDiceLayeringForSuite() == true, "sync demotes")
 assert(frameStrata == "DIALOG", "sync keeps dice under Suite")
+
+-- Closing Suite restores Ascension native FULLSCREEN_DIALOG.
+suiteShown = false
+assert(API.RestoreDiceAfterSuite() == true, "restore after Suite")
+assert(frameStrata == "FULLSCREEN_DIALOG", "restored Ascension native strata")
+assert(_G.WildCardDice._asuiteDemotedForSuite == nil, "demote flag cleared")
+
+-- Rapid-rolling die is never demoted (parented to Rapid board).
+suiteShown = true
+_G.WildCardDice.isRapidRolling = true
+frameStrata = "FULLSCREEN_DIALOG"
+_G.WildCardDice._asuiteDemotedForSuite = nil
+assert(API.DemoteDiceBelowSuite() == false, "rapid die not demoted")
+assert(frameStrata == "FULLSCREEN_DIALOG", "rapid strata untouched")
+assert(API.ResolveDiceGuardMode() == "rapid", "rapid mode")
 
 print("OK: AscensionSuite suite dice strata test passed")
