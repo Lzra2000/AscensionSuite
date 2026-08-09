@@ -218,4 +218,24 @@ assert(#list >= 1, "saved build is listed")
 Panel.Refresh()
 assert(listRow:IsShown(), "the first list row is visible after refresh")
 
+------------------------------------------------------------------------
+-- Add spell box, rename edit, spell row interactivity
+------------------------------------------------------------------------
+
+local addSpellBox = _G.AscensionSuiteLoadoutsPanelAddSpell
+assert(addSpellBox, "add spell box exists")
+local beforeCount = #(Loadouts.Get(id).entries or {})
+addSpellBox:SetText("116")
+local onEnter = addSpellBox:GetScript("OnEnterPressed")
+onEnter(addSpellBox)
+assert(#Loadouts.Get(id).entries > beforeCount, "add spell box appends entry")
+
+local nameEdit = _G.AscensionSuiteLoadoutsPanelNameEdit
+assert(nameEdit, "rename edit exists")
+Loadouts.Rename(id, "Renamed via panel test")
+Panel.Refresh()
+assert(Loadouts.Get(id).name == "Renamed via panel test", "rename persisted after refresh")
+
+assert(spellRow._select ~= nil, "spell rows support selection highlight")
+
 print("OK: AscensionSuite loadouts panel test passed")

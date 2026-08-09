@@ -3,6 +3,22 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.4 (2026-08-09) -- Loadouts polish: tooltips, Desired toggle, add-by-id, rename, pros/cons
+
+#### Added
+- **Spell row tooltips** on the Loadouts Spells list via `AscensionAPI.ShowEntryTooltip`
+  (same safe talent rank handling as Wishlist 0.4.1).
+- **Right-click** on a Spells row toggles Desired in Wildcard (mirrors Wishlist); left-click
+  selects/highlights the row. Automate strip **Desired: X of N** refreshes live.
+- **+ Add Spell** id box — type a spell or advancement entry id and **Add** (resolved via
+  AscensionAPI, appended to the selected loadout).
+- **Rename** control on the build header wires `Loadouts.Rename` for the selected build.
+- **Pros and Cons** section shows colorized `+` / `-` lines (light `FormatProsAndCons`
+  reimplementation) above the raw edit box; saving stores unformatted text.
+
+#### Changed
+- Spell rows are interactive buttons (hover tooltip, click handlers) instead of static frames.
+
 ### 0.4.3 (2026-08-09) -- Loadouts polish: live Desired count, equipment icons, Capture Known
 
 #### Added
