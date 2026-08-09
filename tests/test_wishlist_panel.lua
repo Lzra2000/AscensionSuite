@@ -203,6 +203,7 @@ C_Wildcard = {
 dofile(ROOT .. "/core/Database.lua")
 dofile(ROOT .. "/integration/AscensionAPI.lua")
 dofile(ROOT .. "/core/Wishlist.lua")
+dofile(ROOT .. "/ui/NativeChrome.lua")
 dofile(ROOT .. "/ui/WishlistPanel.lua")
 
 AscensionSuite.Database.Init()

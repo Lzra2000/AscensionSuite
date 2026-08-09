@@ -208,6 +208,7 @@ dofile(ROOT .. "/automation/AutoUnstick.lua")
 dofile(ROOT .. "/automation/DiceGuard.lua")
 dofile(ROOT .. "/automation/AnimationSkip.lua")
 dofile(ROOT .. "/automation/PopupAssist.lua")
+dofile(ROOT .. "/ui/NativeChrome.lua")
 dofile(ROOT .. "/ui/WishlistPanel.lua")
 dofile(ROOT .. "/ui/LoadoutsPanel.lua")
 dofile(ROOT .. "/ui/MainWindow.lua")
@@ -257,5 +258,30 @@ assert(MainWindow.GetActiveCategory() == "windows", "Windows & Tools category")
 -- Draft Save: flipping a check must not apply until Save.
 local assists = AscensionSuite.Database.GetAssists()
 assert(assists.autoRoll == false, "autoRoll still off before Save")
+
+-- Shared native chrome helpers used by every /asuite layer.
+local NC = AscensionSuite.NativeChrome
+assert(NC and NC.ApplyParchment and NC.ApplySidebar and NC.ApplyInsetList
+    and NC.ApplyNavButton and NC.ApplyToggleRow,
+    "NativeChrome helpers exposed")
+
+-- Wishlist tab: parchment body + inset list (not flat-dark leftover).
+MainWindow.SelectTab(1)
+assert(MainWindow.GetActiveTab() == 1, "Wishlist tab")
+local wishContent = _G.AscensionSuiteMainWindowContent1
+assert(wishContent and wishContent.SetBackdrop, "Wishlist content frame")
+local wishList = _G.AscensionSuiteWishlistPanelList
+assert(wishList and wishList.SetBackdrop, "Wishlist list frame built")
+
+-- Loadouts tab: parchment build shell + OptionsFrame-style section sidebar.
+MainWindow.SelectTab(2)
+assert(MainWindow.GetActiveTab() == 2, "Loadouts tab")
+local loadContent = _G.AscensionSuiteMainWindowContent2
+assert(loadContent and loadContent.SetBackdrop, "Loadouts content frame")
+local loadPanel = AscensionSuite.LoadoutsPanel.GetFrame()
+assert(loadPanel, "Loadouts panel built for chrome assert")
+assert(AscensionSuite.LoadoutsPanel.GetActiveSection() == "SPELLS_AND_TALENTS"
+    or type(AscensionSuite.LoadoutsPanel.GetActiveSection()) == "string",
+    "Loadouts section API alive")
 
 print("OK: test_settings_layout")

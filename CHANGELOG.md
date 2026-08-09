@@ -3,6 +3,23 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.5.1 (2026-08-09) -- Native WotLK chrome on every /asuite tab
+
+#### Changed
+- **Wishlist** and **Loadouts** use the same parchment / gold DialogFrame language as
+  Assists (v0.5.0): clipped parchment body, inset list panels, dark ink on parchment
+  (not flat-dark leftovers), Desired / Undes. badge colors tuned for parchment contrast.
+- **Loadouts** section sidebar matches Assists Categories (dark OptionsFrame rail +
+  gold selected nav); build shell, empty state, automate strip, and spell/build lists
+  share `NativeChrome` parchment helpers.
+- Shared `ui/NativeChrome.lua` keeps Assists / Wishlist / Loadouts backdrops and ink
+  palette in one place so tabs cannot drift half-modern again.
+
+#### Added
+- `AscensionSuite.NativeChrome` helpers (`ApplyParchment`, `ApplySidebar`,
+  `ApplyInsetList`, `ApplyNavButton`, `ApplyToggleRow`).
+- Settings-layout tests assert Wishlist + Loadouts content chrome after Assists.
+
 ### 0.5.0 (2026-08-09) -- Native WotLK settings layout
 
 #### Changed

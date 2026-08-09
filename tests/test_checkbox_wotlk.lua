@@ -47,6 +47,7 @@ CreateFrame = function()
 end
 
 dofile(ROOT .. "/core/Database.lua")
+dofile(ROOT .. "/ui/NativeChrome.lua")
 dofile(ROOT .. "/ui/MainWindow.lua")
 
 AscensionSuite.Database.Init()

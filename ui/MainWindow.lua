@@ -116,6 +116,10 @@ local function GetLoadoutsPanel()
     return AscensionSuite.LoadoutsPanel
 end
 
+local function Chrome()
+    return AscensionSuite.NativeChrome
+end
+
 local function Print(message)
     local chat = _G.DEFAULT_CHAT_FRAME
     if chat and type(chat.AddMessage) == "function" then
@@ -675,7 +679,7 @@ local function UpdateChromeForTab(index)
             if index == TAB_WISHLIST then
                 subheadLabel:SetText("Wishlist \194\183 Desired / Undesired badges \194\183 controls stay inside the frame.")
             else
-                subheadLabel:SetText("Named builds, Apply \226\134\146 Desired, and archetype sections.")
+                subheadLabel:SetText("Named builds \194\183 parchment shell \194\183 Apply \226\134\146 Desired.")
             end
             subheadLabel:Show()
         end
@@ -761,20 +765,17 @@ end
 ------------------------------------------------------------------------
 
 local function SetCategoryHighlight(id)
+    local NC = Chrome()
     for catId, button in pairs(categoryButtons) do
         if button then
-            if catId == id then
-                if button.SetBackdropColor then
-                    button:SetBackdropColor(0.85, 0.70, 0.28, 1)
-                end
-                if button._label then
+            local selected = (catId == id)
+            if NC and NC.ApplyNavButton then
+                NC.ApplyNavButton(button, selected)
+            end
+            if button._label then
+                if selected then
                     button._label:SetTextColor(0.12, 0.08, 0.02, 1)
-                end
-            else
-                if button.SetBackdropColor then
-                    button:SetBackdropColor(0.22, 0.16, 0.08, 0.95)
-                end
-                if button._label then
+                else
                     button._label:SetTextColor(0.92, 0.85, 0.65, 1)
                 end
             end
@@ -846,17 +847,9 @@ local function CreateToggleRow(parent, y, title, description, onToggle)
     row:SetPoint("TOPRIGHT", 0, y)
     row:SetHeight(40)
 
-    if row.SetBackdrop then
-        row:SetBackdrop({
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true,
-            tileSize = 12,
-            edgeSize = 10,
-            insets = { left = 2, right = 2, top = 2, bottom = 2 },
-        })
-        row:SetBackdropColor(0.95, 0.90, 0.72, 0.55)
-        row:SetBackdropBorderColor(0.55, 0.45, 0.18, 0.9)
+    local NC = Chrome()
+    if NC and NC.ApplyToggleRow then
+        NC.ApplyToggleRow(row)
     end
 
     local check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
@@ -938,21 +931,13 @@ local function BuildAssistContent(content)
     assistShell = CreateFrame("Frame", FRAME_NAME .. "AssistShell", content)
     assistShell:SetAllPoints(content)
 
+    local NC = Chrome()
     local sidebar = CreateFrame("Frame", FRAME_NAME .. "Sidebar", assistShell)
     sidebar:SetPoint("TOPLEFT", 0, 0)
     sidebar:SetPoint("BOTTOMLEFT", 0, 0)
     sidebar:SetWidth(SIDEBAR_WIDTH)
-    if sidebar.SetBackdrop then
-        sidebar:SetBackdrop({
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true,
-            tileSize = 16,
-            edgeSize = 12,
-            insets = { left = 3, right = 3, top = 3, bottom = 3 },
-        })
-        sidebar:SetBackdropColor(0.12, 0.09, 0.04, 0.95)
-        sidebar:SetBackdropBorderColor(0.45, 0.35, 0.14, 1)
+    if NC and NC.ApplySidebar then
+        NC.ApplySidebar(sidebar)
     end
 
     local sideLabel = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -967,17 +952,8 @@ local function BuildAssistContent(content)
         btn:SetHeight(28)
         btn:SetPoint("TOPLEFT", 8, y)
         btn:SetPoint("TOPRIGHT", -8, y)
-        if btn.SetBackdrop then
-            btn:SetBackdrop({
-                bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-                edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-                tile = true,
-                tileSize = 12,
-                edgeSize = 10,
-                insets = { left = 2, right = 2, top = 2, bottom = 2 },
-            })
-            btn:SetBackdropColor(0.22, 0.16, 0.08, 0.95)
-            btn:SetBackdropBorderColor(0.45, 0.35, 0.14, 1)
+        if NC and NC.ApplyNavButton then
+            NC.ApplyNavButton(btn, false)
         end
         local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         lbl:SetPoint("LEFT", 10, 0)
@@ -995,17 +971,8 @@ local function BuildAssistContent(content)
     main:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 8, 0)
     main:SetPoint("BOTTOMRIGHT", assistShell, "BOTTOMRIGHT", 0, 36)
 
-    if main.SetBackdrop then
-        main:SetBackdrop({
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true,
-            tileSize = 16,
-            edgeSize = 12,
-            insets = { left = 3, right = 3, top = 3, bottom = 3 },
-        })
-        main:SetBackdropColor(0.78, 0.70, 0.50, 0.92)
-        main:SetBackdropBorderColor(0.45, 0.35, 0.14, 1)
+    if NC and NC.ApplyParchment then
+        NC.ApplyParchment(main)
     end
 
     categoryHeadTitle = main:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1116,20 +1083,14 @@ local function BuildAssistContent(content)
     counts:SetPoint("TOPRIGHT", 0, 0)
     counts:SetHeight(44)
 
+    local NCCounts = Chrome()
     local cardW = math.floor((ContentWidth() - SIDEBAR_WIDTH - 40) / 3)
     local c1 = CreateFrame("Frame", nil, counts)
     c1:SetWidth(cardW)
     c1:SetHeight(40)
     c1:SetPoint("TOPLEFT", 0, 0)
-    if c1.SetBackdrop then
-        c1:SetBackdrop({
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true, tileSize = 12, edgeSize = 10,
-            insets = { left = 2, right = 2, top = 2, bottom = 2 },
-        })
-        c1:SetBackdropColor(0.95, 0.90, 0.72, 0.5)
-        c1:SetBackdropBorderColor(0.55, 0.45, 0.18, 0.9)
+    if NCCounts and NCCounts.ApplyToggleRow then
+        NCCounts.ApplyToggleRow(c1)
     end
     local c1l = c1:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     c1l:SetPoint("TOP", 0, -4)
@@ -1143,15 +1104,8 @@ local function BuildAssistContent(content)
     c2:SetWidth(cardW)
     c2:SetHeight(40)
     c2:SetPoint("LEFT", c1, "RIGHT", 6, 0)
-    if c2.SetBackdrop then
-        c2:SetBackdrop({
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true, tileSize = 12, edgeSize = 10,
-            insets = { left = 2, right = 2, top = 2, bottom = 2 },
-        })
-        c2:SetBackdropColor(0.95, 0.90, 0.72, 0.5)
-        c2:SetBackdropBorderColor(0.55, 0.45, 0.18, 0.9)
+    if NCCounts and NCCounts.ApplyToggleRow then
+        NCCounts.ApplyToggleRow(c2)
     end
     local c2l = c2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     c2l:SetPoint("TOP", 0, -4)
@@ -1166,15 +1120,8 @@ local function BuildAssistContent(content)
     c3:SetWidth(cardW)
     c3:SetHeight(40)
     c3:SetPoint("LEFT", c2, "RIGHT", 6, 0)
-    if c3.SetBackdrop then
-        c3:SetBackdrop({
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true, tileSize = 12, edgeSize = 10,
-            insets = { left = 2, right = 2, top = 2, bottom = 2 },
-        })
-        c3:SetBackdropColor(0.95, 0.90, 0.72, 0.5)
-        c3:SetBackdropBorderColor(0.55, 0.45, 0.18, 0.9)
+    if NCCounts and NCCounts.ApplyToggleRow then
+        NCCounts.ApplyToggleRow(c3)
     end
     local c3l = c3:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     c3l:SetPoint("TOP", 0, -4)
@@ -1450,12 +1397,17 @@ local function EnsureFrame()
 
     local bodyTop = CONTENT_TOP
     local bodyHeight = FRAME_HEIGHT + CONTENT_TOP - 18
+    local NC = Chrome()
     for index = 1, 3 do
         local content = CreateFrame("Frame", FRAME_NAME .. "Content" .. index, frame)
         content:SetPoint("TOPLEFT", CONTENT_INSET, bodyTop)
         content:SetWidth(ContentWidth())
         content:SetHeight(bodyHeight)
         content:Hide()
+        -- Wishlist + Loadouts sit in clipped parchment; Assists builds its own shell.
+        if index ~= TAB_ASSISTS and NC and NC.ApplyParchment then
+            NC.ApplyParchment(content)
+        end
         contents[index] = content
     end
 

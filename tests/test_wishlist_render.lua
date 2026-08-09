@@ -183,6 +183,7 @@ dofile(ROOT .. "/core/Database.lua")
 dofile(ROOT .. "/core/Wishlist.lua")
 dofile(ROOT .. "/integration/AscensionAPI.lua")
 dofile(ROOT .. "/integration/DesiredSync.lua")
+dofile(ROOT .. "/ui/NativeChrome.lua")
 dofile(ROOT .. "/ui/WishlistPanel.lua")
 dofile(ROOT .. "/ui/MainWindow.lua")
 
