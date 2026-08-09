@@ -44,7 +44,10 @@ local spellScrollFrame
 local spellListFrame
 local spellRows = {}
 local notesEdit
-local equipmentLabel
+local equipmentFrame
+local equipmentRows = {}
+local EQUIPMENT_ROW_HEIGHT = 28
+local MAX_EQUIPMENT_ROWS = 8
 local statusLabel
 local shareBox
 local selectedId
@@ -241,7 +244,8 @@ local function UpdateHeader(loadout)
             categoryChip:SetText(loadout.category)
             categoryChip:Show()
         else
-            categoryChip:Hide()
+            categoryChip:SetText("Category —")
+            categoryChip:Show()
         end
     end
     if complexityChip then
@@ -249,7 +253,8 @@ local function UpdateHeader(loadout)
             complexityChip:SetText(string.format("Complexity %s", loadout.complexity))
             complexityChip:Show()
         else
-            complexityChip:Hide()
+            complexityChip:SetText("Complexity —")
+            complexityChip:Show()
         end
     end
 end
@@ -261,8 +266,13 @@ local function UpdateAutoStatus(loadout)
     end
 
     local Loadouts = GetLoadouts()
-    local total = type(loadout.entries) == "table" and #loadout.entries or 0
-    local desired = Loadouts and Loadouts.CountDesiredInLoadout(loadout) or 0
+    local desired, total = 0, 0
+    if Loadouts and Loadouts.CountFilteredDesired then
+        desired, total = Loadouts.CountFilteredDesired(loadout, spellFilters)
+    else
+        total = type(loadout.entries) == "table" and #loadout.entries or 0
+        desired = Loadouts and Loadouts.CountDesiredInLoadout(loadout) or 0
+    end
     local assists = AscensionSuite.Database and AscensionSuite.Database.GetAssists and AscensionSuite.Database.GetAssists() or {}
     local tail = ""
     if assists.autoRoll == true then
@@ -272,6 +282,47 @@ local function UpdateAutoStatus(loadout)
     end
     SetAutoStatus(string.format("%d spells ready \194\183 Desired %d of %d \194\183 %s",
         total, desired, total, tail), total > 0)
+end
+
+local function FillEquipmentRow(row, described)
+    if not row or not described then
+        row:Hide()
+        return
+    end
+    row._nameLabel:SetText(described.name or "?")
+    row._icon:SetTexture(described.icon or PLACEHOLDER_ICON)
+    row:Show()
+end
+
+local function RefreshEquipmentRows(loadout)
+    if not equipmentFrame then
+        return 0
+    end
+
+    local Loadouts = GetLoadouts()
+    local stubs = {}
+    if loadout and type(loadout.equipment) == "table" then
+        local armor = loadout.equipment.armorTypes or {}
+        local weapons = loadout.equipment.weaponTypes or {}
+        for index = 1, #armor do
+            stubs[#stubs + 1] = Loadouts and Loadouts.DescribeEquipmentStub(armor[index])
+        end
+        for index = 1, #weapons do
+            stubs[#stubs + 1] = Loadouts and Loadouts.DescribeEquipmentStub(weapons[index])
+        end
+    end
+
+    for index = 1, MAX_EQUIPMENT_ROWS do
+        local row = equipmentRows[index]
+        if row then
+            FillEquipmentRow(row, stubs[index])
+            if not stubs[index] then
+                row:Hide()
+            end
+        end
+    end
+
+    return #stubs
 end
 
 local function RefreshSectionContent(loadout)
@@ -286,7 +337,7 @@ local function RefreshSectionContent(loadout)
     if activeSection == "SPELLS_AND_TALENTS" then
         if filterBar then filterBar:Show() end
         if notesEdit then notesEdit:Hide() end
-        if equipmentLabel then equipmentLabel:Hide() end
+        if equipmentFrame then equipmentFrame:Hide() end
         if spellListFrame then spellListFrame:Show() end
 
         local total = BuildSpellDisplayRows(loadout)
@@ -313,35 +364,31 @@ local function RefreshSectionContent(loadout)
     if filterBar then filterBar:Hide() end
     if notesEdit then notesEdit:Show() end
 
-    if activeSection == "EQUIPMENT" and equipmentLabel and loadout and loadout.equipment then
-        equipmentLabel:Show()
-        local lines = {}
-        local armor = loadout.equipment.armorTypes or {}
-        local weapons = loadout.equipment.weaponTypes or {}
-        if #armor > 0 then
-            lines[#lines + 1] = "Armor: " .. table.concat(armor, ", ")
-        end
-        if #weapons > 0 then
-            lines[#lines + 1] = "Weapons: " .. table.concat(weapons, ", ")
-        end
-        if #lines == 0 then
-            lines[1] = "No equipment types imported yet."
-        end
-        equipmentLabel:SetText(table.concat(lines, "\n"))
-        sectionCount:SetText("equipment stubs from archetype import")
-        if notesEdit.SetText then
-            local sections = Loadouts and Loadouts.GetSections(loadout) or {}
-            notesEdit:SetText(sections.EQUIPMENT or "")
-        end
-        if notesEdit.ClearAllPoints then
-            notesEdit:ClearAllPoints()
-            notesEdit:SetPoint("TOPLEFT", sectionTitle, "BOTTOMLEFT", 0, -8)
-            notesEdit:SetPoint("BOTTOMRIGHT", sectionContent, "BOTTOMRIGHT", -4, 0)
+    if activeSection == "EQUIPMENT" and equipmentFrame and loadout then
+        equipmentFrame:Show()
+        local stubCount = RefreshEquipmentRows(loadout)
+        sectionCount:SetText(string.format("%d equipment stubs from archetype import", stubCount))
+
+        if notesEdit then
+            notesEdit:Show()
+            if notesEdit.SetText then
+                local sections = Loadouts and Loadouts.GetSections(loadout) or {}
+                notesEdit:SetText(sections.EQUIPMENT or "")
+            end
+            if notesEdit.ClearAllPoints then
+                notesEdit:ClearAllPoints()
+                if stubCount > 0 then
+                    notesEdit:SetPoint("TOPLEFT", equipmentFrame, "BOTTOMLEFT", 0, -8)
+                else
+                    notesEdit:SetPoint("TOPLEFT", sectionTitle, "BOTTOMLEFT", 0, -8)
+                end
+                notesEdit:SetPoint("BOTTOMRIGHT", sectionContent, "BOTTOMRIGHT", -4, 0)
+            end
         end
         return
     end
 
-    if equipmentLabel then equipmentLabel:Hide() end
+    if equipmentFrame then equipmentFrame:Hide() end
     sectionCount:SetText("local notes (SavedVariables)")
     if notesEdit and notesEdit.SetText and loadout then
         local sections = Loadouts and Loadouts.GetSections(loadout) or {}
@@ -468,7 +515,8 @@ local function OnImportArchetype()
     end
     local ok, count, source = Loadouts.ImportFromArchetype(selectedId)
     if not ok then
-        SetStatus("Import failed — " .. tostring(count or "error") .. ".", false)
+        local detail = Loadouts.DescribeImportError and Loadouts.DescribeImportError(count) or tostring(count or "error")
+        SetStatus("Import failed — " .. detail .. ".", false)
         return
     end
     local note = string.format("Imported %d spells from %s build.", count or 0, source or "native")
@@ -554,6 +602,49 @@ local function OnSyncRapid()
         MainWindow.RefreshWishlist()
     end
     LoadoutsPanel.Refresh(note, added > 0)
+end
+
+local function OnCaptureKnown()
+    local Loadouts = GetLoadouts()
+    if not Loadouts or not selectedId then
+        SetStatus("Select a build first.", false)
+        return
+    end
+    local ok, count = Loadouts.CaptureKnown(selectedId)
+    if not ok then
+        local detail = Loadouts.DescribeImportError and Loadouts.DescribeImportError(count) or tostring(count or "error")
+        SetStatus("Capture Known failed — " .. detail .. ".", false)
+        return
+    end
+    LoadoutsPanel.Refresh(string.format("Captured %d Known entries into this build.", count or 0), true)
+end
+
+local function OnCycleCategory()
+    local Loadouts = GetLoadouts()
+    if not Loadouts or not selectedId then
+        return
+    end
+    local loadout = Loadouts.Get(selectedId)
+    if not loadout then
+        return
+    end
+    local nextCategory = Loadouts.CycleCategory(loadout.category)
+    Loadouts.UpdateMeta(selectedId, { category = nextCategory })
+    LoadoutsPanel.Refresh()
+end
+
+local function OnCycleComplexity()
+    local Loadouts = GetLoadouts()
+    if not Loadouts or not selectedId then
+        return
+    end
+    local loadout = Loadouts.Get(selectedId)
+    if not loadout then
+        return
+    end
+    local nextComplexity = Loadouts.CycleComplexity(loadout.complexity)
+    Loadouts.UpdateMeta(selectedId, { complexity = nextComplexity })
+    LoadoutsPanel.Refresh()
 end
 
 local function OnStartAutoRoll()
@@ -974,8 +1065,20 @@ local function BuildPanel(parent, width)
     categoryChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     categoryChip:SetPoint("LEFT", authorChip, "RIGHT", 8, 0)
 
+    local categoryButton = CreateFrame("Button", nil, meta)
+    categoryButton:SetPoint("LEFT", categoryChip, "LEFT", -4, 0)
+    categoryButton:SetPoint("RIGHT", categoryChip, "RIGHT", 4, 0)
+    categoryButton:SetHeight(22)
+    categoryButton:SetScript("OnClick", OnCycleCategory)
+
     complexityChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     complexityChip:SetPoint("LEFT", categoryChip, "RIGHT", 8, 0)
+
+    local complexityButton = CreateFrame("Button", nil, meta)
+    complexityButton:SetPoint("LEFT", complexityChip, "LEFT", -4, 0)
+    complexityButton:SetPoint("RIGHT", complexityChip, "RIGHT", 4, 0)
+    complexityButton:SetHeight(22)
+    complexityButton:SetScript("OnClick", OnCycleComplexity)
 
     local resetButton = CreateFrame("Button", nil, meta, "UIPanelButtonTemplate")
     resetButton:SetWidth(54)
@@ -1046,6 +1149,13 @@ local function BuildPanel(parent, width)
     wishButton:SetText("\226\134\222 Wishlist")
     wishButton:SetScript("OnClick", OnLoadWishlist)
 
+    local captureButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
+    captureButton:SetWidth(100)
+    captureButton:SetHeight(22)
+    captureButton:SetPoint("LEFT", wishButton, "RIGHT", 6, 0)
+    captureButton:SetText("Capture Known")
+    captureButton:SetScript("OnClick", OnCaptureKnown)
+
     autoStatusLabel = autoBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     autoStatusLabel:SetPoint("TOPLEFT", applyButton, "BOTTOMLEFT", 0, -4)
     autoStatusLabel:SetPoint("RIGHT", autoBar, "RIGHT", -8, 0)
@@ -1109,11 +1219,37 @@ local function BuildPanel(parent, width)
         CreateSpellRow, spellRows, VISIBLE_SPELL_ROWS, function() LoadoutsPanel.Refresh() end)
     spellListFrame:SetPoint("TOPLEFT", filterBar, "BOTTOMLEFT", 0, -6)
 
-    equipmentLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    equipmentLabel:SetPoint("TOPLEFT", filterBar, "BOTTOMLEFT", 4, -6)
-    equipmentLabel:SetPoint("TOPRIGHT", content, "TOPRIGHT", -8, -40)
-    equipmentLabel:SetJustifyH("LEFT")
-    equipmentLabel:Hide()
+    equipmentFrame = CreateFrame("Frame", nil, content)
+    equipmentFrame:SetPoint("TOPLEFT", filterBar, "BOTTOMLEFT", 0, -6)
+    equipmentFrame:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -40)
+    equipmentFrame:SetHeight(MAX_EQUIPMENT_ROWS * EQUIPMENT_ROW_HEIGHT)
+    equipmentFrame:Hide()
+
+    local function CreateEquipmentRow(parent, index)
+        local row = CreateFrame("Frame", FRAME_NAME .. "EquipRow" .. index, parent)
+        row:SetHeight(EQUIPMENT_ROW_HEIGHT)
+        row:SetPoint("TOPLEFT", 0, -(index - 1) * EQUIPMENT_ROW_HEIGHT)
+        row:SetPoint("TOPRIGHT", 0, -(index - 1) * EQUIPMENT_ROW_HEIGHT)
+
+        local icon = row:CreateTexture(nil, "ARTWORK")
+        icon:SetWidth(22)
+        icon:SetHeight(22)
+        icon:SetPoint("LEFT", 6, 0)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        row._icon = icon
+
+        local nameLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        nameLabel:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+        nameLabel:SetJustifyH("LEFT")
+        row._nameLabel = nameLabel
+
+        return row
+    end
+
+    for index = 1, MAX_EQUIPMENT_ROWS do
+        equipmentRows[index] = CreateEquipmentRow(equipmentFrame, index)
+        equipmentRows[index]:Hide()
+    end
 
     notesEdit = CreateFrame("EditBox", FRAME_NAME .. "Notes", content, "InputBoxTemplate")
     notesEdit:SetPoint("TOPLEFT", filterBar, "BOTTOMLEFT", 0, -6)

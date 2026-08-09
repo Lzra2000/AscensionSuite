@@ -1568,7 +1568,14 @@ function API.GetImportableBuild()
         end
     end
 
-    return nil, nil
+    return nil, "no_build"
+end
+
+function API.DescribeImportableBuildFailure(reason)
+    if reason == "no_build" then
+        return "No importable build — open Archetypes in the editor, draft one, or activate a build first."
+    end
+    return "No importable build available."
 end
 
 function API.UnpackBuildDescription(description)
@@ -1810,6 +1817,84 @@ function API.CollectBuildSpellEntries(build)
     return entries
 end
 
+local EQUIPMENT_TYPE_ALIASES = {
+    Plate = "ITEM_SUBCLASS_ARMOR_PLATE",
+    Mail = "ITEM_SUBCLASS_ARMOR_MAIL",
+    Leather = "ITEM_SUBCLASS_ARMOR_LEATHER",
+    Cloth = "ITEM_SUBCLASS_ARMOR_CLOTH",
+    Shield = "ITEM_SUBCLASS_ARMOR_SHIELD",
+}
+
+function API.NormalizeEquipmentTypeKey(value)
+    if type(value) == "table" then
+        value = value.Type or value.type
+    end
+    if type(value) ~= "string" or value == "" then
+        return nil
+    end
+    if EQUIPMENT_TYPE_ALIASES[value] then
+        return EQUIPMENT_TYPE_ALIASES[value]
+    end
+    if value:find("ITEM_SUBCLASS_") then
+        return value
+    end
+    local underscored = "ITEM_SUBCLASS_" .. value:upper():gsub("%s+", "_")
+    if _G.Enum and _G.Enum.ArmorSubClassSID and _G.Enum.ArmorSubClassSID[underscored] then
+        return underscored
+    end
+    if _G.Enum and _G.Enum.WeaponSubClassSID and _G.Enum.WeaponSubClassSID[underscored] then
+        return underscored
+    end
+    return value
+end
+
+function API.NormalizeEquipmentStub(item)
+    if type(item) == "table" then
+        local typeKey = API.NormalizeEquipmentTypeKey(item.Type or item.type)
+        local comment = item.Comment or item.comment
+        if type(comment) ~= "string" then
+            comment = ""
+        end
+        return typeKey, comment
+    end
+    if type(item) == "string" then
+        return API.NormalizeEquipmentTypeKey(item), ""
+    end
+    return nil, ""
+end
+
+function API.GetEquipmentTypeIconAndName(typeKey)
+    typeKey = API.NormalizeEquipmentTypeKey(typeKey)
+    if not typeKey then
+        return nil, nil, false
+    end
+
+    local spellId = nil
+    local isArmor = false
+    if _G.Enum and type(_G.Enum.ArmorSubClassSID) == "table" then
+        spellId = _G.Enum.ArmorSubClassSID[typeKey]
+        if spellId then
+            isArmor = true
+        end
+    end
+    if not spellId and _G.Enum and type(_G.Enum.WeaponSubClassSID) == "table" then
+        spellId = _G.Enum.WeaponSubClassSID[typeKey]
+    end
+
+    local name = FormatEnumLabel(typeKey)
+    local icon = PLACEHOLDER_ICON
+    if spellId and type(_G.GetSpellInfo) == "function" then
+        local spellName, _, spellIcon = _G.GetSpellInfo(spellId)
+        if type(spellName) == "string" and spellName ~= "" then
+            name = spellName
+        end
+        if type(spellIcon) == "string" and spellIcon ~= "" then
+            icon = spellIcon
+        end
+    end
+    return name, icon, isArmor
+end
+
 function API.CollectBuildEquipmentStubs(build)
     if type(build) ~= "table" then
         return { armorTypes = {}, weaponTypes = {} }
@@ -1818,12 +1903,18 @@ function API.CollectBuildEquipmentStubs(build)
     local weaponTypes = {}
     if type(build.ArmorTypes) == "table" then
         for index = 1, #build.ArmorTypes do
-            armorTypes[#armorTypes + 1] = tostring(build.ArmorTypes[index])
+            local typeKey, comment = API.NormalizeEquipmentStub(build.ArmorTypes[index])
+            if typeKey then
+                armorTypes[#armorTypes + 1] = { type = typeKey, comment = comment or "" }
+            end
         end
     end
     if type(build.WeaponTypes) == "table" then
         for index = 1, #build.WeaponTypes do
-            weaponTypes[#weaponTypes + 1] = tostring(build.WeaponTypes[index])
+            local typeKey, comment = API.NormalizeEquipmentStub(build.WeaponTypes[index])
+            if typeKey then
+                weaponTypes[#weaponTypes + 1] = { type = typeKey, comment = comment or "" }
+            end
         end
     end
     return { armorTypes = armorTypes, weaponTypes = weaponTypes }
