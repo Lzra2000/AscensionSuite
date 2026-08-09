@@ -1495,6 +1495,108 @@ local function DiceStrataWasRaised(dice)
     return false
 end
 
+local function FrameIsMouseOver(frame)
+    if type(frame) ~= "table" or type(frame.IsMouseOver) ~= "function" then
+        return false
+    end
+    local ok, over = pcall(frame.IsMouseOver, frame)
+    return ok and over == true
+end
+
+-- Hide Ascension's dice highlight and any lingering GameTooltip without toggling
+-- mouse. Used when Suite disables mouse outside RegisterOnClick/UnregisterOnClick.
+function API.ClearDiceHoverArtifacts(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" then
+        return false
+    end
+
+    local cleared = false
+    local tooltip = _G.GameTooltip
+    if type(tooltip) == "table" and type(tooltip.Hide) == "function" then
+        pcall(tooltip.Hide, tooltip)
+        cleared = true
+    end
+    local highlight = dice.Highlight
+    if type(highlight) == "table" and type(highlight.Hide) == "function" then
+        pcall(highlight.Hide, highlight)
+        cleared = true
+    end
+    return cleared
+end
+
+-- After mouse/strata recovery, mirror Ascension's RegisterOnClick hover contract:
+-- OnLeave when the cursor is elsewhere; OnEnter (or RollButton hover) when over.
+function API.SanitizeDiceHover(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" then
+        return false
+    end
+
+    local rollButton = dice.RollButton
+    local scrollCount = rollButton and rollButton.ScrollCount
+    local scrollOver = FrameIsMouseOver(scrollCount)
+    local rollOver = FrameIsMouseOver(rollButton)
+    local diceOver = FrameIsMouseOver(dice)
+
+    if scrollOver and type(dice.ScrollCountOnEnter) == "function" then
+        pcall(dice.ScrollCountOnEnter, dice)
+        return true
+    end
+    if rollOver and type(dice.RollButtonOnEnter) == "function" then
+        pcall(dice.RollButtonOnEnter, dice)
+        return true
+    end
+    if diceOver and type(dice.OnEnter) == "function" then
+        pcall(dice.OnEnter, dice)
+        return true
+    end
+
+    if type(dice.OnLeave) == "function" then
+        pcall(dice.OnLeave, dice)
+        return true
+    end
+
+    return API.ClearDiceHoverArtifacts(dice)
+end
+
+local function RestoreDiceRollButtonAffordances(dice)
+    if type(dice) ~= "table" or not API.IsDiceUnlearnRollOffered(dice) then
+        return false
+    end
+
+    local restored = false
+    local rollButton = dice.RollButton
+    if type(rollButton) == "table" then
+        if type(rollButton.EnableMouse) == "function" then
+            local needsMouse = true
+            if type(rollButton.IsMouseEnabled) == "function" then
+                local ok, enabled = pcall(rollButton.IsMouseEnabled, rollButton)
+                needsMouse = not ok or enabled ~= true
+            end
+            if needsMouse then
+                pcall(rollButton.EnableMouse, rollButton, true)
+                restored = true
+            end
+        end
+        local scrollCount = rollButton.ScrollCount
+        if type(scrollCount) == "table" and type(scrollCount.EnableMouse) == "function" then
+            pcall(scrollCount.EnableMouse, scrollCount, true)
+            restored = true
+        end
+    end
+
+    if type(dice.RefreshScrollOfFortuneRerollDisplay) == "function" then
+        pcall(dice.RefreshScrollOfFortuneRerollDisplay, dice)
+        return true
+    end
+    if type(dice.UpdateRollButton) == "function" then
+        pcall(dice.UpdateRollButton, dice)
+        restored = true
+    end
+    return restored
+end
+
 -- Shown die at FULLSCREEN_DIALOG with mouse on but not in a clickable state steals
 -- clicks from Manastorm tracker dice and other UI after level-ups / animation skip.
 function API.ClearDiceClickStealer(dice)
@@ -1507,6 +1609,8 @@ function API.ClearDiceClickStealer(dice)
     end
 
     local cleared = false
+
+    API.ClearDiceHoverArtifacts(dice)
 
     if type(dice.IsMouseEnabled) == "function" and type(dice.EnableMouse) == "function" then
         local mouseOk, enabled = pcall(dice.IsMouseEnabled, dice)
@@ -1568,8 +1672,7 @@ local function SyncDiceDecisionAffordances(dice)
 
     local affordances = RaiseDiceAboveClutter(dice)
 
-    if API.IsDiceUnlearnRollOffered(dice) and type(dice.UpdateRollButton) == "function" then
-        pcall(dice.UpdateRollButton, dice)
+    if RestoreDiceRollButtonAffordances(dice) then
         affordances = true
     end
 
@@ -1757,6 +1860,9 @@ function API.EnsureDiceClickable()
     end
 
     local affordances = SyncDiceDecisionAffordances(dice)
+    if cleared or healed or affordances then
+        API.SanitizeDiceHover(dice)
+    end
     return healed or affordances or cleared
 end
 
@@ -1951,6 +2057,8 @@ function API.RecoverDiceInteraction()
             if type(dice.SetAlpha) == "function" then
                 pcall(dice.SetAlpha, dice, 1)
             end
+            SyncDiceDecisionAffordances(dice)
+            API.SanitizeDiceHover(dice)
             if type(dice.IsMouseEnabled) == "function" then
                 local mouseOk, enabled = pcall(dice.IsMouseEnabled, dice)
                 if mouseOk and enabled == true then
