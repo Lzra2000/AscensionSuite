@@ -94,6 +94,9 @@ end
 AscensionSuite.MainWindow = {
     UnstickRapid = function()
         unstickCalls = unstickCalls + 1
+        if API.RecoverDiceInteraction then
+            return API.RecoverDiceInteraction()
+        end
         return API.RecoverStuckRapidSession()
     end,
 }
@@ -142,7 +145,7 @@ assert(recoverCalls == 0, "phase-stable time must reach five seconds")
 
 RunTick(2)
 assert(unstickCalls == 1, "auto-unstick calls the shared Unstick path")
-assert(recoverCalls == 1, "and RecoverStuckRapidSession runs once")
+assert(recoverCalls == 1, "and RecoverDiceInteraction runs once")
 
 RunTick(10)
 assert(recoverCalls == 1, "cooldown blocks a second recovery")
@@ -152,6 +155,27 @@ RunTick(2)
 RunTick(3)
 RunTick(2)
 assert(recoverCalls == 2, "after cooldown another stuck window can recover")
+
+-- Leveling die shown in READY_TO_ROLL with mouse disabled also recovers.
+API.RecoverDiceInteraction = function()
+    recoverCalls = recoverCalls + 1
+    return true, "mouse_restored"
+end
+API.IsDiceShownUnclickable = function() return true end
+API.IsDiceInteractionStuck = function() return true end
+API.IsRapidRollingContinueStuck = function() return false end
+rapidState.Phase = "Idle"
+_G.WildCardDice.isRapidRolling = false
+_G.WildCardDice.pendingReveal = nil
+_G.WildCardDice.Core.GetState = function() return "READY_TO_ROLL" end
+recoverCalls = 0
+unstickCalls = 0
+now = now + 35
+RunTick(2)
+RunTick(3)
+RunTick(2)
+assert(unstickCalls == 1, "unclickable leveling die triggers Unstick")
+assert(recoverCalls == 1, "through RecoverDiceInteraction")
 
 AscensionSuiteDB.assists.autoUnstick = false
 AutoUnstick.Refresh()

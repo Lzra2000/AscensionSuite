@@ -3,6 +3,25 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.9 (2026-08-09) -- Wild Card dice clickability after level-ups
+
+#### Fixed
+- **Wild Card dice sometimes unclickable after level-ups** — when Instant Dice Skip or
+  overlapping roll sessions left `WildCardDice` shown with `EnableMouse(false)` in
+  `READY_TO_ROLL` / `DECISION_PENDING`, clicks were ignored (golden d20 / `?` overlay
+  during XP spam). `AscensionAPI.EnsureDiceClickable` re-enables mouse via native
+  `RegisterOnClick`; `DiceGuard` runs it on `PLAYER_LEVEL_UP`, `WILDCARD_ROLL_READY`,
+  and `WILDCARD_ENTRY_LEARNED`; Animation Skip schedules the same check after reel
+  `Finish()` and flipbook hooks.
+- **Unstick / auto-unstick** now recover unclickable leveling dice (not only gray Rapid
+  Continue) through `RecoverDiceInteraction`.
+
+#### Added
+- `automation/DiceGuard.lua`, `AscensionAPI.DiceShouldAcceptClicks`,
+  `IsDiceShownUnclickable`, `EnsureDiceClickable`, `IsDiceInteractionStuck`,
+  `RecoverDiceInteraction`.
+- `tests/test_dice_clickable.lua`.
+
 ### 0.4.8 (2026-08-09) -- Wishlist icon fetch matches native CA/Rapid
 
 #### Fixed

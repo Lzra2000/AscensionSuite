@@ -1,6 +1,6 @@
 -- AscensionSuite: automation/AutoUnstick.lua
--- Opt-in auto-recovery when Rapid Continue is stuck gray (die on "?").
--- Calls the same RecoverStuckRapidSession path as the manual Unstick button.
+-- Opt-in auto-recovery when Rapid Continue is stuck gray (die on "?") or the
+-- leveling die is shown but will not accept clicks. Uses the same Unstick path.
 
 local AscensionSuite = _G.AscensionSuite
 if type(AscensionSuite) ~= "table" then
@@ -71,20 +71,35 @@ local function Tick(delta)
     end
 
     local api = GetAPI()
-    if not api or not api.IsRapidRollingContinueStuck then
+    if not api then
         return
     end
 
     local state = api.GetRapidRollingState and api.GetRapidRollingState()
     local phase = state and state.Phase
 
-    if api.IsRapidRollingContinueStuck(state) then
+    local stuck = false
+    if api.IsDiceInteractionStuck then
+        stuck = api.IsDiceInteractionStuck(state) == true
+    elseif api.IsRapidRollingContinueStuck then
+        stuck = api.IsRapidRollingContinueStuck(state) == true
+    end
+
+    if not stuck then
+        lastPhase = phase
+        stuckFor = 0
+        return
+    end
+
+    if api.IsRapidRollingContinueStuck and api.IsRapidRollingContinueStuck(state) then
         if phase == lastPhase then
             stuckFor = stuckFor + (delta or TICK_SECONDS)
         else
             lastPhase = phase
             stuckFor = 0
         end
+    elseif api.IsDiceShownUnclickable and api.IsDiceShownUnclickable() then
+        stuckFor = stuckFor + (delta or TICK_SECONDS)
     else
         lastPhase = phase
         stuckFor = 0
@@ -101,6 +116,8 @@ local function Tick(delta)
     local MainWindow = AscensionSuite.MainWindow
     if MainWindow and MainWindow.UnstickRapid then
         MainWindow.UnstickRapid()
+    elseif api.RecoverDiceInteraction then
+        api.RecoverDiceInteraction()
     elseif api.RecoverStuckRapidSession then
         api.RecoverStuckRapidSession()
     end

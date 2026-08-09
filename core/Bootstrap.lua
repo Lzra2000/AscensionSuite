@@ -10,7 +10,7 @@ if type(AscensionSuite) ~= "table" then
 end
 
 AscensionSuite.NAME = addonName
-AscensionSuite.VERSION = "0.4.8"
+AscensionSuite.VERSION = "0.4.9"
 
 local function OnAddonLoaded(name)
     if name ~= addonName then
@@ -35,6 +35,11 @@ local function OnAddonLoaded(name)
     local AnimationSkip = AscensionSuite.AnimationSkip
     if AnimationSkip and AnimationSkip.Init then
         AnimationSkip.Init()
+    end
+
+    local DiceGuard = AscensionSuite.DiceGuard
+    if DiceGuard and DiceGuard.Init then
+        DiceGuard.Init()
     end
 
     local PopupAssist = AscensionSuite.PopupAssist

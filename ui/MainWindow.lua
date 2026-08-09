@@ -441,20 +441,37 @@ local function UnstickRapid()
     end
 
     local api = AscensionSuite.AscensionAPI
-    if not api or not api.RecoverStuckRapidSession then
+    if not api then
         return false
     end
 
-    local ok, reason = api.RecoverStuckRapidSession()
+    local ok, reason
+    if api.RecoverDiceInteraction then
+        ok, reason = api.RecoverDiceInteraction()
+    elseif api.RecoverStuckRapidSession then
+        ok = api.RecoverStuckRapidSession()
+        reason = ok and "rapid_session_cleared" or "recover_failed"
+    else
+        return false
+    end
+
     if ok then
-        Print("Rapid session cleared. Ascension's Roll button should work again.")
+        if reason == "mouse_restored" or reason == "mouse_forced" then
+            Print("Wild Card dice should accept clicks again.")
+        else
+            Print("Rapid session cleared. Ascension's Roll button should work again.")
+        end
     else
         Print("Unstick did nothing - " .. MainWindow.DescribeStopReason(reason) .. ".")
     end
 
     if autoRollStatus then
         if ok then
-            autoRollStatus:SetText("Rapid session cleared — try Roll again")
+            if reason == "mouse_restored" or reason == "mouse_forced" then
+                autoRollStatus:SetText("Dice click restored — try clicking the die")
+            else
+                autoRollStatus:SetText("Rapid session cleared — try Roll again")
+            end
             autoRollStatus:SetTextColor(0.43, 0.81, 0.54, 1)
         else
             autoRollStatus:SetText("Unstick failed — " .. MainWindow.DescribeStopReason(reason))
