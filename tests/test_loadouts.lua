@@ -311,4 +311,35 @@ API.GetImportableBuild = originalGetImportable
 assert(not failOk, "import fails without build")
 assert(type(failReason) == "string" and failReason:find("importable"), "import surfaces clear message")
 
+------------------------------------------------------------------------
+-- Pros/cons formatting, add-by-id, Desired toggle on rows
+------------------------------------------------------------------------
+
+local formatted = Loadouts.FormatProsAndCons("+ burst damage\n- squishy")
+assert(type(formatted) == "string" and formatted:find("burst"), "pros line formatted")
+assert(formatted:find("squishy"), "cons line formatted")
+
+local addLoadout, addId = Loadouts.Create("Add test", "", false)
+local addOk, addReason = Loadouts.AddById(addId, 133)
+assert(addOk and addReason == "added", "AddById resolves spell id")
+addLoadout = Loadouts.Get(addId)
+assert(#addLoadout.entries == 1, "one entry after AddById")
+
+local dupOk, dupReason = Loadouts.AddById(addId, 133)
+assert(not dupOk and dupReason == "duplicate", "AddById rejects duplicate")
+
+wildcard = true
+desired = {}
+local toggleRow = addLoadout.entries[1]
+local toggleOk, nowDesired = Loadouts.ToggleEntryDesired(addId, toggleRow)
+assert(toggleOk and nowDesired == true, "ToggleEntryDesired marks Desired in Wildcard")
+assert(desired[Key(1133, "Ability")] == true, "client Desired updated")
+toggleOk, nowDesired = Loadouts.ToggleEntryDesired(addId, toggleRow)
+assert(toggleOk and nowDesired == false, "ToggleEntryDesired removes Desired mark")
+assert(desired[Key(1133, "Ability")] == nil, "client Desired cleared")
+
+local renameOk = Loadouts.Rename(addId, "Renamed build")
+assert(renameOk, "Rename succeeds")
+assert(Loadouts.Get(addId).name == "Renamed build", "Rename updates name")
+
 print("OK: AscensionSuite loadouts test passed")

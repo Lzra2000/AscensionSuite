@@ -21,40 +21,21 @@ local LIST_INSET = 4
 local SCROLLBAR_WIDTH = 24
 local PLACEHOLDER_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
-local panel
-local panelParent
-local panelWidth
-local listFrame
-local scrollFrame
-local listRows = {}
-local buildShell
-local sectionSidebar
-local navButtons = {}
-local mainColumn
-local sectionContent
-local nameLabel
-local authorChip
-local categoryChip
-local complexityChip
-local autoStatusLabel
-local sectionTitle
-local sectionCount
-local filterBar
-local spellScrollFrame
-local spellListFrame
-local spellRows = {}
-local notesEdit
-local equipmentFrame
-local equipmentRows = {}
+local W = {
+    listRows = {},
+    spellRows = {},
+    navButtons = {},
+    equipmentRows = {},
+}
+local H = {}
+
 local EQUIPMENT_ROW_HEIGHT = 28
 local MAX_EQUIPMENT_ROWS = 8
-local statusLabel
-local shareBox
 local selectedId
 local activeSection = "SPELLS_AND_TALENTS"
 local displayRows = {}
 local spellFilters = { core = true, optimal = true, empowering = true, synergistic = true }
-local savedSnapshot
+local selectedSpellKey
 
 local function GetLoadouts()
     return AscensionSuite.Loadouts
@@ -84,65 +65,92 @@ local function CheckButtonIsOn(check)
 end
 
 local function SetStatus(text, good)
-    if not statusLabel then
+    if not W.statusLabel then
         return
     end
-    statusLabel:SetText(text or "")
+    W.statusLabel:SetText(text or "")
     if good == true then
-        statusLabel:SetTextColor(0.43, 0.81, 0.54, 1)
+        W.statusLabel:SetTextColor(0.43, 0.81, 0.54, 1)
     elseif good == false then
-        statusLabel:SetTextColor(0.88, 0.44, 0.44, 1)
+        W.statusLabel:SetTextColor(0.88, 0.44, 0.44, 1)
     else
-        statusLabel:SetTextColor(0.65, 0.61, 0.53, 1)
+        W.statusLabel:SetTextColor(0.65, 0.61, 0.53, 1)
     end
 end
 
 local function SetAutoStatus(text, good)
-    if not autoStatusLabel then
+    if not W.autoStatusLabel then
         return
     end
-    autoStatusLabel:SetText(text or "")
+    W.autoStatusLabel:SetText(text or "")
     if good == true then
-        autoStatusLabel:SetTextColor(0.43, 0.81, 0.54, 1)
+        W.autoStatusLabel:SetTextColor(0.43, 0.81, 0.54, 1)
     elseif good == false then
-        autoStatusLabel:SetTextColor(0.88, 0.44, 0.44, 1)
+        W.autoStatusLabel:SetTextColor(0.88, 0.44, 0.44, 1)
     else
-        autoStatusLabel:SetTextColor(0.65, 0.61, 0.53, 1)
+        W.autoStatusLabel:SetTextColor(0.65, 0.61, 0.53, 1)
     end
 end
 
+local function IsWildcard()
+    local api = GetAPI()
+    return api ~= nil and api.IsWildcardModeActive() == true
+end
+
+local function SpellRowKey(rawRow, described)
+    if type(rawRow) == "table" then
+        local entryId = rawRow.entryId
+        local entryType = rawRow.entryType
+        if entryId and type(entryType) == "string" and entryType ~= "" then
+            return entryType .. ":" .. tostring(entryId)
+        end
+        if rawRow.spellId then
+            return "spell:" .. tostring(rawRow.spellId)
+        end
+    end
+    if type(described) == "table" then
+        if described.entryId and described.entryType then
+            return described.entryType .. ":" .. tostring(described.entryId)
+        end
+        if described.spellId then
+            return "spell:" .. tostring(described.spellId)
+        end
+    end
+    return nil
+end
+
 local function PersistActiveSection()
-    if not selectedId or not notesEdit then
+    if not selectedId or not W.notesEdit then
         return
     end
     local Loadouts = GetLoadouts()
     if not Loadouts or activeSection == "SPELLS_AND_TALENTS" or activeSection == "EQUIPMENT" then
-        if activeSection == "EQUIPMENT" and notesEdit.GetText then
-            Loadouts.SetSectionText(selectedId, activeSection, notesEdit:GetText())
+        if activeSection == "EQUIPMENT" and W.notesEdit.GetText then
+            Loadouts.SetSectionText(selectedId, activeSection, W.notesEdit:GetText())
         end
         return
     end
-    if notesEdit.GetText then
-        Loadouts.SetSectionText(selectedId, activeSection, notesEdit:GetText())
+    if W.notesEdit.GetText then
+        Loadouts.SetSectionText(selectedId, activeSection, W.notesEdit:GetText())
     end
 end
 
 local function RefreshShareBox()
-    if not shareBox then
+    if not W.shareBox then
         return
     end
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
-        shareBox:SetText("")
+        W.shareBox:SetText("")
         return
     end
     local text = Loadouts.ExportString(selectedId) or ""
-    shareBox:SetText(text)
-    if shareBox.SetCursorPosition then
-        shareBox:SetCursorPosition(0)
+    W.shareBox:SetText(text)
+    if W.shareBox.SetCursorPosition then
+        W.shareBox:SetCursorPosition(0)
     end
-    if shareBox.HighlightText then
-        shareBox:HighlightText(0, 0)
+    if W.shareBox.HighlightText then
+        W.shareBox:HighlightText(0, 0)
     end
 end
 
@@ -199,6 +207,9 @@ local function FillSpellRow(row, data, position)
         row._spell:Hide()
         row._groupLabel:SetText(data.label or "?")
         row:SetHeight(GROUP_HEIGHT)
+        row._raw = nil
+        row._described = nil
+        row._select:Hide()
         row:Show()
         return
     end
@@ -207,6 +218,13 @@ local function FillSpellRow(row, data, position)
     row._spell:Show()
     row:SetHeight(ROW_HEIGHT)
     local entry = data.entry or {}
+    local raw = entry.raw or entry
+    row._raw = raw
+    row._described = entry
+    row._displayId = entry.displayId or entry.spellId or entry.entryId
+    row._internalId = entry.entryId
+    row._name = entry.name
+
     row._nameLabel:SetText(entry.name or "?")
     row._tagLabel:SetText(entry.tagLabel or "")
     if entry.desired then
@@ -216,6 +234,13 @@ local function FillSpellRow(row, data, position)
     end
     row._icon:SetTexture(entry.icon or PLACEHOLDER_ICON)
 
+    local key = SpellRowKey(raw, entry)
+    if selectedSpellKey and key and key == selectedSpellKey then
+        row._select:Show()
+    else
+        row._select:Hide()
+    end
+
     if position % 2 == 0 then
         row._stripe:Show()
     else
@@ -224,37 +249,119 @@ local function FillSpellRow(row, data, position)
     row:Show()
 end
 
-local function UpdateHeader(loadout)
-    if not loadout then
-        if nameLabel then nameLabel:SetText("No build selected") end
-        if authorChip then authorChip:SetText("") end
-        if categoryChip then categoryChip:Hide() end
-        if complexityChip then complexityChip:Hide() end
+local function ShowSpellRowTooltip(row)
+    local api = GetAPI()
+    if not api or not row._displayId or not GameTooltip then
         return
     end
 
-    if nameLabel then
-        nameLabel:SetText(loadout.name or "Untitled build")
-    end
-    if authorChip then
-        authorChip:SetText(string.format("Author %s", loadout.author or "?"))
-    end
-    if categoryChip then
-        if loadout.category and loadout.category ~= "" then
-            categoryChip:SetText(loadout.category)
-            categoryChip:Show()
-        else
-            categoryChip:SetText("Category —")
-            categoryChip:Show()
+    local internalId = row._internalId
+    local usedNative = api.ShowEntryTooltip(row, row._displayId, "ANCHOR_RIGHT", internalId)
+
+    if not usedNative then
+        GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+        if type(GameTooltip.ClearLines) == "function" then
+            GameTooltip:ClearLines()
+        end
+
+        local lines = api.GetEntryTooltipLines(row._displayId)
+        for index = 1, #lines do
+            if index == 1 then
+                GameTooltip:SetText(lines[index], 1, 0.82, 0.3)
+            else
+                GameTooltip:AddLine(lines[index], 1, 1, 1, true)
+            end
         end
     end
-    if complexityChip then
-        if loadout.complexity and loadout.complexity ~= "" then
-            complexityChip:SetText(string.format("Complexity %s", loadout.complexity))
-            complexityChip:Show()
+
+    local described = row._described
+    if described and described.desired then
+        GameTooltip:AddLine("Marked Desired in Ascension", 0.35, 0.71, 1)
+    elseif IsWildcard() then
+        GameTooltip:AddLine("Right-click to toggle Desired", 0.6, 0.6, 0.6)
+    else
+        GameTooltip:AddLine("Desired sync happens in Wildcard mode", 0.6, 0.6, 0.6)
+    end
+    GameTooltip:AddLine("Left-click selects this row", 0.6, 0.6, 0.6)
+    GameTooltip:Show()
+end
+
+local function SelectSpellRow(row, note)
+    local key = SpellRowKey(row._raw, row._described)
+    if not key then
+        return false
+    end
+    selectedSpellKey = key
+    LoadoutsPanel.Refresh(note)
+    return true
+end
+
+local function OnSpellRowToggleDesired(row)
+    local Loadouts = GetLoadouts()
+    local raw = row._raw
+    if not Loadouts or not selectedId or not raw then
+        return
+    end
+
+    if not IsWildcard() then
+        SelectSpellRow(row, "Selected " .. (row._name or "entry")
+            .. ". Desired is Wildcard-only — Apply marks rows when you enter Wildcard.")
+        return
+    end
+
+    local ok, result, label = Loadouts.ToggleEntryDesired(selectedId, raw)
+    if not ok then
+        SelectSpellRow(row, "Selected " .. (label or row._name or "entry")
+            .. ". Ascension will not accept that entry as Desired right now.")
+        return
+    end
+
+    SelectSpellRow(row)
+end
+
+local function OnSpellRowClick(row, button)
+    if button == "RightButton" then
+        OnSpellRowToggleDesired(row)
+        return
+    end
+    SelectSpellRow(row, "Selected " .. (row._name or "entry") .. ".")
+end
+
+local function UpdateHeader(loadout)
+    if not loadout then
+        if W.nameLabel then W.nameLabel:SetText("No build selected") end
+        if W.authorChip then W.authorChip:SetText("") end
+        if W.categoryChip then W.categoryChip:Hide() end
+        if W.complexityChip then W.complexityChip:Hide() end
+        return
+    end
+
+    if W.nameLabel then
+        W.nameLabel:SetText(loadout.name or "Untitled build")
+        W.nameLabel:Show()
+    end
+    if W.nameEdit then
+        W.nameEdit:Hide()
+    end
+    if W.authorChip then
+        W.authorChip:SetText(string.format("Author %s", loadout.author or "?"))
+    end
+    if W.categoryChip then
+        if loadout.category and loadout.category ~= "" then
+            W.categoryChip:SetText(loadout.category)
+            W.categoryChip:Show()
         else
-            complexityChip:SetText("Complexity —")
-            complexityChip:Show()
+            W.categoryChip:SetText("Category —")
+            W.categoryChip:Show()
+        end
+    end
+    if W.complexityChip then
+        if loadout.complexity and loadout.complexity ~= "" then
+            W.complexityChip:SetText(string.format("Complexity %s", loadout.complexity))
+            W.complexityChip:Show()
+        else
+            W.complexityChip:SetText("Complexity —")
+            W.complexityChip:Show()
         end
     end
 end
@@ -295,7 +402,7 @@ local function FillEquipmentRow(row, described)
 end
 
 local function RefreshEquipmentRows(loadout)
-    if not equipmentFrame then
+    if not W.equipmentFrame then
         return 0
     end
 
@@ -313,7 +420,7 @@ local function RefreshEquipmentRows(loadout)
     end
 
     for index = 1, MAX_EQUIPMENT_ROWS do
-        local row = equipmentRows[index]
+        local row = W.equipmentRows[index]
         if row then
             FillEquipmentRow(row, stubs[index])
             if not stubs[index] then
@@ -326,30 +433,31 @@ local function RefreshEquipmentRows(loadout)
 end
 
 local function RefreshSectionContent(loadout)
-    if not sectionTitle or not sectionCount then
+    if not W.sectionTitle or not W.sectionCount then
         return
     end
 
     local Loadouts = GetLoadouts()
     local label = Loadouts and Loadouts.GetSectionLabel(activeSection) or activeSection
-    sectionTitle:SetText(label)
+    W.sectionTitle:SetText(label)
 
     if activeSection == "SPELLS_AND_TALENTS" then
-        if filterBar then filterBar:Show() end
-        if notesEdit then notesEdit:Hide() end
-        if equipmentFrame then equipmentFrame:Hide() end
-        if spellListFrame then spellListFrame:Show() end
+        if W.prosPreview then W.prosPreview:Hide() end
+        if W.filterBar then W.filterBar:Show() end
+        if W.notesEdit then W.notesEdit:Hide() end
+        if W.equipmentFrame then W.equipmentFrame:Hide() end
+        if W.spellListFrame then W.spellListFrame:Show() end
 
         local total = BuildSpellDisplayRows(loadout)
-        sectionCount:SetText(string.format("%d entries \194\183 grouped by class like Archetypes", total))
+        W.sectionCount:SetText(string.format("%d entries \194\183 grouped by class like Archetypes", total))
 
-        if type(_G.FauxScrollFrame_Update) == "function" and spellScrollFrame then
-            _G.FauxScrollFrame_Update(spellScrollFrame, #displayRows, VISIBLE_SPELL_ROWS, ROW_HEIGHT)
+        if type(_G.FauxScrollFrame_Update) == "function" and W.spellScrollFrame then
+            _G.FauxScrollFrame_Update(W.spellScrollFrame, #displayRows, VISIBLE_SPELL_ROWS, ROW_HEIGHT)
         end
 
-        local offset = ScrollOffset(spellScrollFrame)
+        local offset = ScrollOffset(W.spellScrollFrame)
         for index = 1, VISIBLE_SPELL_ROWS do
-            local row = spellRows[index]
+            local row = W.spellRows[index]
             local data = displayRows[index + offset]
             if data then
                 FillSpellRow(row, data, index)
@@ -360,44 +468,58 @@ local function RefreshSectionContent(loadout)
         return
     end
 
-    if spellListFrame then spellListFrame:Hide() end
-    if filterBar then filterBar:Hide() end
-    if notesEdit then notesEdit:Show() end
+    if W.spellListFrame then W.spellListFrame:Hide() end
+    if W.filterBar then W.filterBar:Hide() end
+    if W.notesEdit then W.notesEdit:Show() end
 
-    if activeSection == "EQUIPMENT" and equipmentFrame and loadout then
-        equipmentFrame:Show()
+    if activeSection == "EQUIPMENT" and W.equipmentFrame and loadout then
+        W.equipmentFrame:Show()
         local stubCount = RefreshEquipmentRows(loadout)
-        sectionCount:SetText(string.format("%d equipment stubs from archetype import", stubCount))
+        W.sectionCount:SetText(string.format("%d equipment stubs from archetype import", stubCount))
 
-        if notesEdit then
-            notesEdit:Show()
-            if notesEdit.SetText then
+        if W.notesEdit then
+            W.notesEdit:Show()
+            if W.notesEdit.SetText then
                 local sections = Loadouts and Loadouts.GetSections(loadout) or {}
-                notesEdit:SetText(sections.EQUIPMENT or "")
+                W.notesEdit:SetText(sections.EQUIPMENT or "")
             end
-            if notesEdit.ClearAllPoints then
-                notesEdit:ClearAllPoints()
+            if W.notesEdit.ClearAllPoints then
+                W.notesEdit:ClearAllPoints()
                 if stubCount > 0 then
-                    notesEdit:SetPoint("TOPLEFT", equipmentFrame, "BOTTOMLEFT", 0, -8)
+                    W.notesEdit:SetPoint("TOPLEFT", W.equipmentFrame, "BOTTOMLEFT", 0, -8)
                 else
-                    notesEdit:SetPoint("TOPLEFT", sectionTitle, "BOTTOMLEFT", 0, -8)
+                    W.notesEdit:SetPoint("TOPLEFT", W.sectionTitle, "BOTTOMLEFT", 0, -8)
                 end
-                notesEdit:SetPoint("BOTTOMRIGHT", sectionContent, "BOTTOMRIGHT", -4, 0)
+                W.notesEdit:SetPoint("BOTTOMRIGHT", W.sectionContent, "BOTTOMRIGHT", -4, 0)
             end
         end
         return
     end
 
-    if equipmentFrame then equipmentFrame:Hide() end
-    sectionCount:SetText("local notes (SavedVariables)")
-    if notesEdit and notesEdit.SetText and loadout then
+    if W.equipmentFrame then W.equipmentFrame:Hide() end
+    if W.prosPreview then W.prosPreview:Hide() end
+    W.sectionCount:SetText("local notes (SavedVariables)")
+    if W.notesEdit and W.notesEdit.SetText and loadout then
         local sections = Loadouts and Loadouts.GetSections(loadout) or {}
-        notesEdit:SetText(sections[activeSection] or "")
-    end
-    if notesEdit and notesEdit.ClearAllPoints then
-        notesEdit:ClearAllPoints()
-        notesEdit:SetPoint("TOPLEFT", sectionTitle, "BOTTOMLEFT", 0, -8)
-        notesEdit:SetPoint("BOTTOMRIGHT", sectionContent, "BOTTOMRIGHT", -4, 0)
+        local raw = sections[activeSection] or ""
+        if activeSection == "PROS_AND_CONS" and Loadouts and Loadouts.FormatProsAndCons then
+            if W.prosPreview then
+                W.prosPreview:Show()
+                W.prosPreview:SetText(Loadouts.FormatProsAndCons(raw))
+            end
+            if W.notesEdit.ClearAllPoints then
+                W.notesEdit:ClearAllPoints()
+                W.notesEdit:SetPoint("TOPLEFT", W.prosPreview, "BOTTOMLEFT", 0, -6)
+                W.notesEdit:SetPoint("BOTTOMRIGHT", W.sectionContent, "BOTTOMRIGHT", -4, 0)
+            end
+        else
+            if W.notesEdit.ClearAllPoints then
+                W.notesEdit:ClearAllPoints()
+                W.notesEdit:SetPoint("TOPLEFT", W.sectionTitle, "BOTTOMLEFT", 0, -8)
+                W.notesEdit:SetPoint("BOTTOMRIGHT", W.sectionContent, "BOTTOMRIGHT", -4, 0)
+            end
+        end
+        W.notesEdit:SetText(raw)
     end
 end
 
@@ -406,8 +528,8 @@ local function RefreshNav()
     if not Loadouts then
         return
     end
-    for index = 1, #navButtons do
-        local button = navButtons[index]
+    for index = 1, #W.navButtons do
+        local button = W.navButtons[index]
         local key = Loadouts.SECTION_ORDER[index]
         if button and key then
             if key == activeSection then
@@ -422,7 +544,7 @@ local function RefreshNav()
 end
 
 function LoadoutsPanel.Refresh(note, good)
-    if not panel then
+    if not W.panel then
         return
     end
 
@@ -438,13 +560,13 @@ function LoadoutsPanel.Refresh(note, good)
         selectedId = #list > 0 and list[1].id or nil
     end
 
-    if type(_G.FauxScrollFrame_Update) == "function" and scrollFrame then
-        _G.FauxScrollFrame_Update(scrollFrame, #list, VISIBLE_LIST_ROWS, ROW_HEIGHT)
+    if type(_G.FauxScrollFrame_Update) == "function" and W.scrollFrame then
+        _G.FauxScrollFrame_Update(W.scrollFrame, #list, VISIBLE_LIST_ROWS, ROW_HEIGHT)
     end
 
-    local offset = ScrollOffset(scrollFrame)
+    local offset = ScrollOffset(W.scrollFrame)
     for index = 1, VISIBLE_LIST_ROWS do
-        local row = listRows[index]
+        local row = W.listRows[index]
         local meta = list[index + offset]
         if meta then
             FillListRow(row, meta, index)
@@ -467,20 +589,20 @@ function LoadoutsPanel.Refresh(note, good)
     end
 end
 
-local function SelectLoadout(id)
+H.SelectLoadout = function(id)
     PersistActiveSection()
     selectedId = id
-    savedSnapshot = nil
+    selectedSpellKey = nil
     LoadoutsPanel.Refresh()
 end
 
-local function SelectSection(key)
+H.SelectSection = function(key)
     PersistActiveSection()
     activeSection = key
     LoadoutsPanel.Refresh()
 end
 
-local function OnSaveBuild()
+H.OnSaveBuild = function()
     PersistActiveSection()
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
@@ -495,7 +617,7 @@ local function OnSaveBuild()
     LoadoutsPanel.Refresh(string.format("Saved %d entries from your wishlist.", count or 0), true)
 end
 
-local function OnResetBuild()
+H.OnResetBuild = function()
     PersistActiveSection()
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
@@ -506,7 +628,7 @@ local function OnResetBuild()
     LoadoutsPanel.Refresh("Discarded unsaved section edits.", true)
 end
 
-local function OnImportArchetype()
+H.OnImportArchetype = function()
     PersistActiveSection()
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
@@ -523,7 +645,7 @@ local function OnImportArchetype()
     LoadoutsPanel.Refresh(note, true)
 end
 
-local function OnLoadWishlist()
+H.OnLoadWishlist = function()
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
         SetStatus("Select a build first.", false)
@@ -541,7 +663,7 @@ local function OnLoadWishlist()
     LoadoutsPanel.Refresh(string.format("Loaded %d entries into the wishlist.", count or 0), true)
 end
 
-local function OnApplyDesired()
+H.OnApplyDesired = function()
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
         SetStatus("Select a build first.", false)
@@ -579,7 +701,7 @@ local function OnApplyDesired()
     LoadoutsPanel.Refresh(note .. ".", good)
 end
 
-local function OnSyncRapid()
+H.OnSyncRapid = function()
     local DesiredSync = AscensionSuite.DesiredSync
     if not DesiredSync or not DesiredSync.Sync then
         SetStatus("Desired sync is not available.", false)
@@ -604,7 +726,7 @@ local function OnSyncRapid()
     LoadoutsPanel.Refresh(note, added > 0)
 end
 
-local function OnCaptureKnown()
+H.OnCaptureKnown = function()
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
         SetStatus("Select a build first.", false)
@@ -619,7 +741,7 @@ local function OnCaptureKnown()
     LoadoutsPanel.Refresh(string.format("Captured %d Known entries into this build.", count or 0), true)
 end
 
-local function OnCycleCategory()
+H.OnCycleCategory = function()
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
         return
@@ -633,7 +755,7 @@ local function OnCycleCategory()
     LoadoutsPanel.Refresh()
 end
 
-local function OnCycleComplexity()
+H.OnCycleComplexity = function()
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
         return
@@ -647,7 +769,7 @@ local function OnCycleComplexity()
     LoadoutsPanel.Refresh()
 end
 
-local function OnStartAutoRoll()
+H.OnStartAutoRoll = function()
     local DB = AscensionSuite.Database
     local assists = DB and DB.GetAssists and DB.GetAssists() or {}
     if assists.autoRoll ~= true then
@@ -685,40 +807,74 @@ local function OnStartAutoRoll()
     SetAutoStatus("Auto-Roll running…", true)
 end
 
-local function OnAddSpell()
+H.OnAddSpellFromInput = function()
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
         SetStatus("Select a build first.", false)
         return
     end
-    local Wishlist = GetWishlist()
-    if not Wishlist or not Wishlist.GetItems then
-        SetStatus("Wishlist is not available.", false)
+    if not W.addSpellBox then
         return
     end
-    local items = Wishlist.GetItems()
-    local added = 0
-    for index = 1, #items do
-        local item = items[index]
-        local ok = Loadouts.AddEntry(selectedId, {
-            entryId = item.entryId,
-            entryType = item.entryType,
-            spellId = item.spellId,
-            name = item.name,
-            desired = Wishlist.IsItemDesired and Wishlist.IsItemDesired(item) or false,
-        })
-        if ok then
-            added = added + 1
+
+    local text = W.addSpellBox:GetText()
+    local id = tonumber(text)
+    if not id then
+        SetStatus("Type a spell id or an advancement entry id.", false)
+        return
+    end
+
+    local ok, result = Loadouts.AddById(selectedId, id)
+    W.addSpellBox:SetText("")
+
+    if not ok then
+        if result == "duplicate" then
+            SetStatus("That entry is already on this build.", false)
+        elseif result == "entry_limit" then
+            SetStatus("This build already has the maximum number of entries.", false)
+        else
+            SetStatus("Could not add " .. tostring(id) .. ".", false)
         end
-    end
-    if added == 0 then
-        SetStatus("No new spells added — put rows on the Wishlist first.", false)
         return
     end
-    LoadoutsPanel.Refresh(string.format("Added %d spell(s) from the wishlist.", added), true)
+
+    LoadoutsPanel.Refresh(string.format("Added entry %d to this build.", id), true)
 end
 
-local function OnNewBuild()
+H.OnRenameBuild = function()
+    local Loadouts = GetLoadouts()
+    if not Loadouts or not selectedId or not W.nameEdit then
+        SetStatus("Select a build first.", false)
+        return
+    end
+
+    local loadout = Loadouts.Get(selectedId)
+    if not loadout then
+        return
+    end
+
+    if W.nameEdit.IsShown and W.nameEdit:IsShown() then
+        local newName = W.nameEdit:GetText()
+        Loadouts.Rename(selectedId, newName)
+        if W.nameLabel then
+            W.nameLabel:Show()
+        end
+        W.nameEdit:Hide()
+        LoadoutsPanel.Refresh(string.format("Renamed build to \"%s\".", newName or "Untitled"), true)
+        return
+    end
+
+    if W.nameLabel then
+        W.nameLabel:Hide()
+    end
+    W.nameEdit:SetText(loadout.name or "")
+    W.nameEdit:Show()
+    if W.nameEdit.SetFocus then
+        W.nameEdit:SetFocus()
+    end
+end
+
+H.OnNewBuild = function()
     local Loadouts = GetLoadouts()
     if not Loadouts then
         return
@@ -733,7 +889,7 @@ local function OnNewBuild()
     LoadoutsPanel.Refresh("Created a new build.", true)
 end
 
-local function OnDeleteBuild()
+H.OnDeleteBuild = function()
     local Loadouts = GetLoadouts()
     if not Loadouts or not selectedId then
         SetStatus("Nothing selected to delete.", false)
@@ -749,11 +905,11 @@ local function OnDeleteBuild()
     LoadoutsPanel.Refresh(string.format("Deleted \"%s\".", name or "build"), true)
 end
 
-local function OnCopyShare()
-    if not shareBox then
+H.OnCopyShare = function()
+    if not W.shareBox then
         return
     end
-    local text = shareBox:GetText()
+    local text = W.shareBox:GetText()
     if text == "" then
         SetStatus("Nothing to copy — select a saved build.", false)
         return
@@ -766,12 +922,12 @@ local function OnCopyShare()
     end
 end
 
-local function OnImportShare()
+H.OnImportShare = function()
     local Loadouts = GetLoadouts()
     if not Loadouts then
         return
     end
-    local text = shareBox and shareBox:GetText() or ""
+    local text = W.shareBox and W.shareBox:GetText() or ""
     if text == "" then
         SetStatus("Paste a share string into the box, then Import.", false)
         return
@@ -806,7 +962,7 @@ local function NeutralizeScrollChrome(scroll)
     end
 end
 
-local function CreateListRow(parent, index, onClick)
+local function CreateListRow(parent, index)
     local row = CreateFrame("Button", FRAME_NAME .. "ListRow" .. index, parent)
     row:SetHeight(ROW_HEIGHT)
 
@@ -832,21 +988,31 @@ local function CreateListRow(parent, index, onClick)
     row._metaLabel = metaLabel
 
     row:SetScript("OnClick", function()
-        if row._id and onClick then
-            onClick(row._id)
+        if row._id then
+            H.SelectLoadout(row._id)
         end
     end)
     return row
 end
 
 local function CreateSpellRow(parent, index)
-    local row = CreateFrame("Frame", FRAME_NAME .. "SpellRow" .. index, parent)
+    local row = CreateFrame("Button", FRAME_NAME .. "SpellRow" .. index, parent)
     row:SetHeight(ROW_HEIGHT)
 
     local stripe = row:CreateTexture(nil, "BACKGROUND")
     stripe:SetAllPoints()
     stripe:SetTexture(1, 1, 1, 0.03)
     row._stripe = stripe
+
+    local select = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+    select:SetAllPoints()
+    select:SetTexture(1, 0.82, 0.2, 0.16)
+    select:Hide()
+    row._select = select
+
+    local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetTexture(1, 0.82, 0.2, 0.12)
 
     local group = CreateFrame("Frame", nil, row)
     group:SetAllPoints()
@@ -888,6 +1054,23 @@ local function CreateSpellRow(parent, index)
     nameLabel:SetPoint("RIGHT", tagLabel, "LEFT", -8, 0)
     nameLabel:SetJustifyH("LEFT")
     row._nameLabel = nameLabel
+
+    row:SetScript("OnEnter", function()
+        if row._raw then
+            ShowSpellRowTooltip(row)
+        end
+    end)
+    row:SetScript("OnLeave", function()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
+    row:SetScript("OnClick", function(_, button)
+        if row._raw then
+            OnSpellRowClick(row, button)
+        end
+    end)
+    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
     return row
 end
@@ -971,47 +1154,47 @@ local function CreateNavButton(parent, key, yOffset)
     end
 
     button:SetScript("OnClick", function()
-        SelectSection(key)
+        H.SelectSection(key)
     end)
     return button
 end
 
 local function BuildPanel(parent, width)
     local contentWidth = width or 640
-    panel = CreateFrame("Frame", FRAME_NAME, parent)
-    panel:SetAllPoints()
-    panelParent = parent
-    panelWidth = contentWidth
+    W.panel = CreateFrame("Frame", FRAME_NAME, parent)
+    W.panel:SetAllPoints()
+    W.panelParent = parent
+    W.panelWidth = contentWidth
 
     local shellWidth = contentWidth - LIST_WIDTH - 8
 
-    local listLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local listLabel = W.panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     listLabel:SetPoint("TOPLEFT", 0, 0)
     listLabel:SetText("Saved builds")
 
-    listFrame, scrollFrame = BuildScrollList(panel, LIST_WIDTH, VISIBLE_LIST_ROWS * ROW_HEIGHT + LIST_INSET * 2,
-        CreateListRow, listRows, VISIBLE_LIST_ROWS, function() LoadoutsPanel.Refresh() end)
-    listFrame:SetPoint("TOPLEFT", 0, -16)
+    W.listFrame, W.scrollFrame = BuildScrollList(W.panel, LIST_WIDTH, VISIBLE_LIST_ROWS * ROW_HEIGHT + LIST_INSET * 2,
+        CreateListRow, W.listRows, VISIBLE_LIST_ROWS, function() LoadoutsPanel.Refresh() end)
+    W.listFrame:SetPoint("TOPLEFT", 0, -16)
 
-    local newButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    local newButton = CreateFrame("Button", nil, W.panel, "UIPanelButtonTemplate")
     newButton:SetWidth(58)
     newButton:SetHeight(22)
-    newButton:SetPoint("TOPLEFT", listFrame, "BOTTOMLEFT", 0, -6)
+    newButton:SetPoint("TOPLEFT", W.listFrame, "BOTTOMLEFT", 0, -6)
     newButton:SetText("New")
-    newButton:SetScript("OnClick", OnNewBuild)
+    newButton:SetScript("OnClick", function() H.OnNewBuild() end)
 
-    local deleteButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    local deleteButton = CreateFrame("Button", nil, W.panel, "UIPanelButtonTemplate")
     deleteButton:SetWidth(58)
     deleteButton:SetHeight(22)
     deleteButton:SetPoint("LEFT", newButton, "RIGHT", 6, 0)
     deleteButton:SetText("Delete")
-    deleteButton:SetScript("OnClick", OnDeleteBuild)
+    deleteButton:SetScript("OnClick", function() H.OnDeleteBuild() end)
 
-    buildShell = CreateFrame("Frame", nil, panel)
-    buildShell:SetPoint("TOPLEFT", listFrame, "TOPRIGHT", 8, 0)
-    buildShell:SetWidth(shellWidth)
-    buildShell:SetHeight(430)
-    buildShell:SetBackdrop({
+    W.buildShell = CreateFrame("Frame", nil, W.panel)
+    W.buildShell:SetPoint("TOPLEFT", W.listFrame, "TOPRIGHT", 8, 0)
+    W.buildShell:SetWidth(shellWidth)
+    W.buildShell:SetHeight(430)
+    W.buildShell:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true,
@@ -1019,14 +1202,14 @@ local function BuildPanel(parent, width)
         edgeSize = 12,
         insets = { left = 3, right = 3, top = 3, bottom = 3 },
     })
-    buildShell:SetBackdropColor(0.035, 0.03, 0.02, 0.95)
-    buildShell:SetBackdropBorderColor(0.45, 0.38, 0.20, 1)
+    W.buildShell:SetBackdropColor(0.035, 0.03, 0.02, 0.95)
+    W.buildShell:SetBackdropBorderColor(0.45, 0.38, 0.20, 1)
 
-    sectionSidebar = CreateFrame("Frame", nil, buildShell)
-    sectionSidebar:SetWidth(SIDEBAR_WIDTH)
-    sectionSidebar:SetPoint("TOPLEFT", 4, -4)
-    sectionSidebar:SetPoint("BOTTOMLEFT", 4, 4)
-    sectionSidebar:SetBackdrop({
+    W.sectionSidebar = CreateFrame("Frame", nil, W.buildShell)
+    W.sectionSidebar:SetWidth(SIDEBAR_WIDTH)
+    W.sectionSidebar:SetPoint("TOPLEFT", 4, -4)
+    W.sectionSidebar:SetPoint("BOTTOMLEFT", 4, 4)
+    W.sectionSidebar:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true,
@@ -1034,74 +1217,100 @@ local function BuildPanel(parent, width)
         edgeSize = 12,
         insets = { left = 2, right = 2, top = 2, bottom = 2 },
     })
-    sectionSidebar:SetBackdropColor(0.10, 0.09, 0.06, 1)
-    sectionSidebar:SetBackdropBorderColor(0.35, 0.30, 0.18, 1)
+    W.sectionSidebar:SetBackdropColor(0.10, 0.09, 0.06, 1)
+    W.sectionSidebar:SetBackdropBorderColor(0.35, 0.30, 0.18, 1)
 
     local Loadouts = GetLoadouts()
     local y = -4
     for index = 1, #(Loadouts and Loadouts.SECTION_ORDER or {}) do
         local key = Loadouts.SECTION_ORDER[index]
-        navButtons[index] = CreateNavButton(sectionSidebar, key, y)
+        W.navButtons[index] = CreateNavButton(W.sectionSidebar, key, y)
         y = y - 34
     end
 
-    mainColumn = CreateFrame("Frame", nil, buildShell)
-    mainColumn:SetPoint("TOPLEFT", sectionSidebar, "TOPRIGHT", 4, 0)
-    mainColumn:SetPoint("BOTTOMRIGHT", buildShell, "BOTTOMRIGHT", -4, 4)
+    W.mainColumn = CreateFrame("Frame", nil, W.buildShell)
+    W.mainColumn:SetPoint("TOPLEFT", W.sectionSidebar, "TOPRIGHT", 4, 0)
+    W.mainColumn:SetPoint("BOTTOMRIGHT", W.buildShell, "BOTTOMRIGHT", -4, 4)
 
-    local meta = CreateFrame("Frame", nil, mainColumn)
+    local meta = CreateFrame("Frame", nil, W.mainColumn)
     meta:SetPoint("TOPLEFT", 0, 0)
     meta:SetPoint("TOPRIGHT", 0, 0)
     meta:SetHeight(34)
 
-    nameLabel = meta:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    nameLabel:SetPoint("LEFT", 8, 0)
-    nameLabel:SetTextColor(1, 0.82, 0.2, 1)
-    nameLabel:SetText("No build selected")
+    W.nameLabel = meta:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    W.nameLabel:SetPoint("LEFT", 8, 0)
+    W.nameLabel:SetTextColor(1, 0.82, 0.2, 1)
+    W.nameLabel:SetText("No build selected")
 
-    authorChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    authorChip:SetPoint("LEFT", nameLabel, "RIGHT", 10, 0)
+    W.nameEdit = CreateFrame("EditBox", FRAME_NAME .. "NameEdit", meta, "InputBoxTemplate")
+    W.nameEdit:SetPoint("LEFT", 8, 0)
+    W.nameEdit:SetWidth(140)
+    W.nameEdit:SetHeight(22)
+    W.nameEdit:SetAutoFocus(false)
+    W.nameEdit:SetMaxLetters(64)
+    W.nameEdit:Hide()
+    W.nameEdit:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+        H.OnRenameBuild()
+    end)
+    W.nameEdit:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+        self:Hide()
+        if W.nameLabel then
+            W.nameLabel:Show()
+        end
+    end)
 
-    categoryChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    categoryChip:SetPoint("LEFT", authorChip, "RIGHT", 8, 0)
+    local renameButton = CreateFrame("Button", nil, meta, "UIPanelButtonTemplate")
+    renameButton:SetWidth(54)
+    renameButton:SetHeight(22)
+    renameButton:SetPoint("LEFT", W.nameLabel, "RIGHT", 4, 0)
+    renameButton:SetText("Rename")
+    renameButton:SetScript("OnClick", function() H.OnRenameBuild() end)
+
+    W.authorChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    W.authorChip:SetPoint("LEFT", renameButton, "RIGHT", 8, 0)
+
+    W.categoryChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    W.categoryChip:SetPoint("LEFT", W.authorChip, "RIGHT", 8, 0)
 
     local categoryButton = CreateFrame("Button", nil, meta)
-    categoryButton:SetPoint("LEFT", categoryChip, "LEFT", -4, 0)
-    categoryButton:SetPoint("RIGHT", categoryChip, "RIGHT", 4, 0)
+    categoryButton:SetPoint("LEFT", W.categoryChip, "LEFT", -4, 0)
+    categoryButton:SetPoint("RIGHT", W.categoryChip, "RIGHT", 4, 0)
     categoryButton:SetHeight(22)
-    categoryButton:SetScript("OnClick", OnCycleCategory)
+    categoryButton:SetScript("OnClick", function() H.OnCycleCategory() end)
 
-    complexityChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    complexityChip:SetPoint("LEFT", categoryChip, "RIGHT", 8, 0)
+    W.complexityChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    W.complexityChip:SetPoint("LEFT", W.categoryChip, "RIGHT", 8, 0)
 
     local complexityButton = CreateFrame("Button", nil, meta)
-    complexityButton:SetPoint("LEFT", complexityChip, "LEFT", -4, 0)
-    complexityButton:SetPoint("RIGHT", complexityChip, "RIGHT", 4, 0)
+    complexityButton:SetPoint("LEFT", W.complexityChip, "LEFT", -4, 0)
+    complexityButton:SetPoint("RIGHT", W.complexityChip, "RIGHT", 4, 0)
     complexityButton:SetHeight(22)
-    complexityButton:SetScript("OnClick", OnCycleComplexity)
+    complexityButton:SetScript("OnClick", function() H.OnCycleComplexity() end)
 
     local resetButton = CreateFrame("Button", nil, meta, "UIPanelButtonTemplate")
     resetButton:SetWidth(54)
     resetButton:SetHeight(22)
     resetButton:SetPoint("RIGHT", -4, 0)
     resetButton:SetText("Reset")
-    resetButton:SetScript("OnClick", OnResetBuild)
+    resetButton:SetScript("OnClick", function() H.OnResetBuild() end)
 
     local saveButton = CreateFrame("Button", nil, meta, "UIPanelButtonTemplate")
     saveButton:SetWidth(72)
     saveButton:SetHeight(22)
     saveButton:SetPoint("RIGHT", resetButton, "LEFT", -6, 0)
     saveButton:SetText("Save Build")
-    saveButton:SetScript("OnClick", OnSaveBuild)
+    saveButton:SetScript("OnClick", function() H.OnSaveBuild() end)
 
     local importButton = CreateFrame("Button", nil, meta, "UIPanelButtonTemplate")
     importButton:SetWidth(108)
     importButton:SetHeight(22)
     importButton:SetPoint("RIGHT", saveButton, "LEFT", -6, 0)
     importButton:SetText("Import Archetype…")
-    importButton:SetScript("OnClick", OnImportArchetype)
+    importButton:SetScript("OnClick", function() H.OnImportArchetype() end)
 
-    local autoBar = CreateFrame("Frame", nil, mainColumn)
+    local autoBar = CreateFrame("Frame", nil, W.mainColumn)
     autoBar:SetPoint("TOPLEFT", meta, "BOTTOMLEFT", 0, -4)
     autoBar:SetPoint("TOPRIGHT", meta, "BOTTOMRIGHT", 0, -4)
     autoBar:SetHeight(52)
@@ -1126,58 +1335,58 @@ local function BuildPanel(parent, width)
     applyButton:SetHeight(22)
     applyButton:SetPoint("TOPLEFT", autoLabel, "BOTTOMLEFT", 0, -4)
     applyButton:SetText("Apply \226\134\146 Desired")
-    applyButton:SetScript("OnClick", OnApplyDesired)
+    applyButton:SetScript("OnClick", function() H.OnApplyDesired() end)
 
     local rollButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
     rollButton:SetWidth(100)
     rollButton:SetHeight(22)
     rollButton:SetPoint("LEFT", applyButton, "RIGHT", 6, 0)
     rollButton:SetText("Start Auto-Roll")
-    rollButton:SetScript("OnClick", OnStartAutoRoll)
+    rollButton:SetScript("OnClick", function() H.OnStartAutoRoll() end)
 
     local syncButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
     syncButton:SetWidth(108)
     syncButton:SetHeight(22)
     syncButton:SetPoint("LEFT", rollButton, "RIGHT", 6, 0)
     syncButton:SetText("Sync from Rapid")
-    syncButton:SetScript("OnClick", OnSyncRapid)
+    syncButton:SetScript("OnClick", function() H.OnSyncRapid() end)
 
     local wishButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
     wishButton:SetWidth(88)
     wishButton:SetHeight(22)
     wishButton:SetPoint("LEFT", syncButton, "RIGHT", 6, 0)
     wishButton:SetText("\226\134\222 Wishlist")
-    wishButton:SetScript("OnClick", OnLoadWishlist)
+    wishButton:SetScript("OnClick", function() H.OnLoadWishlist() end)
 
     local captureButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
     captureButton:SetWidth(100)
     captureButton:SetHeight(22)
     captureButton:SetPoint("LEFT", wishButton, "RIGHT", 6, 0)
     captureButton:SetText("Capture Known")
-    captureButton:SetScript("OnClick", OnCaptureKnown)
+    captureButton:SetScript("OnClick", function() H.OnCaptureKnown() end)
 
-    autoStatusLabel = autoBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    autoStatusLabel:SetPoint("TOPLEFT", applyButton, "BOTTOMLEFT", 0, -4)
-    autoStatusLabel:SetPoint("RIGHT", autoBar, "RIGHT", -8, 0)
-    autoStatusLabel:SetJustifyH("LEFT")
+    W.autoStatusLabel = autoBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    W.autoStatusLabel:SetPoint("TOPLEFT", applyButton, "BOTTOMLEFT", 0, -4)
+    W.autoStatusLabel:SetPoint("RIGHT", autoBar, "RIGHT", -8, 0)
+    W.autoStatusLabel:SetJustifyH("LEFT")
 
-    local content = CreateFrame("Frame", nil, mainColumn)
-    sectionContent = content
+    local content = CreateFrame("Frame", nil, W.mainColumn)
+    W.sectionContent = content
     content:SetPoint("TOPLEFT", autoBar, "BOTTOMLEFT", 0, -6)
-    content:SetPoint("BOTTOMRIGHT", mainColumn, "BOTTOMRIGHT", 0, 58)
+    content:SetPoint("BOTTOMRIGHT", W.mainColumn, "BOTTOMRIGHT", 0, 58)
 
-    sectionTitle = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    sectionTitle:SetPoint("TOPLEFT", 4, -2)
-    sectionTitle:SetTextColor(1, 0.82, 0.2, 1)
+    W.sectionTitle = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    W.sectionTitle:SetPoint("TOPLEFT", 4, -2)
+    W.sectionTitle:SetTextColor(1, 0.82, 0.2, 1)
 
-    sectionCount = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    sectionCount:SetPoint("TOPRIGHT", -4, -4)
-    sectionCount:SetJustifyH("RIGHT")
+    W.sectionCount = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    W.sectionCount:SetPoint("TOPRIGHT", -4, -4)
+    W.sectionCount:SetJustifyH("RIGHT")
 
-    filterBar = CreateFrame("Frame", nil, content)
-    filterBar:SetPoint("TOPLEFT", sectionTitle, "BOTTOMLEFT", 0, -8)
-    filterBar:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -24)
-    filterBar:SetHeight(24)
+    W.filterBar = CreateFrame("Frame", nil, content)
+    W.filterBar:SetPoint("TOPLEFT", W.sectionTitle, "BOTTOMLEFT", 0, -8)
+    W.filterBar:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -24)
+    W.filterBar:SetHeight(24)
 
     local filterDefs = {
         { key = "core", label = "Core" },
@@ -1188,7 +1397,7 @@ local function BuildPanel(parent, width)
     local lastCheck
     for index = 1, #filterDefs do
         local def = filterDefs[index]
-        local check = CreateFrame("CheckButton", nil, filterBar, "UICheckButtonTemplate")
+        local check = CreateFrame("CheckButton", nil, W.filterBar, "UICheckButtonTemplate")
         check:SetWidth(20)
         check:SetHeight(20)
         if lastCheck then
@@ -1197,7 +1406,7 @@ local function BuildPanel(parent, width)
             check:SetPoint("LEFT", 0, 0)
         end
         check:SetChecked(true)
-        local text = filterBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        local text = W.filterBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         text:SetPoint("LEFT", check, "RIGHT", 2, 0)
         text:SetText(def.label)
         check:SetScript("OnClick", function()
@@ -1207,23 +1416,41 @@ local function BuildPanel(parent, width)
         lastCheck = check
     end
 
-    local addSpellButton = CreateFrame("Button", nil, filterBar, "UIPanelButtonTemplate")
-    addSpellButton:SetWidth(84)
+    local addSpellButton = CreateFrame("Button", nil, W.filterBar, "UIPanelButtonTemplate")
+    addSpellButton:SetWidth(44)
     addSpellButton:SetHeight(22)
     addSpellButton:SetPoint("RIGHT", 0, 0)
-    addSpellButton:SetText("+ Add Spell")
-    addSpellButton:SetScript("OnClick", OnAddSpell)
+    addSpellButton:SetText("Add")
+    addSpellButton:SetScript("OnClick", function() H.OnAddSpellFromInput() end)
+
+    W.addSpellBox = CreateFrame("EditBox", FRAME_NAME .. "AddSpell", W.filterBar, "InputBoxTemplate")
+    W.addSpellBox:SetHeight(22)
+    W.addSpellBox:SetWidth(72)
+    W.addSpellBox:SetPoint("RIGHT", addSpellButton, "LEFT", -6, 0)
+    W.addSpellBox:SetAutoFocus(false)
+    W.addSpellBox:SetNumeric(true)
+    W.addSpellBox:SetMaxLetters(9)
+    W.addSpellBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+        H.OnAddSpellFromInput()
+    end)
+
+    W.prosPreview = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    W.prosPreview:SetPoint("TOPLEFT", W.sectionTitle, "BOTTOMLEFT", 0, -8)
+    W.prosPreview:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -32)
+    W.prosPreview:SetJustifyH("LEFT")
+    W.prosPreview:Hide()
 
     local spellHeight = VISIBLE_SPELL_ROWS * ROW_HEIGHT + LIST_INSET * 2
-    spellListFrame, spellScrollFrame = BuildScrollList(content, shellWidth - SIDEBAR_WIDTH - 16, spellHeight,
-        CreateSpellRow, spellRows, VISIBLE_SPELL_ROWS, function() LoadoutsPanel.Refresh() end)
-    spellListFrame:SetPoint("TOPLEFT", filterBar, "BOTTOMLEFT", 0, -6)
+    W.spellListFrame, W.spellScrollFrame = BuildScrollList(content, shellWidth - SIDEBAR_WIDTH - 16, spellHeight,
+        CreateSpellRow, W.spellRows, VISIBLE_SPELL_ROWS, function() LoadoutsPanel.Refresh() end)
+    W.spellListFrame:SetPoint("TOPLEFT", W.filterBar, "BOTTOMLEFT", 0, -6)
 
-    equipmentFrame = CreateFrame("Frame", nil, content)
-    equipmentFrame:SetPoint("TOPLEFT", filterBar, "BOTTOMLEFT", 0, -6)
-    equipmentFrame:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -40)
-    equipmentFrame:SetHeight(MAX_EQUIPMENT_ROWS * EQUIPMENT_ROW_HEIGHT)
-    equipmentFrame:Hide()
+    W.equipmentFrame = CreateFrame("Frame", nil, content)
+    W.equipmentFrame:SetPoint("TOPLEFT", W.filterBar, "BOTTOMLEFT", 0, -6)
+    W.equipmentFrame:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, -40)
+    W.equipmentFrame:SetHeight(MAX_EQUIPMENT_ROWS * EQUIPMENT_ROW_HEIGHT)
+    W.equipmentFrame:Hide()
 
     local function CreateEquipmentRow(parent, index)
         local row = CreateFrame("Frame", FRAME_NAME .. "EquipRow" .. index, parent)
@@ -1247,19 +1474,19 @@ local function BuildPanel(parent, width)
     end
 
     for index = 1, MAX_EQUIPMENT_ROWS do
-        equipmentRows[index] = CreateEquipmentRow(equipmentFrame, index)
-        equipmentRows[index]:Hide()
+        W.equipmentRows[index] = CreateEquipmentRow(W.equipmentFrame, index)
+        W.equipmentRows[index]:Hide()
     end
 
-    notesEdit = CreateFrame("EditBox", FRAME_NAME .. "Notes", content, "InputBoxTemplate")
-    notesEdit:SetPoint("TOPLEFT", filterBar, "BOTTOMLEFT", 0, -6)
-    notesEdit:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -4, 0)
-    notesEdit:SetMultiLine(true)
-    notesEdit:SetAutoFocus(false)
-    notesEdit:SetMaxLetters(8000)
-    notesEdit:Hide()
+    W.notesEdit = CreateFrame("EditBox", FRAME_NAME .. "Notes", content, "InputBoxTemplate")
+    W.notesEdit:SetPoint("TOPLEFT", W.filterBar, "BOTTOMLEFT", 0, -6)
+    W.notesEdit:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -4, 0)
+    W.notesEdit:SetMultiLine(true)
+    W.notesEdit:SetAutoFocus(false)
+    W.notesEdit:SetMaxLetters(8000)
+    W.notesEdit:Hide()
 
-    local foot = CreateFrame("Frame", nil, mainColumn)
+    local foot = CreateFrame("Frame", nil, W.mainColumn)
     foot:SetPoint("BOTTOMLEFT", 0, 0)
     foot:SetPoint("BOTTOMRIGHT", 0, 0)
     foot:SetHeight(54)
@@ -1269,35 +1496,35 @@ local function BuildPanel(parent, width)
     copyButton:SetHeight(22)
     copyButton:SetPoint("BOTTOMLEFT", 0, 28)
     copyButton:SetText("Copy ASUITE1")
-    copyButton:SetScript("OnClick", OnCopyShare)
+    copyButton:SetScript("OnClick", function() H.OnCopyShare() end)
 
     local importShareButton = CreateFrame("Button", nil, foot, "UIPanelButtonTemplate")
     importShareButton:SetWidth(96)
     importShareButton:SetHeight(22)
     importShareButton:SetPoint("LEFT", copyButton, "RIGHT", 8, 0)
     importShareButton:SetText("Import string…")
-    importShareButton:SetScript("OnClick", OnImportShare)
+    importShareButton:SetScript("OnClick", function() H.OnImportShare() end)
 
-    shareBox = CreateFrame("EditBox", FRAME_NAME .. "Share", foot, "InputBoxTemplate")
-    shareBox:SetPoint("BOTTOMLEFT", copyButton, "TOPLEFT", 0, 4)
-    shareBox:SetPoint("BOTTOMRIGHT", foot, "BOTTOMRIGHT", 0, 28)
-    shareBox:SetHeight(44)
-    shareBox:SetMultiLine(true)
-    shareBox:SetAutoFocus(false)
-    shareBox:SetMaxLetters(8000)
+    W.shareBox = CreateFrame("EditBox", FRAME_NAME .. "Share", foot, "InputBoxTemplate")
+    W.shareBox:SetPoint("BOTTOMLEFT", copyButton, "TOPLEFT", 0, 4)
+    W.shareBox:SetPoint("BOTTOMRIGHT", foot, "BOTTOMRIGHT", 0, 28)
+    W.shareBox:SetHeight(44)
+    W.shareBox:SetMultiLine(true)
+    W.shareBox:SetAutoFocus(false)
+    W.shareBox:SetMaxLetters(8000)
 
-    statusLabel = foot:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    statusLabel:SetPoint("TOPRIGHT", foot, "TOPRIGHT", 0, -2)
-    statusLabel:SetPoint("LEFT", importShareButton, "RIGHT", 12, 0)
-    statusLabel:SetJustifyH("RIGHT")
+    W.statusLabel = foot:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    W.statusLabel:SetPoint("TOPRIGHT", foot, "TOPRIGHT", 0, -2)
+    W.statusLabel:SetPoint("LEFT", importShareButton, "RIGHT", 12, 0)
+    W.statusLabel:SetJustifyH("RIGHT")
 
     LoadoutsPanel.Refresh()
-    return panel
+    return W.panel
 end
 
 function LoadoutsPanel.EnsureBuilt(parent, width)
-    if panel then
-        return panel
+    if W.panel then
+        return W.panel
     end
     if type(parent) ~= "table" then
         return nil
@@ -1310,56 +1537,56 @@ function LoadoutsPanel.Create(parent, width)
 end
 
 function LoadoutsPanel.InvalidateLayout()
-    if not panel or not panelParent then
+    if not W.panel or not W.panelParent then
         return
     end
 
-    panel:ClearAllPoints()
-    panel:SetAllPoints(panelParent)
+    W.panel:ClearAllPoints()
+    W.panel:SetAllPoints(W.panelParent)
 
-    if not panelWidth then
+    if not W.panelWidth then
         return
     end
 
-    local shellWidth = panelWidth - LIST_WIDTH - 8
+    local shellWidth = W.panelWidth - LIST_WIDTH - 8
     local detailWidth = shellWidth - SIDEBAR_WIDTH - 16
 
-    if listFrame then
-        listFrame:SetWidth(LIST_WIDTH)
+    if W.listFrame then
+        W.listFrame:SetWidth(LIST_WIDTH)
         local rowWidth = LIST_WIDTH - LIST_INSET - SCROLLBAR_WIDTH
         for index = 1, VISIBLE_LIST_ROWS do
-            local row = listRows[index]
+            local row = W.listRows[index]
             if row then
                 row:SetWidth(rowWidth)
             end
         end
     end
 
-    if buildShell then
-        buildShell:SetWidth(shellWidth)
+    if W.buildShell then
+        W.buildShell:SetWidth(shellWidth)
     end
 
-    if spellListFrame then
-        spellListFrame:SetWidth(detailWidth)
+    if W.spellListFrame then
+        W.spellListFrame:SetWidth(detailWidth)
         local rowWidth = detailWidth - LIST_INSET - SCROLLBAR_WIDTH
         for index = 1, VISIBLE_SPELL_ROWS do
-            local row = spellRows[index]
+            local row = W.spellRows[index]
             if row then
                 row:SetWidth(rowWidth)
             end
         end
     end
 
-    if shareBox and shareBox.SetWidth then
-        shareBox:SetWidth(detailWidth)
+    if W.shareBox and W.shareBox.SetWidth then
+        W.shareBox:SetWidth(detailWidth)
     end
-    if statusLabel and statusLabel.SetWidth then
-        statusLabel:SetWidth(detailWidth * 0.55)
+    if W.statusLabel and W.statusLabel.SetWidth then
+        W.statusLabel:SetWidth(detailWidth * 0.55)
     end
 end
 
 function LoadoutsPanel.GetFrame()
-    return panel
+    return W.panel
 end
 
 function LoadoutsPanel.GetSelectedId()

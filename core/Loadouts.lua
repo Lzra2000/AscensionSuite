@@ -656,6 +656,7 @@ function Loadouts.GroupEntries(entries, filters)
                 order[#order + 1] = label
             end
             described.tagLabel = TagLabel(entries[index].tags)
+            described.raw = entries[index]
             groups[label][#groups[label] + 1] = described
         end
     end
@@ -689,6 +690,129 @@ function Loadouts.Rename(id, name, notes)
     end
     loadout.updatedAt = Now()
     return true
+end
+
+-- Color + / - lead lines like native Archetypes pros/cons (light reimplementation).
+function Loadouts.FormatProsAndCons(text)
+    if type(text) ~= "string" or text == "" then
+        return ""
+    end
+
+    local green = _G.GREEN_FONT_COLOR
+    local red = _G.RED_FONT_COLOR
+
+    local function WrapSign(sign, substr)
+        if sign == "+" then
+            if type(green) == "table" and type(green.WrapText) == "function" then
+                return green:WrapText("+" .. substr)
+            end
+            return "|cff00ff00+" .. substr .. "|r"
+        end
+        if type(red) == "table" and type(red.WrapText) == "function" then
+            return red:WrapText("-" .. substr)
+        end
+        return "|cffff0000-" .. substr .. "|r"
+    end
+
+    return text:gsub("(^|\n)([%+%-])%s*([^\n%+%-]+)", function(prefix, sign, substr)
+        return prefix .. WrapSign(sign, substr)
+    end)
+end
+
+function Loadouts.AddById(id, spellOrEntryId)
+    local loadout = Loadouts.Get(id)
+    if not loadout then
+        return false, "not_found"
+    end
+
+    local numericId = NormalizeId(spellOrEntryId)
+    if not numericId then
+        return false, "invalid_id"
+    end
+
+    local api = GetAPI()
+    local entryId, entryType, spellId, name
+
+    if api then
+        local entry = api.ResolveEntry(numericId)
+        if type(entry) == "table" then
+            entryId = NormalizeId(entry.ID or entry.Id or entry.id or entry.internalID or entry.InternalID)
+            entryType = NormalizeEntryType(entry.Type or entry.type or entry.entryType or entry.EntryType)
+            spellId = NormalizeId(api.GetEntrySpellID(numericId)) or numericId
+            name = api.GetEntryName(numericId)
+        end
+    end
+
+    if not spellId then
+        spellId = numericId
+    end
+
+    local ok, reason = Loadouts.AddEntry(id, {
+        entryId = entryId,
+        entryType = entryType,
+        spellId = spellId,
+        name = name,
+        desired = false,
+    })
+    if not ok then
+        return false, reason
+    end
+    return true, "added"
+end
+
+function Loadouts.ToggleEntryDesired(id, rawRow)
+    local loadout = Loadouts.Get(id)
+    if not loadout or type(rawRow) ~= "table" then
+        return false, "not_found"
+    end
+
+    local api = GetAPI()
+    local entryId, entryType, resolveErr = Loadouts.ResolveEntryRow(rawRow)
+    if not entryId or not entryType then
+        return false, resolveErr or "unresolved"
+    end
+
+    local Wishlist = GetWishlist()
+    local label = rawRow.name or tostring(rawRow.spellId or entryId or "?")
+    local nowDesired = rawRow.desired == true
+
+    if Wishlist and Wishlist.IsItemDesired then
+        nowDesired = Wishlist.IsItemDesired({
+            entryId = entryId,
+            entryType = entryType,
+            spellId = rawRow.spellId,
+            name = rawRow.name,
+        }) == true or nowDesired
+    elseif api and api.IsDesiredID then
+        nowDesired = api.IsDesiredID(entryId, entryType) == true or nowDesired
+    end
+
+    if api and api.IsWildcardModeActive and api.IsWildcardModeActive() then
+        if nowDesired then
+            if api.RemoveDesiredID then
+                api.RemoveDesiredID(entryId, entryType)
+            end
+            rawRow.desired = false
+            loadout.updatedAt = Now()
+            return true, false, label
+        end
+
+        if not api.CanAddDesiredID or not api.CanAddDesiredID(entryId, entryType) then
+            return false, "refused", label
+        end
+
+        local added, addReason = api.AddDesiredID(entryId, entryType)
+        if not added then
+            return false, addReason or "add_failed", label
+        end
+        rawRow.desired = true
+        loadout.updatedAt = Now()
+        return true, true, label
+    end
+
+    rawRow.desired = not nowDesired
+    loadout.updatedAt = Now()
+    return true, rawRow.desired == true, label
 end
 
 ------------------------------------------------------------------------
@@ -962,7 +1086,7 @@ function Loadouts.DescribeEntry(row)
         name = name or ("Entry " .. tostring(entryId or spellId or "?")),
         icon = icon,
         desired = desired,
-        displayId = entryId and ("e:" .. tostring(entryId)) or tostring(spellId or "?"),
+        displayId = spellId or entryId,
         tagLabel = TagLabel(row.tags),
         classGroup = row.classGroup,
     }
