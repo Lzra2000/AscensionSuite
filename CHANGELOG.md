@@ -3,6 +3,26 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.15 (2026-08-09) -- Auto-dismiss unlearn confirm during assists
+
+#### Fixed
+- **CONFIRM_UNLEARN_S / Scroll of Fortune I & II** no longer linger when Suite
+  assists roll into a keep-vs-unlearn decision: `IsDiceKeepOrUnlearnDecisionUp` blocks
+  `RollAbilities` / `AdvanceRapidRoll` while a leveling die already has `internalID`
+  set (revealed spell), which was the root cause of Suite opening the unlearn confirm
+  after Instant Dice Skip / DiceGuard / Unstick recovery.
+- **Auto-Roll** and **Instant Dice Skip recovery** auto-**Cancel** any visible unlearn
+  confirm (button 2 / `StaticPopup_Hide`) — never Accept — and stop Auto-Roll with a
+  one-time chat line: “Unlearn confirm dismissed — Suite never spends Scroll of Fortune.”
+- **`IsUnlearnConfirmVisible`** now scans visible StaticPopups for unlearn + Scroll of
+  Fortune token text (covers Scroll of Fortune I and II siblings).
+
+#### Added
+- `AscensionAPI.IsDiceKeepOrUnlearnDecisionUp`, `StaticPopupTextLooksLikeUnlearnTokenSpend`,
+  `CancelVisibleUnlearnConfirm`; `AnimationSkip.IsRecoveryActive`.
+- `tests/test_unlearn_guard.lua` coverage for revealed-`internalID` block, dismiss-on-assist,
+  and Scroll-of-Fortune text detection.
+
 ### 0.4.14 (2026-08-09) -- Wild Card dice hover/tooltip reset
 
 #### Fixed

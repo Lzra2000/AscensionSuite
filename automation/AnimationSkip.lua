@@ -44,6 +44,29 @@ local ensureFrame
 local ensurePending = false
 local ensureElapsed = 0
 local ENSURE_DEFER_SECONDS = 0.2
+local recoveryUntil = 0
+local RECOVERY_WINDOW_SECONDS = 3.0
+
+local function MarkDiceSkipRecovery()
+    if not ShouldSkipDice() then
+        return
+    end
+    local now = 0
+    if type(_G.GetTime) == "function" then
+        now = _G.GetTime()
+    end
+    recoveryUntil = now + RECOVERY_WINDOW_SECONDS
+end
+
+function AnimationSkip.IsRecoveryActive()
+    if recoveryUntil <= 0 then
+        return false
+    end
+    if type(_G.GetTime) ~= "function" then
+        return false
+    end
+    return _G.GetTime() < recoveryUntil
+end
 
 local function GetAssists()
     local DB = AscensionSuite.Database
@@ -89,6 +112,7 @@ local function ScheduleEnsureDiceClickable()
             end
             ensurePending = false
             ensureElapsed = 0
+            MarkDiceSkipRecovery()
             API.EnsureDiceClickable()
         end)
     end
