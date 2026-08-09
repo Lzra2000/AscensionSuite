@@ -262,7 +262,7 @@ assert(assists.autoRoll == false, "autoRoll still off before Save")
 -- Shared native chrome helpers used by every /asuite layer.
 local NC = AscensionSuite.NativeChrome
 assert(NC and NC.ApplyParchment and NC.ApplySidebar and NC.ApplyInsetList
-    and NC.ApplyNavButton and NC.ApplyToggleRow,
+    and NC.ApplyNavButton and NC.ApplyToggleRow and NC.ApplyMetaStrip,
     "NativeChrome helpers exposed")
 
 -- Wishlist tab: parchment body + inset list (not flat-dark leftover).

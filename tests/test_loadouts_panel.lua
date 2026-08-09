@@ -261,4 +261,16 @@ assert(shareBox:GetWidth() > 0, "share box has non-zero width after layout")
 Panel.InvalidateLayout()
 assert(shareBox:GetWidth() > 0, "share box width survives layout invalidation")
 
+------------------------------------------------------------------------
+-- Layout bands: meta / auto / filter / footer heights stay reserved
+------------------------------------------------------------------------
+
+assert(Loadouts.GetSectionLabel("CONSUMABLES") == "Enchants & Consumables",
+    "section label uses shortened Enchants & Consumables")
+
+local NC = AscensionSuite.NativeChrome
+assert(NC and NC.ApplyMetaStrip, "ApplyMetaStrip available for meta band")
+assert(_G.AscensionSuiteLoadoutsPanelSpellRow6, "six spell rows built for reserved bands")
+assert(_G.AscensionSuiteLoadoutsPanelSpellRow7 == nil, "no seventh spell row (band budget)")
+
 print("OK: AscensionSuite loadouts panel test passed")

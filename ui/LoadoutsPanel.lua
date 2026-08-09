@@ -16,7 +16,7 @@ local SIDEBAR_WIDTH = 148
 local ROW_HEIGHT = 26
 local GROUP_HEIGHT = 22
 local VISIBLE_LIST_ROWS = 5
-local VISIBLE_SPELL_ROWS = 8
+local VISIBLE_SPELL_ROWS = 6
 local LIST_INSET = 4
 local SCROLLBAR_WIDTH = 24
 local PLACEHOLDER_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -31,10 +31,14 @@ local H = {}
 
 local EQUIPMENT_ROW_HEIGHT = 28
 local MAX_EQUIPMENT_ROWS = 8
-local FOOTER_HEIGHT = 76
-local SHARE_VISIBLE_HEIGHT = 36
+local FOOTER_HEIGHT = 86
+local SHARE_VISIBLE_HEIGHT = 28
 local SHARE_SCROLL_CHILD_HEIGHT = 512
-local SECTION_TITLE_HEIGHT = 22
+local SECTION_TITLE_HEIGHT = 20
+local META_HEIGHT = 56
+local AUTO_BAR_HEIGHT = 94
+local FILTER_BAND_HEIGHT = 48
+local BUILD_ACTIONS_HEIGHT = 48
 local selectedId
 local activeSection = "SPELLS_AND_TALENTS"
 local displayRows = {}
@@ -1442,16 +1446,22 @@ local function CreateNavButton(parent, key, yOffset)
     button._accent = accent
 
     local label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    label:SetPoint("TOPLEFT", 10, -6)
+    label:SetPoint("TOPLEFT", 8, -5)
+    label:SetPoint("RIGHT", button, "RIGHT", -6, 0)
     label:SetJustifyH("LEFT")
     label:SetText(Loadouts and Loadouts.GetSectionLabel(key) or key)
     label:SetTextColor(0.92, 0.85, 0.65, 1)
+    if label.SetNonSpaceWrap then
+        label:SetNonSpaceWrap(false)
+    end
     button._label = label
 
     local hint = Loadouts and Loadouts.SECTION_HINTS and Loadouts.SECTION_HINTS[key]
     if hint then
         local hintLabel = button:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         hintLabel:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -1)
+        hintLabel:SetPoint("RIGHT", button, "RIGHT", -6, 0)
+        hintLabel:SetJustifyH("LEFT")
         hintLabel:SetText(hint)
         hintLabel:SetTextColor(0.70, 0.62, 0.42, 1)
         button._hint = hintLabel
@@ -1472,46 +1482,58 @@ local function BuildPanel(parent, width)
 
     local NC = Chrome()
     local shellWidth = contentWidth - LIST_WIDTH - 8
+    local halfBtn = math.floor((LIST_WIDTH - 6) / 2)
 
-    local listLabel = W.panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    listLabel:SetPoint("TOPLEFT", 4, -2)
+    -- Left column: builds list + actions that fit inside LIST_WIDTH (no Duplicate clip).
+    W.buildsCol = CreateFrame("Frame", nil, W.panel)
+    W.buildsCol:SetWidth(LIST_WIDTH)
+    W.buildsCol:SetPoint("TOPLEFT", 4, -2)
+    W.buildsCol:SetPoint("BOTTOMLEFT", 4, 4)
+
+    local listLabel = W.buildsCol:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    listLabel:SetPoint("TOPLEFT", 0, 0)
     listLabel:SetText("SAVED BUILDS")
     listLabel:SetTextColor(0.42, 0.30, 0.10, 1)
 
-    W.listFrame, W.scrollFrame = BuildScrollList(W.panel, LIST_WIDTH, VISIBLE_LIST_ROWS * ROW_HEIGHT + LIST_INSET * 2,
+    W.listFrame, W.scrollFrame = BuildScrollList(W.buildsCol, LIST_WIDTH, VISIBLE_LIST_ROWS * ROW_HEIGHT + LIST_INSET * 2,
         CreateListRow, W.listRows, VISIBLE_LIST_ROWS, function() LoadoutsPanel.Refresh() end)
-    W.listFrame:SetPoint("TOPLEFT", 4, -18)
+    W.listFrame:SetPoint("TOPLEFT", 0, -16)
 
-    local newButton = CreateFrame("Button", nil, W.panel, "UIPanelButtonTemplate")
-    newButton:SetWidth(58)
+    W.buildActions = CreateFrame("Frame", nil, W.buildsCol)
+    W.buildActions:SetPoint("TOPLEFT", W.listFrame, "BOTTOMLEFT", 0, -6)
+    W.buildActions:SetWidth(LIST_WIDTH)
+    W.buildActions:SetHeight(BUILD_ACTIONS_HEIGHT)
+
+    local newButton = CreateFrame("Button", nil, W.buildActions, "UIPanelButtonTemplate")
+    newButton:SetWidth(halfBtn)
     newButton:SetHeight(22)
-    newButton:SetPoint("TOPLEFT", W.listFrame, "BOTTOMLEFT", 0, -6)
+    newButton:SetPoint("TOPLEFT", 0, 0)
     newButton:SetText("New")
     newButton:SetScript("OnClick", function() H.OnNewBuild() end)
 
-    local deleteButton = CreateFrame("Button", nil, W.panel, "UIPanelButtonTemplate")
-    deleteButton:SetWidth(58)
+    local deleteButton = CreateFrame("Button", nil, W.buildActions, "UIPanelButtonTemplate")
+    deleteButton:SetWidth(halfBtn)
     deleteButton:SetHeight(22)
-    deleteButton:SetPoint("LEFT", newButton, "RIGHT", 6, 0)
+    deleteButton:SetPoint("TOPRIGHT", 0, 0)
     deleteButton:SetText("Delete")
     deleteButton:SetScript("OnClick", function() H.OnDeleteBuild() end)
 
-    local duplicateButton = CreateFrame("Button", nil, W.panel, "UIPanelButtonTemplate")
-    duplicateButton:SetWidth(68)
+    local duplicateButton = CreateFrame("Button", nil, W.buildActions, "UIPanelButtonTemplate")
+    duplicateButton:SetWidth(LIST_WIDTH)
     duplicateButton:SetHeight(22)
-    duplicateButton:SetPoint("LEFT", deleteButton, "RIGHT", 6, 0)
+    duplicateButton:SetPoint("TOPLEFT", newButton, "BOTTOMLEFT", 0, -4)
     duplicateButton:SetText("Duplicate")
     duplicateButton:SetScript("OnClick", function() H.OnDuplicateBuild() end)
 
     W.buildShell = CreateFrame("Frame", nil, W.panel)
-    W.buildShell:SetPoint("TOPLEFT", W.listFrame, "TOPRIGHT", 8, 0)
+    W.buildShell:SetPoint("TOPLEFT", W.buildsCol, "TOPRIGHT", 8, 0)
     W.buildShell:SetPoint("BOTTOMRIGHT", W.panel, "BOTTOMRIGHT", -4, 4)
     if NC and NC.ApplyParchment then
         NC.ApplyParchment(W.buildShell)
     end
 
     W.emptyPanel = CreateFrame("Frame", nil, W.panel)
-    W.emptyPanel:SetPoint("TOPLEFT", W.listFrame, "TOPRIGHT", 8, 0)
+    W.emptyPanel:SetPoint("TOPLEFT", W.buildsCol, "TOPRIGHT", 8, 0)
     W.emptyPanel:SetPoint("BOTTOMRIGHT", W.panel, "BOTTOMRIGHT", -4, 4)
     if NC and NC.ApplyParchment then
         NC.ApplyParchment(W.emptyPanel)
@@ -1562,20 +1584,32 @@ local function BuildPanel(parent, width)
     W.mainColumn:SetPoint("TOPLEFT", W.sectionSidebar, "TOPRIGHT", 4, 0)
     W.mainColumn:SetPoint("BOTTOMRIGHT", W.buildShell, "BOTTOMRIGHT", -4, 4)
 
+    -- META BAND (two rows): name/chips then Import/Save/Reset — no stack on Author.
     local meta = CreateFrame("Frame", nil, W.mainColumn)
+    W.meta = meta
     meta:SetPoint("TOPLEFT", 0, 0)
     meta:SetPoint("TOPRIGHT", 0, 0)
-    meta:SetHeight(34)
+    meta:SetHeight(META_HEIGHT)
+    if NC and NC.ApplyMetaStrip then
+        NC.ApplyMetaStrip(meta)
+    elseif NC and NC.ApplyInsetList then
+        NC.ApplyInsetList(meta)
+    end
 
-    W.nameLabel = meta:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    W.nameLabel:SetPoint("LEFT", 8, 0)
+    local metaRow1 = CreateFrame("Frame", nil, meta)
+    metaRow1:SetPoint("TOPLEFT", 4, -4)
+    metaRow1:SetPoint("TOPRIGHT", -4, -4)
+    metaRow1:SetHeight(22)
+
+    W.nameLabel = metaRow1:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    W.nameLabel:SetPoint("LEFT", 4, 0)
     W.nameLabel:SetTextColor(0.30, 0.20, 0.04, 1)
     W.nameLabel:SetText("No build selected")
 
-    W.nameEdit = CreateFrame("EditBox", FRAME_NAME .. "NameEdit", meta, "InputBoxTemplate")
-    W.nameEdit:SetPoint("LEFT", 8, 0)
+    W.nameEdit = CreateFrame("EditBox", FRAME_NAME .. "NameEdit", metaRow1, "InputBoxTemplate")
+    W.nameEdit:SetPoint("LEFT", 4, 0)
     W.nameEdit:SetWidth(140)
-    W.nameEdit:SetHeight(22)
+    W.nameEdit:SetHeight(20)
     W.nameEdit:SetAutoFocus(false)
     W.nameEdit:SetMaxLetters(64)
     W.nameEdit:Hide()
@@ -1591,143 +1625,152 @@ local function BuildPanel(parent, width)
         end
     end)
 
-    local renameButton = CreateFrame("Button", nil, meta, "UIPanelButtonTemplate")
+    local renameButton = CreateFrame("Button", nil, metaRow1, "UIPanelButtonTemplate")
     renameButton:SetWidth(54)
-    renameButton:SetHeight(22)
+    renameButton:SetHeight(20)
     renameButton:SetPoint("LEFT", W.nameLabel, "RIGHT", 4, 0)
     renameButton:SetText("Rename")
     renameButton:SetScript("OnClick", function() H.OnRenameBuild() end)
 
-    W.authorChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    W.authorChip = metaRow1:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     W.authorChip:SetPoint("LEFT", renameButton, "RIGHT", 8, 0)
 
-    W.categoryChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    W.categoryChip = metaRow1:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     W.categoryChip:SetPoint("LEFT", W.authorChip, "RIGHT", 8, 0)
 
-    local categoryButton = CreateFrame("Button", nil, meta)
+    local categoryButton = CreateFrame("Button", nil, metaRow1)
     categoryButton:SetPoint("LEFT", W.categoryChip, "LEFT", -4, 0)
     categoryButton:SetPoint("RIGHT", W.categoryChip, "RIGHT", 4, 0)
-    categoryButton:SetHeight(22)
+    categoryButton:SetHeight(20)
     categoryButton:SetScript("OnClick", function() H.OnCycleCategory() end)
 
-    W.complexityChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    W.complexityChip = metaRow1:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     W.complexityChip:SetPoint("LEFT", W.categoryChip, "RIGHT", 8, 0)
 
-    local complexityButton = CreateFrame("Button", nil, meta)
+    local complexityButton = CreateFrame("Button", nil, metaRow1)
     complexityButton:SetPoint("LEFT", W.complexityChip, "LEFT", -4, 0)
     complexityButton:SetPoint("RIGHT", W.complexityChip, "RIGHT", 4, 0)
-    complexityButton:SetHeight(22)
+    complexityButton:SetHeight(20)
     complexityButton:SetScript("OnClick", function() H.OnCycleComplexity() end)
 
-    W.characterChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    W.characterChip = metaRow1:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     W.characterChip:SetPoint("LEFT", W.complexityChip, "RIGHT", 8, 0)
 
-    local characterButton = CreateFrame("Button", nil, meta)
+    local characterButton = CreateFrame("Button", nil, metaRow1)
     characterButton:SetPoint("LEFT", W.characterChip, "LEFT", -4, 0)
     characterButton:SetPoint("RIGHT", W.characterChip, "RIGHT", 4, 0)
-    characterButton:SetHeight(22)
+    characterButton:SetHeight(20)
     characterButton:SetScript("OnClick", function() H.OnToggleCharacter() end)
 
-    local resetButton = CreateFrame("Button", nil, meta, "UIPanelButtonTemplate")
-    resetButton:SetWidth(54)
-    resetButton:SetHeight(22)
-    resetButton:SetPoint("RIGHT", -4, 0)
-    resetButton:SetText("Reset")
-    resetButton:SetScript("OnClick", function() H.OnResetBuild() end)
+    local metaRow2 = CreateFrame("Frame", nil, meta)
+    metaRow2:SetPoint("TOPLEFT", metaRow1, "BOTTOMLEFT", 0, -4)
+    metaRow2:SetPoint("TOPRIGHT", metaRow1, "BOTTOMRIGHT", 0, -4)
+    metaRow2:SetHeight(22)
 
-    local saveButton = CreateFrame("Button", nil, meta, "UIPanelButtonTemplate")
-    saveButton:SetWidth(72)
-    saveButton:SetHeight(22)
-    saveButton:SetPoint("RIGHT", resetButton, "LEFT", -6, 0)
-    saveButton:SetText("Save Build")
-    saveButton:SetScript("OnClick", function() H.OnSaveBuild() end)
-
-    local importButton = CreateFrame("Button", nil, meta, "UIPanelButtonTemplate")
+    local importButton = CreateFrame("Button", nil, metaRow2, "UIPanelButtonTemplate")
     importButton:SetWidth(108)
-    importButton:SetHeight(22)
-    importButton:SetPoint("RIGHT", saveButton, "LEFT", -6, 0)
+    importButton:SetHeight(20)
+    importButton:SetPoint("LEFT", 0, 0)
     importButton:SetText("Import Archetype…")
     importButton:SetScript("OnClick", function() H.OnImportArchetype() end)
 
+    local saveButton = CreateFrame("Button", nil, metaRow2, "UIPanelButtonTemplate")
+    saveButton:SetWidth(72)
+    saveButton:SetHeight(20)
+    saveButton:SetPoint("LEFT", importButton, "RIGHT", 6, 0)
+    saveButton:SetText("Save Build")
+    saveButton:SetScript("OnClick", function() H.OnSaveBuild() end)
+
+    local resetButton = CreateFrame("Button", nil, metaRow2, "UIPanelButtonTemplate")
+    resetButton:SetWidth(54)
+    resetButton:SetHeight(20)
+    resetButton:SetPoint("LEFT", saveButton, "RIGHT", 6, 0)
+    resetButton:SetText("Reset")
+    resetButton:SetScript("OnClick", function() H.OnResetBuild() end)
+
+    -- AUTOMATE BAND: buttons then status inside the bar (never over section title).
     local autoBar = CreateFrame("Frame", nil, W.mainColumn)
     W.autoBar = autoBar
     autoBar:SetPoint("TOPLEFT", meta, "BOTTOMLEFT", 0, -4)
     autoBar:SetPoint("TOPRIGHT", meta, "BOTTOMRIGHT", 0, -4)
-    autoBar:SetHeight(68)
+    autoBar:SetHeight(AUTO_BAR_HEIGHT)
     if NC and NC.ApplyInsetList then
         NC.ApplyInsetList(autoBar)
     end
 
     local autoLabel = autoBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    autoLabel:SetPoint("TOPLEFT", 8, -6)
+    autoLabel:SetPoint("TOPLEFT", 8, -5)
     autoLabel:SetText("AUTOMATE")
     autoLabel:SetTextColor(0.42, 0.30, 0.10, 1)
 
     local applyButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
     applyButton:SetWidth(108)
-    applyButton:SetHeight(22)
-    applyButton:SetPoint("TOPLEFT", autoLabel, "BOTTOMLEFT", 0, -4)
+    applyButton:SetHeight(20)
+    applyButton:SetPoint("TOPLEFT", autoLabel, "BOTTOMLEFT", 0, -3)
     applyButton:SetText("Apply \226\134\146 Desired")
     applyButton:SetScript("OnClick", function() H.OnApplyDesired() end)
 
     local clearDesiredButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
-    clearDesiredButton:SetWidth(108)
-    clearDesiredButton:SetHeight(22)
-    clearDesiredButton:SetPoint("LEFT", applyButton, "RIGHT", 6, 0)
+    clearDesiredButton:SetWidth(100)
+    clearDesiredButton:SetHeight(20)
+    clearDesiredButton:SetPoint("LEFT", applyButton, "RIGHT", 4, 0)
     clearDesiredButton:SetText("Clear Desired")
     clearDesiredButton:SetScript("OnClick", function() H.OnClearFilteredDesired() end)
 
     local rollButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
-    rollButton:SetWidth(100)
-    rollButton:SetHeight(22)
-    rollButton:SetPoint("LEFT", clearDesiredButton, "RIGHT", 6, 0)
+    rollButton:SetWidth(96)
+    rollButton:SetHeight(20)
+    rollButton:SetPoint("LEFT", clearDesiredButton, "RIGHT", 4, 0)
     rollButton:SetText("Start Auto-Roll")
     rollButton:SetScript("OnClick", function() H.OnStartAutoRoll() end)
 
     local stopRollButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
-    stopRollButton:SetWidth(54)
-    stopRollButton:SetHeight(22)
-    stopRollButton:SetPoint("LEFT", rollButton, "RIGHT", 6, 0)
+    stopRollButton:SetWidth(48)
+    stopRollButton:SetHeight(20)
+    stopRollButton:SetPoint("LEFT", rollButton, "RIGHT", 4, 0)
     stopRollButton:SetText("Stop")
     stopRollButton:SetScript("OnClick", function() H.OnStopAutoRoll() end)
 
     local syncButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
-    syncButton:SetWidth(108)
-    syncButton:SetHeight(22)
-    syncButton:SetPoint("TOPLEFT", applyButton, "BOTTOMLEFT", 0, -6)
+    syncButton:SetWidth(100)
+    syncButton:SetHeight(20)
+    syncButton:SetPoint("TOPLEFT", applyButton, "BOTTOMLEFT", 0, -4)
     syncButton:SetText("Sync from Rapid")
     syncButton:SetScript("OnClick", function() H.OnSyncRapid() end)
 
     local wishButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
-    wishButton:SetWidth(88)
-    wishButton:SetHeight(22)
-    wishButton:SetPoint("LEFT", syncButton, "RIGHT", 6, 0)
+    wishButton:SetWidth(80)
+    wishButton:SetHeight(20)
+    wishButton:SetPoint("LEFT", syncButton, "RIGHT", 4, 0)
     wishButton:SetText("\226\134\222 Wishlist")
     wishButton:SetScript("OnClick", function() H.OnLoadWishlist() end)
 
     local captureButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
-    captureButton:SetWidth(100)
-    captureButton:SetHeight(22)
-    captureButton:SetPoint("LEFT", wishButton, "RIGHT", 6, 0)
+    captureButton:SetWidth(96)
+    captureButton:SetHeight(20)
+    captureButton:SetPoint("LEFT", wishButton, "RIGHT", 4, 0)
     captureButton:SetText("Capture Known")
     captureButton:SetScript("OnClick", function() H.OnCaptureKnown() end)
 
     W.autoStatusLabel = autoBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    W.autoStatusLabel:SetPoint("TOPLEFT", syncButton, "BOTTOMLEFT", 0, -4)
+    W.autoStatusLabel:SetPoint("TOPLEFT", syncButton, "BOTTOMLEFT", 0, -5)
     W.autoStatusLabel:SetPoint("RIGHT", autoBar, "RIGHT", -8, 0)
     W.autoStatusLabel:SetJustifyH("LEFT")
+    if W.autoStatusLabel.SetNonSpaceWrap then
+        W.autoStatusLabel:SetNonSpaceWrap(false)
+    end
 
     local content = CreateFrame("Frame", nil, W.mainColumn)
     W.sectionContent = content
-    content:SetPoint("TOPLEFT", autoBar, "BOTTOMLEFT", 0, -6)
-    content:SetPoint("TOPRIGHT", autoBar, "BOTTOMRIGHT", 0, -6)
+    content:SetPoint("TOPLEFT", autoBar, "BOTTOMLEFT", 0, -4)
+    content:SetPoint("TOPRIGHT", autoBar, "BOTTOMRIGHT", 0, -4)
 
     W.sectionTitle = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    W.sectionTitle:SetPoint("TOPLEFT", 4, -2)
+    W.sectionTitle:SetPoint("TOPLEFT", 4, -1)
     W.sectionTitle:SetTextColor(0.30, 0.20, 0.04, 1)
 
     W.sectionCount = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    W.sectionCount:SetPoint("TOPRIGHT", -4, -4)
+    W.sectionCount:SetPoint("TOPRIGHT", -4, -3)
     W.sectionCount:SetJustifyH("RIGHT")
     W.sectionCount:SetTextColor(0.35, 0.28, 0.18, 1)
 
@@ -1735,19 +1778,25 @@ local function BuildPanel(parent, width)
     W.sectionBody:SetPoint("TOPLEFT", 0, -SECTION_TITLE_HEIGHT)
     W.sectionBody:SetPoint("BOTTOMRIGHT", 0, 0)
 
+    -- FILTER BAND: search/add row + checkbox row (no collisions).
     W.filterBar = CreateFrame("Frame", nil, W.sectionBody)
     W.filterBar:SetPoint("TOPLEFT", 0, 0)
     W.filterBar:SetPoint("TOPRIGHT", 0, 0)
-    W.filterBar:SetHeight(24)
+    W.filterBar:SetHeight(FILTER_BAND_HEIGHT)
 
-    local searchLabel = W.filterBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    searchLabel:SetPoint("TOPLEFT", 0, 2)
+    local searchRow = CreateFrame("Frame", nil, W.filterBar)
+    searchRow:SetPoint("TOPLEFT", 0, 0)
+    searchRow:SetPoint("TOPRIGHT", 0, 0)
+    searchRow:SetHeight(22)
+
+    local searchLabel = searchRow:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    searchLabel:SetPoint("LEFT", 0, 0)
     searchLabel:SetText("Search")
     searchLabel:SetTextColor(0.30, 0.20, 0.04, 1)
 
-    W.spellSearchBox = CreateFrame("EditBox", FRAME_NAME .. "SpellSearch", W.filterBar, "InputBoxTemplate")
-    W.spellSearchBox:SetHeight(22)
-    W.spellSearchBox:SetWidth(88)
+    W.spellSearchBox = CreateFrame("EditBox", FRAME_NAME .. "SpellSearch", searchRow, "InputBoxTemplate")
+    W.spellSearchBox:SetHeight(20)
+    W.spellSearchBox:SetWidth(110)
     W.spellSearchBox:SetPoint("LEFT", searchLabel, "RIGHT", 4, 0)
     W.spellSearchBox:SetAutoFocus(false)
     W.spellSearchBox:SetMaxLetters(40)
@@ -1760,6 +1809,30 @@ local function BuildPanel(parent, width)
         self:ClearFocus()
     end)
 
+    local addSpellButton = CreateFrame("Button", nil, searchRow, "UIPanelButtonTemplate")
+    addSpellButton:SetWidth(44)
+    addSpellButton:SetHeight(20)
+    addSpellButton:SetPoint("RIGHT", 0, 0)
+    addSpellButton:SetText("Add")
+    addSpellButton:SetScript("OnClick", function() H.OnAddSpellFromInput() end)
+
+    W.addSpellBox = CreateFrame("EditBox", FRAME_NAME .. "AddSpell", searchRow, "InputBoxTemplate")
+    W.addSpellBox:SetHeight(20)
+    W.addSpellBox:SetWidth(64)
+    W.addSpellBox:SetPoint("RIGHT", addSpellButton, "LEFT", -6, 0)
+    W.addSpellBox:SetAutoFocus(false)
+    W.addSpellBox:SetNumeric(true)
+    W.addSpellBox:SetMaxLetters(9)
+    W.addSpellBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+        H.OnAddSpellFromInput()
+    end)
+
+    local tagsRow = CreateFrame("Frame", nil, W.filterBar)
+    tagsRow:SetPoint("TOPLEFT", searchRow, "BOTTOMLEFT", 0, -4)
+    tagsRow:SetPoint("TOPRIGHT", searchRow, "BOTTOMRIGHT", 0, -4)
+    tagsRow:SetHeight(20)
+
     local filterDefs = {
         { key = "core", label = "Core" },
         { key = "optimal", label = "Optimal" },
@@ -1769,17 +1842,17 @@ local function BuildPanel(parent, width)
     local lastCheck
     for index = 1, #filterDefs do
         local def = filterDefs[index]
-        local check = CreateFrame("CheckButton", nil, W.filterBar, "UICheckButtonTemplate")
-        check:SetWidth(20)
-        check:SetHeight(20)
+        local check = CreateFrame("CheckButton", nil, tagsRow, "UICheckButtonTemplate")
+        check:SetWidth(18)
+        check:SetHeight(18)
         if lastCheck then
-            check:SetPoint("LEFT", lastCheck, "RIGHT", 52, 0)
+            check:SetPoint("LEFT", lastCheck, "RIGHT", 58, 0)
         else
-            check:SetPoint("LEFT", W.spellSearchBox, "RIGHT", 10, 0)
+            check:SetPoint("LEFT", 0, 0)
         end
         check:SetChecked(true)
-        local text = W.filterBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        text:SetPoint("LEFT", check, "RIGHT", 2, 0)
+        local text = tagsRow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetPoint("LEFT", check, "RIGHT", 1, 0)
         text:SetText(def.label)
         text:SetTextColor(0.20, 0.14, 0.06, 1)
         check:SetScript("OnClick", function()
@@ -1788,25 +1861,6 @@ local function BuildPanel(parent, width)
         end)
         lastCheck = check
     end
-
-    local addSpellButton = CreateFrame("Button", nil, W.filterBar, "UIPanelButtonTemplate")
-    addSpellButton:SetWidth(44)
-    addSpellButton:SetHeight(22)
-    addSpellButton:SetPoint("RIGHT", 0, 0)
-    addSpellButton:SetText("Add")
-    addSpellButton:SetScript("OnClick", function() H.OnAddSpellFromInput() end)
-
-    W.addSpellBox = CreateFrame("EditBox", FRAME_NAME .. "AddSpell", W.filterBar, "InputBoxTemplate")
-    W.addSpellBox:SetHeight(22)
-    W.addSpellBox:SetWidth(72)
-    W.addSpellBox:SetPoint("RIGHT", addSpellButton, "LEFT", -6, 0)
-    W.addSpellBox:SetAutoFocus(false)
-    W.addSpellBox:SetNumeric(true)
-    W.addSpellBox:SetMaxLetters(9)
-    W.addSpellBox:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-        H.OnAddSpellFromInput()
-    end)
 
     W.prosPreview = W.sectionBody:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     W.prosPreview:SetPoint("TOPLEFT", 0, -4)
@@ -1817,7 +1871,7 @@ local function BuildPanel(parent, width)
     local spellHeight = VISIBLE_SPELL_ROWS * ROW_HEIGHT + LIST_INSET * 2
     W.spellListFrame, W.spellScrollFrame = BuildScrollList(W.sectionBody, shellWidth - SIDEBAR_WIDTH - 16, spellHeight,
         CreateSpellRow, W.spellRows, VISIBLE_SPELL_ROWS, function() LoadoutsPanel.Refresh() end)
-    W.spellListFrame:SetPoint("TOPLEFT", W.filterBar, "BOTTOMLEFT", 0, -6)
+    W.spellListFrame:SetPoint("TOPLEFT", W.filterBar, "BOTTOMLEFT", 0, -4)
 
     W.equipmentFrame = CreateFrame("Frame", nil, W.sectionBody)
     W.equipmentFrame:SetPoint("TOPLEFT", 0, -4)
@@ -1853,24 +1907,25 @@ local function BuildPanel(parent, width)
     end
 
     W.notesEdit = CreateFrame("EditBox", FRAME_NAME .. "Notes", W.sectionBody, "InputBoxTemplate")
-    W.notesEdit:SetPoint("TOPLEFT", W.filterBar, "BOTTOMLEFT", 0, -6)
+    W.notesEdit:SetPoint("TOPLEFT", W.filterBar, "BOTTOMLEFT", 0, -4)
     W.notesEdit:SetPoint("BOTTOMRIGHT", W.sectionBody, "BOTTOMRIGHT", -4, 0)
     W.notesEdit:SetMultiLine(true)
     W.notesEdit:SetAutoFocus(false)
     W.notesEdit:SetMaxLetters(8000)
     W.notesEdit:Hide()
 
+    -- FOOTER BAND: share · buttons · toast on distinct rows (no clip / no overlay).
     W.foot = CreateFrame("Frame", nil, W.mainColumn)
     W.foot:SetPoint("BOTTOMLEFT", 0, 0)
     W.foot:SetPoint("BOTTOMRIGHT", 0, 0)
     W.foot:SetHeight(FOOTER_HEIGHT)
 
-    content:SetPoint("BOTTOMLEFT", W.foot, "TOPLEFT", 0, -4)
-    content:SetPoint("BOTTOMRIGHT", W.foot, "TOPRIGHT", 0, -4)
+    content:SetPoint("BOTTOMLEFT", W.foot, "TOPLEFT", 0, 4)
+    content:SetPoint("BOTTOMRIGHT", W.foot, "TOPRIGHT", 0, 4)
 
     W.shareScroll = CreateFrame("ScrollFrame", FRAME_NAME .. "ShareScroll", W.foot)
-    W.shareScroll:SetPoint("TOPLEFT", 0, -2)
-    W.shareScroll:SetPoint("TOPRIGHT", 0, -2)
+    W.shareScroll:SetPoint("TOPLEFT", 0, -1)
+    W.shareScroll:SetPoint("TOPRIGHT", 0, -1)
     W.shareScroll:SetHeight(SHARE_VISIBLE_HEIGHT)
 
     W.shareBox = CreateFrame("EditBox", FRAME_NAME .. "Share", W.shareScroll)
@@ -1892,22 +1947,25 @@ local function BuildPanel(parent, width)
 
     W.copyShareButton = CreateFrame("Button", nil, W.foot, "UIPanelButtonTemplate")
     W.copyShareButton:SetWidth(88)
-    W.copyShareButton:SetHeight(22)
+    W.copyShareButton:SetHeight(20)
     W.copyShareButton:SetPoint("TOPLEFT", W.shareScroll, "BOTTOMLEFT", 0, -4)
     W.copyShareButton:SetText("Copy share")
     W.copyShareButton:SetScript("OnClick", function() H.OnCopyShare() end)
 
     W.importShareButton = CreateFrame("Button", nil, W.foot, "UIPanelButtonTemplate")
     W.importShareButton:SetWidth(96)
-    W.importShareButton:SetHeight(22)
+    W.importShareButton:SetHeight(20)
     W.importShareButton:SetPoint("LEFT", W.copyShareButton, "RIGHT", 8, 0)
     W.importShareButton:SetText("Import string…")
     W.importShareButton:SetScript("OnClick", function() H.OnImportShare() end)
 
     W.statusLabel = W.foot:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    W.statusLabel:SetPoint("LEFT", W.importShareButton, "RIGHT", 12, 0)
+    W.statusLabel:SetPoint("TOPLEFT", W.copyShareButton, "BOTTOMLEFT", 0, -4)
     W.statusLabel:SetPoint("RIGHT", W.foot, "RIGHT", 0, 0)
-    W.statusLabel:SetJustifyH("RIGHT")
+    W.statusLabel:SetJustifyH("LEFT")
+    if W.statusLabel.SetNonSpaceWrap then
+        W.statusLabel:SetNonSpaceWrap(false)
+    end
 
     LoadoutsPanel.Refresh()
     return W.panel
@@ -1942,6 +2000,10 @@ function LoadoutsPanel.AnchorLayout()
     local shellWidth = W.panelWidth - LIST_WIDTH - 8
     local detailWidth = shellWidth - SIDEBAR_WIDTH - 16
 
+    if W.buildsCol then
+        W.buildsCol:SetWidth(LIST_WIDTH)
+    end
+
     if W.listFrame then
         W.listFrame:SetWidth(LIST_WIDTH)
         local rowWidth = LIST_WIDTH - LIST_INSET - SCROLLBAR_WIDTH
@@ -1964,6 +2026,18 @@ function LoadoutsPanel.AnchorLayout()
         end
     end
 
+    if W.meta then
+        W.meta:SetHeight(META_HEIGHT)
+    end
+
+    if W.autoBar then
+        W.autoBar:SetHeight(AUTO_BAR_HEIGHT)
+    end
+
+    if W.filterBar then
+        W.filterBar:SetHeight(FILTER_BAND_HEIGHT)
+    end
+
     if W.foot then
         W.foot:SetHeight(FOOTER_HEIGHT)
     end
@@ -1978,15 +2052,15 @@ function LoadoutsPanel.AnchorLayout()
     end
 
     if W.statusLabel and W.statusLabel.SetWidth and detailWidth > 0 then
-        W.statusLabel:SetWidth(detailWidth * 0.45)
+        W.statusLabel:SetWidth(detailWidth)
     end
 
     if W.sectionContent and W.foot and W.autoBar then
         W.sectionContent:ClearAllPoints()
-        W.sectionContent:SetPoint("TOPLEFT", W.autoBar, "BOTTOMLEFT", 0, -6)
-        W.sectionContent:SetPoint("TOPRIGHT", W.autoBar, "BOTTOMRIGHT", 0, -6)
-        W.sectionContent:SetPoint("BOTTOMLEFT", W.foot, "TOPLEFT", 0, -4)
-        W.sectionContent:SetPoint("BOTTOMRIGHT", W.foot, "TOPRIGHT", 0, -4)
+        W.sectionContent:SetPoint("TOPLEFT", W.autoBar, "BOTTOMLEFT", 0, -4)
+        W.sectionContent:SetPoint("TOPRIGHT", W.autoBar, "BOTTOMRIGHT", 0, -4)
+        W.sectionContent:SetPoint("BOTTOMLEFT", W.foot, "TOPLEFT", 0, 4)
+        W.sectionContent:SetPoint("BOTTOMRIGHT", W.foot, "TOPRIGHT", 0, 4)
     end
 end
 

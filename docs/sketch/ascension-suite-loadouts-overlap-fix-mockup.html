@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AscensionSuite — Loadouts overlap fix (v0.5.4)</title>
+<style>
+  :root {
+    --page: #1a1510;
+    --ink: #1a1208;
+    --ink-soft: #3a2e1c;
+    --ink-muted: #5a4a30;
+    --gold: #ffd100;
+    --gold-line: #8a7028;
+    --parchment: #c4b088;
+    --parchment-hi: #d8c8a0;
+    --inset: #f0e6c4;
+    --wish: #1e4a6a;
+    --good: #1a5a28;
+    --bad: #8a2820;
+    --bleed: #4a6a3a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px 24px 48px;
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(900px 480px at 70% -20%, #3a3020, transparent),
+      linear-gradient(180deg, #2a2218, #12100c 60%, #0a0906);
+  }
+  h1 { margin: 0 0 6px; font-size: 1.12rem; color: #f0e2c0; font-weight: normal; }
+  .lead { color: #9c927f; max-width: 860px; line-height: 1.45; margin: 0 0 14px; font-size: .84rem; }
+  code { color: #edcd82; }
+  .stage { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+
+  /* Ascension CA parchment peeking behind — should NOT show through Suite panes */
+  .bleed-stage {
+    position: relative; width: 760px;
+  }
+  .ca-bleed {
+    position: absolute; inset: 18px -12px -18px 28px; z-index: 0;
+    background:
+      repeating-linear-gradient(90deg, #6a8a4a 0 3px, #5a7a3a 3px 6px),
+      linear-gradient(180deg, #8aaa6a, #4a6a3a);
+    border: 2px solid #3a5a28; opacity: .85;
+    display: flex; align-items: center; justify-content: center;
+    color: #d0e8b0; font-size: .78rem; letter-spacing: .04em;
+  }
+
+  .dialog {
+    position: relative; z-index: 2; width: 740px; height: 600px;
+    background:
+      linear-gradient(180deg, rgba(255,220,120,.08), transparent 40%),
+      repeating-linear-gradient(0deg, #b8a47a 0 2px, #c4b088 2px 4px);
+    border: 3px solid #6a5420;
+    box-shadow:
+      inset 0 0 0 2px #d4c090,
+      inset 0 0 0 5px #3a3018,
+      0 0 0 2px #1a1408,
+      0 16px 40px rgba(0,0,0,.7);
+    border-radius: 2px;
+    padding: 10px 12px 10px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .titlebar {
+    display: flex; flex-direction: column; gap: 2px;
+    background: linear-gradient(180deg, #4a3a1c, #2a2010);
+    border: 1px solid var(--gold-line);
+    margin: -2px -4px 0; padding: 8px 32px 8px 12px;
+    flex: none;
+  }
+  .titlebar h2 {
+    margin: 0; font-size: 1rem; color: var(--gold);
+    text-shadow: 0 1px 0 #000; font-weight: normal;
+  }
+  .titlebar .subhead {
+    margin: 0; font-size: .7rem; color: #c8b896; line-height: 1.3;
+  }
+  .ver { color: #9c927f; font-size: .7rem; margin-left: 8px; }
+  .close {
+    position: absolute; top: 10px; right: 12px; width: 26px; height: 26px;
+    border-radius: 50%; border: 2px solid #8a7028;
+    background: radial-gradient(circle at 35% 30%, #6a3a2a, #2a1008);
+    color: #f0d9a0; font-size: .9rem; line-height: 22px; text-align: center;
+  }
+
+  .tabs { display: flex; gap: 2px; margin: 8px 0 0 4px; flex: none; }
+  .tab {
+    padding: 5px 14px 7px; font-size: .76rem; color: #e8d8a8;
+    background: linear-gradient(180deg, #5a4828, #2a2010);
+    border: 1px solid #6a5420; border-bottom: none; border-radius: 6px 6px 0 0;
+  }
+  .tab.on {
+    color: var(--gold);
+    background: linear-gradient(180deg, #7a6028, #3a2c14);
+    border-color: var(--gold-line);
+  }
+  .tabline { height: 2px; background: linear-gradient(90deg, #6a5420, var(--gold-line), #6a5420); flex: none; }
+
+  /* Loadouts body — opaque parchment so CA cannot bleed through */
+  .body {
+    flex: 1; min-height: 0; margin-top: 8px;
+    display: flex; gap: 8px; overflow: hidden;
+    background: linear-gradient(180deg, #d4c4a0, #b8a47a);
+    border: 1px solid #6a5420;
+    box-shadow: inset 0 0 16px rgba(80,50,10,.2);
+    padding: 8px;
+  }
+
+  /* LEFT: saved builds column */
+  .builds-col {
+    width: 132px; flex: none; display: flex; flex-direction: column; gap: 6px; min-height: 0;
+  }
+  .col-lbl {
+    font-size: .62rem; color: #6a4a18; text-transform: uppercase; letter-spacing: .06em;
+    font-weight: bold; flex: none;
+  }
+  .build-list {
+    flex: 1; min-height: 0; overflow: hidden;
+    border: 1px solid #8a7028; background: var(--inset);
+    box-shadow: inset 0 0 6px rgba(80,50,10,.15);
+  }
+  .lo {
+    padding: 5px 6px; border-bottom: 1px solid #c8b888; font-size: .72rem;
+  }
+  .lo.on { background: rgba(200,160,40,.35); box-shadow: inset 3px 0 0 #c8a030; }
+  .lo .n { color: var(--ink); font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lo .m { color: var(--ink-muted); font-size: .64rem; }
+
+  /* Build actions — stacked so they fit 132px (no Duplicate clip) */
+  .build-actions {
+    flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  }
+  .build-actions .wide { grid-column: 1 / -1; }
+
+  .btn {
+    padding: 4px 6px; font: inherit; font-size: .68rem; color: #f0d9a0;
+    background: linear-gradient(180deg, #6a2a22, #3d1510);
+    border: 1px solid #8a4030; border-radius: 2px; text-align: center;
+  }
+  .btn.gold {
+    background: linear-gradient(180deg, #5a4518, #2e230c);
+    border-color: var(--gold-line); color: var(--gold);
+  }
+  .btn.quiet {
+    background: linear-gradient(180deg, #2a2418, #16130c);
+    border-color: #4c3f22; color: #cdbf9d;
+  }
+
+  /* RIGHT: opaque build shell */
+  .shell {
+    flex: 1; min-width: 0; min-height: 0;
+    display: flex; gap: 6px; overflow: hidden;
+    background: linear-gradient(180deg, #d8c8a0, #bca878);
+    border: 1px solid #6a5420;
+    box-shadow: inset 0 0 12px rgba(80,50,10,.18);
+  }
+
+  .sidebar {
+    width: 148px; flex: none;
+    background: linear-gradient(180deg, #3a3020, #241c10);
+    border-right: 2px solid #6a5420;
+    padding: 6px 5px; overflow: hidden;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .side-lbl {
+    font-size: .6rem; color: #c8a03c; text-transform: uppercase;
+    letter-spacing: .06em; padding: 2px 4px 4px;
+  }
+  .nav {
+    padding: 5px 7px; font-size: .68rem; color: #e8d8a8; line-height: 1.2;
+    background: linear-gradient(180deg, #4a3a22, #2a2010);
+    border: 1px solid #6a5420; border-radius: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .nav .hint { display: block; font-size: .58rem; color: #8a7a4a; margin-top: 1px; }
+  .nav.on {
+    color: #1a1208; font-weight: bold;
+    background: linear-gradient(180deg, #e8c860, #b89030);
+    border-color: #f0d060; text-shadow: none;
+  }
+  .nav.on .hint { color: #5a4010; }
+
+  .main {
+    flex: 1; min-width: 0; min-height: 0;
+    display: flex; flex-direction: column; gap: 5px;
+    padding: 6px 8px 6px; overflow: hidden;
+  }
+
+  /* BAND: meta — two rows so Import never covers Author */
+  .meta {
+    flex: none;
+    border: 1px solid #8a7028; background: rgba(255,248,220,.55);
+    padding: 5px 7px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .meta-row {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 22px;
+  }
+  .meta .name { font-size: .88rem; color: #4a3008; font-weight: bold; margin-right: 2px; }
+  .chip {
+    font-size: .64rem; color: var(--ink-soft);
+    border: 1px solid #a08040; padding: 2px 6px; background: rgba(255,255,220,.45);
+  }
+  .meta-row.actions { justify-content: flex-start; }
+  .meta-row.actions .spacer { flex: 1; }
+
+  /* BAND: automate */
+  .auto {
+    flex: none;
+    border: 1px solid #8a7028; background: rgba(255,248,220,.55);
+    padding: 5px 7px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .auto .lbl {
+    font-size: .6rem; color: #6a4a18; text-transform: uppercase; letter-spacing: .05em; font-weight: bold;
+  }
+  .auto-btns { display: flex; flex-wrap: wrap; gap: 5px; }
+  .auto-status {
+    font-size: .68rem; color: var(--good); line-height: 1.25;
+    padding-top: 2px; border-top: 1px solid rgba(138,112,40,.35);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* BAND: section title (own row — never under auto-status) */
+  .section-head {
+    flex: none; display: flex; align-items: baseline; gap: 8px;
+  }
+  .section-head h3 { margin: 0; font-size: .86rem; color: #4a3008; }
+  .section-head .count { margin-left: auto; font-size: .64rem; color: var(--ink-muted); }
+
+  /* BAND: search row + filter row (separate) */
+  .filter-search {
+    flex: none; display: flex; gap: 6px; align-items: center;
+  }
+  .filter-search label { font-size: .68rem; color: #4a3008; }
+  .ibox {
+    height: 20px; border: 1px solid #8a7028; background: #fff8dc;
+    font-size: .68rem; padding: 0 5px; color: var(--ink);
+  }
+  .filter-search .ibox.search { width: 110px; }
+  .filter-search .ibox.id { width: 64px; margin-left: auto; }
+  .filter-tags {
+    flex: none; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+    font-size: .66rem; color: var(--ink-soft);
+  }
+  .filter-tags label { display: flex; align-items: center; gap: 3px; }
+
+  /* BAND: spell list — clipped scroll */
+  .spell-list {
+    flex: 1; min-height: 0; overflow: hidden;
+    border: 1px solid #8a7028; background: var(--inset);
+    box-shadow: inset 0 0 6px rgba(80,50,10,.15);
+  }
+  .group {
+    padding: 3px 8px; font-size: .64rem; font-weight: bold; color: #3a5a18;
+    background: #d0c090; border-bottom: 1px solid #b8a870;
+  }
+  .row {
+    display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 6px;
+    font-size: .72rem; border-bottom: 1px solid #d8c898;
+  }
+  .row:nth-child(even) { background: rgba(180,150,60,.12); }
+  .ico { width: 16px; height: 16px; border: 1px solid #6b5a30; flex: none; background: #8a3a12; }
+  .nm { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+  .tag { font-size: .6rem; color: #5a4a20; width: 58px; text-align: right; }
+  .badge { font-size: .6rem; color: var(--wish); width: 44px; text-align: right; }
+  .x { width: 16px; height: 16px; font-size: .62rem; line-height: 14px; text-align: center;
+       border: 1px solid #8a4030; background: #3d1510; color: #f0d9a0; flex: none; }
+
+  /* BAND: footer — share + buttons + status on distinct rows */
+  .foot {
+    flex: none; display: flex; flex-direction: column; gap: 4px;
+    border-top: 1px solid #8a7028; padding-top: 5px;
+  }
+  .share {
+    height: 28px; overflow: hidden; border: 1px solid #8a7028; background: #fff8dc;
+    font-size: .6rem; color: #5a4a30; padding: 4px 6px; line-height: 1.2;
+    white-space: nowrap; text-overflow: ellipsis;
+  }
+  .foot-row {
+    display: flex; gap: 6px; align-items: center;
+  }
+  .foot-status {
+    flex: 1; min-width: 0; font-size: .66rem; color: var(--good);
+    text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .aside {
+    width: 240px; font-size: .78rem; color: #9c927f; line-height: 1.45;
+    font-family: "Trebuchet MS", sans-serif;
+  }
+  .aside h3 { color: #c8a03c; font-size: .86rem; margin: 0 0 8px; font-weight: normal; }
+  .aside ul { margin: 0; padding-left: 1.05rem; }
+  .aside li { margin-bottom: 7px; }
+  .aside .ok { color: #62d187; }
+  .band-key {
+    display: inline-block; font-size: .62rem; padding: 1px 5px; margin-right: 4px;
+    border: 1px solid #6a5420; background: #3a3020; color: #edcd82; border-radius: 2px;
+  }
+</style>
+</head>
+<body>
+  <h1>AscensionSuite — Loadouts layout bands (v0.5.4 fix)</h1>
+  <p class="lead">
+    Fixed layout: opaque parchment over Ascension Character Advancement, reserved vertical bands
+    (meta → automate → section title → search → filters → list → footer), two-row meta so
+    <strong>Import Archetype</strong> never covers Author, filters not colliding with Add,
+    Duplicate fully visible, toast not on buttons. Confirm before / alongside Lua.
+  </p>
+
+  <div class="stage">
+    <div class="bleed-stage">
+      <div class="ca-bleed">Ascension Character Advancement / parchment (behind — must not show through)</div>
+      <div class="dialog" id="suite">
+        <div class="close">×</div>
+        <div class="titlebar">
+          <h2>AscensionSuite <span class="ver">v0.5.4</span></h2>
+          <p class="subhead">Named builds · parchment shell · Apply → Desired.</p>
+        </div>
+        <div class="tabs">
+          <div class="tab">Wishlist</div>
+          <div class="tab on">Loadouts</div>
+          <div class="tab">Assists</div>
+        </div>
+        <div class="tabline"></div>
+
+        <div class="body">
+          <div class="builds-col">
+            <div class="col-lbl">Saved builds</div>
+            <div class="build-list">
+              <div class="lo on"><div class="n">Stormstrike leveling</div><div class="m">12 entries · Lazra</div></div>
+              <div class="lo"><div class="n">Frost starter</div><div class="m">2 entries · Lazra</div></div>
+              <div class="lo"><div class="n">Shared dungeon kit</div><div class="m">18 entries · shared</div></div>
+            </div>
+            <div class="build-actions">
+              <div class="btn quiet">New</div>
+              <div class="btn quiet">Delete</div>
+              <div class="btn quiet wide">Duplicate</div>
+            </div>
+          </div>
+
+          <div class="shell">
+            <nav class="sidebar">
+              <div class="side-lbl">Sections</div>
+              <div class="nav">Overview</div>
+              <div class="nav on">Spells and Talents<span class="hint">automation source</span></div>
+              <div class="nav">Equipment</div>
+              <div class="nav">Pros and Cons</div>
+              <div class="nav">Itemization</div>
+              <div class="nav">Rotation</div>
+              <div class="nav" title="Enchants and Consumables">Enchants &amp; Consumables</div>
+              <div class="nav">Macros</div>
+              <div class="nav">WeakAuras</div>
+              <div class="nav">Additional Notes</div>
+            </nav>
+
+            <div class="main">
+              <!-- META BAND (2 rows) -->
+              <div class="meta">
+                <div class="meta-row">
+                  <span class="name">Stormstrike leveling</span>
+                  <div class="btn quiet">Rename</div>
+                  <span class="chip">Author Lazra</span>
+                  <span class="chip">PvE</span>
+                  <span class="chip">Complexity Master</span>
+                  <span class="chip">Scope Lazra</span>
+                </div>
+                <div class="meta-row actions">
+                  <div class="btn">Import Archetype…</div>
+                  <div class="btn gold">Save Build</div>
+                  <div class="btn quiet">Reset</div>
+                </div>
+              </div>
+
+              <!-- AUTOMATE BAND -->
+              <div class="auto">
+                <div class="lbl">Automate</div>
+                <div class="auto-btns">
+                  <div class="btn">Apply → Desired</div>
+                  <div class="btn quiet">Clear Desired</div>
+                  <div class="btn">Start Auto-Roll</div>
+                  <div class="btn quiet">Stop</div>
+                  <div class="btn quiet">Sync from Rapid</div>
+                  <div class="btn quiet">→ Wishlist</div>
+                  <div class="btn quiet">Capture Known</div>
+                </div>
+                <div class="auto-status">12 spells ready · Desired 3 of 12 · missing will be rolled (Wildcard + assists on)</div>
+              </div>
+
+              <!-- SECTION TITLE BAND -->
+              <div class="section-head">
+                <h3>Spells and Talents</h3>
+                <span class="count"><b>12</b> entries · grouped by class</span>
+              </div>
+
+              <!-- SEARCH BAND -->
+              <div class="filter-search">
+                <label>Search</label>
+                <input class="ibox search" value="" placeholder="name…" readonly />
+                <input class="ibox id" placeholder="id" readonly />
+                <div class="btn quiet">Add</div>
+              </div>
+
+              <!-- FILTER BAND -->
+              <div class="filter-tags">
+                <label><input type="checkbox" checked disabled> Core</label>
+                <label><input type="checkbox" checked disabled> Optimal</label>
+                <label><input type="checkbox" checked disabled> Empowering</label>
+                <label><input type="checkbox" checked disabled> Synergistic</label>
+              </div>
+
+              <!-- LIST BAND -->
+              <div class="spell-list">
+                <div class="group">Beast Mastery Hunter</div>
+                <div class="row"><span class="ico"></span><span class="nm">Multi-Shot</span><span class="tag">Core</span><span class="badge">Desired</span><span class="x">x</span></div>
+                <div class="row"><span class="ico"></span><span class="nm">Arrows of Fire</span><span class="tag">Optimal</span><span class="badge"></span><span class="x">x</span></div>
+                <div class="group">Enhancement Shaman</div>
+                <div class="row"><span class="ico"></span><span class="nm">Lava Lash</span><span class="tag">Core</span><span class="badge">Desired</span><span class="x">x</span></div>
+                <div class="row"><span class="ico"></span><span class="nm">Empowered Stormstrike</span><span class="tag">Core</span><span class="badge">Desired</span><span class="x">x</span></div>
+              </div>
+
+              <!-- FOOTER BAND -->
+              <div class="foot">
+                <div class="share">ASUITE2|Stormstrike leveling|12|…share string clipped inside footer…</div>
+                <div class="foot-row">
+                  <div class="btn quiet">Copy share</div>
+                  <div class="btn quiet">Import string…</div>
+                  <div class="foot-status">Removed Solar Nova from this build.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="aside">
+      <h3>Layout bands (fixed)</h3>
+      <ul>
+        <li><span class="band-key">opaque</span> Dialog + body + shell parchment α≈1 — CA bleed blocked</li>
+        <li><span class="band-key">meta</span> Row1 name/chips · Row2 Import/Save/Reset</li>
+        <li><span class="band-key">auto</span> Buttons then status line inside bar (not over title)</li>
+        <li><span class="band-key">section</span> Title + count alone</li>
+        <li><span class="band-key">search</span> Search + id + Add</li>
+        <li><span class="band-key">filters</span> Core/Optimal/… on their own row</li>
+        <li><span class="band-key">list</span> Clipped scroll</li>
+        <li><span class="band-key">footer</span> Share · buttons · toast — no clip</li>
+        <li><span class="band-key">builds</span> New/Delete · Duplicate full width under list</li>
+        <li><span class="band-key">nav</span> Ellipsis + title tooltip for long section names</li>
+      </ul>
+      <p style="margin-top:14px;font-size:.72rem">Wishlist + Assists keep 0.5.1 parchment; dice guards from 0.5.2/0.5.3 unchanged.</p>
+    </aside>
+  </div>
+</body>
+</html>

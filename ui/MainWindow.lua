@@ -13,7 +13,7 @@ AscensionSuite.MainWindow = MainWindow
 
 local FRAME_NAME = "AscensionSuiteMainWindow"
 local FRAME_WIDTH = 740
-local FRAME_HEIGHT = 580
+local FRAME_HEIGHT = 600
 local CONTENT_INSET = 16
 local CONTENT_TOP = -78
 local SIDEBAR_WIDTH = 156
@@ -1359,8 +1359,10 @@ local function EnsureFrame()
     end)
     frame:Hide()
 
+    -- Sit cleanly above Character Advancement when open. Wild Card dice layering
+    -- is handled separately by AscensionAPI SyncDiceLayering / RestoreDiceAfterSuite.
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
-    frame:SetFrameLevel(130)
+    frame:SetFrameLevel(160)
 
     frame.numTabs = 3
     frame.selectedTab = activeTab
@@ -1373,6 +1375,12 @@ local function EnsureFrame()
         edgeSize = 32,
         insets = { left = 11, right = 12, top = 12, bottom = 11 },
     })
+    if frame.SetBackdropColor then
+        frame:SetBackdropColor(0.08, 0.06, 0.04, 1)
+    end
+    if frame.SetBackdropBorderColor then
+        frame:SetBackdropBorderColor(0.75, 0.60, 0.20, 1)
+    end
 
     titleLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     titleLabel:SetPoint("TOPLEFT", 20, -16)
