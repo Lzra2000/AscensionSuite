@@ -2,6 +2,10 @@
 
 AscensionSuite is a World of Warcraft addon for the **Ascension / Project Ebonhold** client. It layers a **player-owned Wishlist panel** and **opt-in assists** on top of Ascension’s **native Rapid Rolling UI** (Desired · Roll · Known) — it does **not** rebuild that three-column board.
 
+**v0.4.9** fixes **Wild Card dice clickability after level-ups**: when animation skip or
+overlapping roll sessions left the die shown with mouse disabled, `EnsureDiceClickable`
+restores native `RegisterOnClick` on `PLAYER_LEVEL_UP` / roll-open events; **Unstick**
+and **auto-unstick** recover unclickable leveling dice as well as gray Rapid Continue.
 **v0.4.8** fixes **Wishlist row icons**: Ascension's short `entry.Icon` filenames are prefixed like native CA/Rapid, spell textures resolve via the entry's spell id (not internal entry ids), and book rows pass the internal-id hint so spell-id collisions cannot pick the wrong art. **v0.4.7** fixes Loadouts **UI overlap**: ASUITE2 export is clipped in a scroll-wrapped edit box, **Copy share / Import** sit in a reserved footer band below section content (equipment, notes, spells), stray **Wishlist tab** chrome is corrected on show/tab switches, and the detail column anchors to the panel height. **v0.4.6** adds Loadouts **Stop Auto-Roll** on the automate strip, **remembers your last selected build** across reload, **shared ↔ character scope toggle**, **Clear Desired (filtered)** for Wildcard marks on the visible spell list, an **empty-state** hint when no builds exist, and **tag cycling** (Alt+click or tag button) on spell rows. **v0.4.5** adds Loadouts **remove** (`x` on spell rows), **Duplicate build**, **search** on Spells and Talents, **Known** badges from captured snapshots, and **ASUITE2** share strings (sections + equipment; ASUITE1 import still works). **v0.4.4** adds Loadouts spell **tooltips**, **right-click Desired toggle** on spell rows (like Wishlist), **add-by-id** (+ Add Spell box), **Rename** for builds, and colorized **Pros and Cons** preview. **v0.4.3** polishes Loadouts: live **Desired: X of N** on the automate strip (filtered spells), equipment icon rows, **Capture Known**, clearer Import Archetype errors, and clickable category/complexity chips. **v0.4.2** fixes Loadouts **Apply → Desired** (spell-first entry resolution, no more blanket Push refused), **Start Auto-Roll** auto-applies the selected build, ASUITE1 share strings, and Overview/Notes section UI (no spell filter chrome on non-Spells pages). **v0.4.1** fixes a Lua 5.1 tooltip crash when hovering unranked talents on the wishlist (`tonumber` multi-return leak from `GetTalentRank`). **v0.4.0** redesigns the **Loadouts** tab to mirror native Ascension Archetypes sections (sidebar nav, spell filters grouped by class, local notes per section) with an always-visible automation strip (Apply → Desired, Auto-Roll, Sync from Rapid, → Wishlist) and **Import Archetype…** from the active/draft build via the AscensionAPI seam. **v0.3.1** fixed Loadouts layout 0×0 issues and added auto-unstick.
 
 ## In-game
@@ -32,7 +36,7 @@ Three tabs:
 ### Assists
 - Checkboxes (all default off): Auto-Roll, keep going after a Desired hit, dice/SkillCard animation skip, Wildcard popup accept, logbook capture, **auto-unstick gray Rapid Continue**
 - **Start / Stop** for Auto-Roll, with a readable reason whenever it refuses or stops
-- **Unstick** if Rapid Continue is stuck gray — confirms in chat (auto-unstick uses the same recovery when opted in)
+- **Unstick** if Rapid Continue is stuck gray or the leveling die will not accept clicks — confirms in chat (auto-unstick uses the same recovery when opted in)
 - **Sync from Rapid** to pull in marks made before the addon was watching
 - Logbook of recent rolls
 
@@ -58,7 +62,7 @@ Auto-Roll only runs against Ascension **Desired**. Start (or **Push to Desired**
 | `instantSkillCardSkip` | `false` | Speed up SkillCard reveal flipbooks |
 | `acceptWildcardPopups` | `false` | Auto-accept Wildcard roll confirms only |
 | `captureRolls` | `false` | Append roll results to logbook |
-| `autoUnstick` | `false` | After a short stuck window, recover gray Rapid Continue (same path as **Unstick**) |
+| `autoUnstick` | `false` | After a short stuck window, recover gray Rapid Continue or an unclickable die (same path as **Unstick**) |
 
 ### Keep going after a Desired hit
 

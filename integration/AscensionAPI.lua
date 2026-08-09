@@ -1307,6 +1307,98 @@ local function DiceIsShown()
     return dice and dice.IsShown and dice:IsShown()
 end
 
+local function GetDiceCoreState(dice)
+    dice = dice or _G.WildCardDice
+    local core = dice and dice.Core
+    if type(core) ~= "table" or type(core.GetState) ~= "function" then
+        return nil, nil
+    end
+    local ok, state = pcall(core.GetState, core)
+    if not ok then
+        return nil, core.State
+    end
+    return state, core.State
+end
+
+-- READY_TO_ROLL (golden d20) and DECISION_PENDING (confirm/reroll) are the only
+-- Core states Ascension wires to RegisterOnClick. A shown die in either state
+-- with EnableMouse false is the level-up / animation-skip hang players report.
+function API.DiceShouldAcceptClicks(dice)
+    dice = dice or _G.WildCardDice
+    if type(dice) ~= "table" then
+        return false
+    end
+
+    local state, states = GetDiceCoreState(dice)
+    if state and states then
+        return state == states.READY_TO_ROLL or state == states.DECISION_PENDING
+    end
+
+    if dice.RollButton and type(dice.RollButton.IsVisible) == "function" then
+        local ok, visible = pcall(dice.RollButton.IsVisible, dice.RollButton)
+        if ok and visible == true then
+            return true
+        end
+    end
+
+    if dice.DiceEmptyEnter and type(dice.DiceEmptyEnter.IsShown) == "function" then
+        local ok, shown = pcall(dice.DiceEmptyEnter.IsShown, dice.DiceEmptyEnter)
+        if ok and shown == true and not dice.pendingReveal then
+            return true
+        end
+    end
+
+    return false
+end
+
+function API.IsDiceShownUnclickable()
+    local dice = _G.WildCardDice
+    if type(dice) ~= "table" or type(dice.IsShown) ~= "function" then
+        return false
+    end
+    local shownOk, shown = pcall(dice.IsShown, dice)
+    if not shownOk or shown ~= true then
+        return false
+    end
+    if not API.DiceShouldAcceptClicks(dice) then
+        return false
+    end
+    if type(dice.IsMouseEnabled) ~= "function" then
+        return false
+    end
+    local mouseOk, enabled = pcall(dice.IsMouseEnabled, dice)
+    return mouseOk and enabled == false
+end
+
+-- Re-enable mouse / visibility on a shown die that should accept clicks but does
+-- not. Never touches roll starters or the dice state machine beyond what
+-- RegisterOnClick already does when Ascension enters READY_TO_ROLL.
+function API.EnsureDiceClickable()
+    if not API.IsDiceShownUnclickable() then
+        return false
+    end
+
+    local dice = _G.WildCardDice
+    if type(dice.RegisterOnClick) == "function" then
+        pcall(dice.RegisterOnClick, dice)
+    elseif type(dice.EnableMouse) == "function" then
+        pcall(dice.EnableMouse, dice, true)
+    end
+
+    if type(dice.GetAlpha) == "function" and type(dice.SetAlpha) == "function" then
+        local alphaOk, alpha = pcall(dice.GetAlpha, dice)
+        if alphaOk and (not alpha or alpha < 0.1) then
+            pcall(dice.SetAlpha, dice, 1)
+        end
+    end
+
+    if type(dice.SetFrameStrata) == "function" then
+        pcall(dice.SetFrameStrata, dice, "FULLSCREEN_DIALOG")
+    end
+
+    return true
+end
+
 -- Mirrors WildCardRapidRollingMixin:IsRapidRollingDiceActive. A shown die with
 -- pendingReveal (or any non-idle Core state) counts as active even when Phase is
 -- Idle — that is the stuck-Continue case the assist must not treat as progress.
@@ -1375,6 +1467,17 @@ function API.IsRapidRollingContinueStuck(state)
     return API.IsRapidRollingDiceActive(state) == true
 end
 
+-- Gray Continue or a shown leveling die that should accept clicks but does not.
+function API.IsDiceInteractionStuck(state)
+    if not API.IsWildcardModeActive() then
+        return false
+    end
+    if API.IsDiceShownUnclickable() then
+        return true
+    end
+    return API.IsRapidRollingContinueStuck(state) == true
+end
+
 -- Break out of a stranded Rapid session (gray Continue / die stuck on ?).
 -- Cancels the server session, clears local pendingReveal, hides the die, and puts
 -- the Rapid window back in a state where its own Roll button works again.
@@ -1441,6 +1544,49 @@ function API.RecoverStuckRapidSession()
         end
     end
     return true
+end
+
+-- Shared recovery for manual Unstick, auto-unstick, and level-up guards: restore
+-- mouse on a stranded leveling die first; fall back to the Rapid session reset.
+function API.RecoverDiceInteraction()
+    local ok, reason = RequireWildcard()
+    if not ok then
+        return false, reason
+    end
+
+    if API.EnsureDiceClickable() then
+        return true, "mouse_restored"
+    end
+
+    if API.IsRapidRollingContinueStuck() then
+        if API.RecoverStuckRapidSession() then
+            return true, "rapid_session_cleared"
+        end
+        return false, "recover_failed"
+    end
+
+    local dice = _G.WildCardDice
+    if type(dice) == "table" and type(dice.IsShown) == "function" then
+        local shownOk, shown = pcall(dice.IsShown, dice)
+        if shownOk and shown == true and API.DiceShouldAcceptClicks(dice) then
+            if type(dice.RegisterOnClick) == "function" then
+                pcall(dice.RegisterOnClick, dice)
+            elseif type(dice.EnableMouse) == "function" then
+                pcall(dice.EnableMouse, dice, true)
+            end
+            if type(dice.SetAlpha) == "function" then
+                pcall(dice.SetAlpha, dice, 1)
+            end
+            if type(dice.IsMouseEnabled) == "function" then
+                local mouseOk, enabled = pcall(dice.IsMouseEnabled, dice)
+                if mouseOk and enabled == true then
+                    return true, "mouse_forced"
+                end
+            end
+        end
+    end
+
+    return false, "nothing_to_recover"
 end
 
 -- Click-equivalent advance for Rapid Rolling / leveling dice.

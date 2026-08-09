@@ -40,6 +40,10 @@ local SKIP_ROULETTE_DURATION = 0.05
 local attachedDice = false
 local attachedSkillCard = false
 local loadWatcher
+local ensureFrame
+local ensurePending = false
+local ensureElapsed = 0
+local ENSURE_DEFER_SECONDS = 0.2
 
 local function GetAssists()
     local DB = AscensionSuite.Database
@@ -65,6 +69,32 @@ local function SetFlipBookSpeed(flipBook, speed)
     end
     local ok = pcall(flipBook.SetSpeed, flipBook, speed)
     return ok
+end
+
+local function ScheduleEnsureDiceClickable()
+    local API = AscensionSuite.AscensionAPI
+    if not API or not API.EnsureDiceClickable then
+        return
+    end
+
+    if not ensureFrame and type(CreateFrame) == "function" then
+        ensureFrame = CreateFrame("Frame")
+        ensureFrame:SetScript("OnUpdate", function(self, delta)
+            if not ensurePending then
+                return
+            end
+            ensureElapsed = ensureElapsed + (delta or 0)
+            if ensureElapsed < ENSURE_DEFER_SECONDS then
+                return
+            end
+            ensurePending = false
+            ensureElapsed = 0
+            API.EnsureDiceClickable()
+        end)
+    end
+
+    ensurePending = true
+    ensureElapsed = 0
 end
 
 ------------------------------------------------------------------------
@@ -122,10 +152,14 @@ function AnimationSkip.SkipRoulette(scrollFrame)
     end
 
     if type(group.Finish) == "function" then
-        return pcall(group.Finish, group)
+        local ok = pcall(group.Finish, group)
+        ScheduleEnsureDiceClickable()
+        return ok
     end
     if type(group.Stop) == "function" then
-        return pcall(group.Stop, group)
+        local ok = pcall(group.Stop, group)
+        ScheduleEnsureDiceClickable()
+        return ok
     end
     return false
 end
@@ -144,12 +178,20 @@ local function AttachDice()
     if type(dice.OnShow) == "function" then
         hooksecurefunc(dice, "OnShow", function(self)
             AnimationSkip.ApplyDiceSpeeds(self)
+            ScheduleEnsureDiceClickable()
         end)
     end
 
     if type(dice.PlayFlipBook) == "function" then
         hooksecurefunc(dice, "PlayFlipBook", function(self)
             AnimationSkip.ApplyDiceSpeeds(self)
+            ScheduleEnsureDiceClickable()
+        end)
+    end
+
+    if type(dice.OnFinishedAppear) == "function" then
+        hooksecurefunc(dice, "OnFinishedAppear", function()
+            ScheduleEnsureDiceClickable()
         end)
     end
 
