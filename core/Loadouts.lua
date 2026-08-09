@@ -14,6 +14,7 @@ AscensionSuite.Loadouts = Loadouts
 local MAX_LOADOUTS = 50
 local MAX_ENTRIES = 300
 local SHARE_PREFIX = "ASUITE1"
+local SHARE_PREFIX_V2 = "ASUITE2"
 
 -- Mirrors BuildCreatorUtil.DescriptionSection keys (read-only reference).
 Loadouts.SECTION_ORDER = {
@@ -174,6 +175,80 @@ local function EntryPassesFilters(row, filters)
         return true
     end
     return true
+end
+
+local function NormalizeSearchNeedle(filter)
+    if type(filter) ~= "string" then
+        return nil
+    end
+    local needle = filter:match("^%s*(.-)%s*$")
+    if needle == "" then
+        return nil
+    end
+    return needle:lower()
+end
+
+function Loadouts.EntryMatchesSearch(row, filter, described)
+    local needle = NormalizeSearchNeedle(filter)
+    if not needle then
+        return true
+    end
+    if type(row) ~= "table" then
+        return false
+    end
+    described = described or Loadouts.DescribeEntry(row)
+    local name = (described and described.name) or row.name or ""
+    local haystack = name:lower()
+    local entryId = described and described.entryId or row.entryId
+    local spellId = described and described.spellId or row.spellId
+    if entryId then
+        haystack = haystack .. " " .. tostring(entryId)
+    end
+    if spellId then
+        haystack = haystack .. " " .. tostring(spellId)
+    end
+    return haystack:find(needle, 1, true) ~= nil
+end
+
+local function KnownSnapshotKey(entryId, entryType, spellId)
+    if entryId and entryType then
+        return tostring(entryType) .. ":" .. tostring(entryId)
+    end
+    if spellId then
+        return "spell:" .. tostring(spellId)
+    end
+    return nil
+end
+
+function Loadouts.IsEntryKnown(loadout, row)
+    if type(loadout) ~= "table" or type(loadout.knownSnapshot) ~= "table" or type(row) ~= "table" then
+        return false
+    end
+    local entryId, entryType = Loadouts.ResolveEntryRow(row)
+    local spellId = NormalizeId(row.spellId)
+    local target = KnownSnapshotKey(entryId, entryType, spellId)
+    if not target then
+        return false
+    end
+    for index = 1, #loadout.knownSnapshot do
+        local snap = loadout.knownSnapshot[index]
+        if type(snap) == "table" then
+            local snapId = NormalizeId(snap.id or snap.ID or snap.entryId)
+            local snapType = NormalizeEntryType(snap.type or snap.Type or snap.entryType)
+            local snapSpell = NormalizeId(snap.spellId or snap.Spell or snap.spell)
+            local snapKey = KnownSnapshotKey(snapId, snapType, snapSpell)
+            if snapKey and snapKey == target then
+                return true
+            end
+            if entryId and snapId == entryId then
+                return true
+            end
+            if spellId and snapSpell == spellId then
+                return true
+            end
+        end
+    end
+    return false
 end
 
 local function CopyTable(source)
@@ -566,6 +641,85 @@ function Loadouts.AddEntry(id, row)
     return true
 end
 
+function Loadouts.RemoveEntry(id, rawRow)
+    local loadout = Loadouts.Get(id)
+    if not loadout or type(rawRow) ~= "table" then
+        return false, "not_found"
+    end
+    Loadouts.EnsureLoadoutShape(loadout)
+
+    local targetId, targetType = Loadouts.ResolveEntryRow(rawRow)
+    local targetSpell = NormalizeId(rawRow.spellId)
+    if not targetId and not targetSpell then
+        return false, "unresolved"
+    end
+
+    local removed = false
+    for index = #loadout.entries, 1, -1 do
+        local row = loadout.entries[index]
+        if type(row) == "table" then
+            local entryId, entryType = Loadouts.ResolveEntryRow(row)
+            local spellId = NormalizeId(row.spellId)
+            local match = false
+            if targetId and entryId == targetId and entryType == targetType then
+                match = true
+            elseif targetSpell and spellId == targetSpell then
+                match = true
+            end
+            if match then
+                table.remove(loadout.entries, index)
+                removed = true
+                break
+            end
+        end
+    end
+
+    if not removed then
+        return false, "missing"
+    end
+    loadout.updatedAt = Now()
+    return true
+end
+
+function Loadouts.Duplicate(id)
+    local source = Loadouts.Get(id)
+    if not source then
+        return nil, "not_found"
+    end
+    if CountLoadouts() >= MAX_LOADOUTS then
+        return nil, "loadout_limit"
+    end
+
+    Loadouts.EnsureLoadoutShape(source)
+    local baseName = source.name or "build"
+    local copyName = baseName .. " (copy)"
+    local store = GetStore()
+    local suffix = 2
+    while true do
+        local taken = false
+        for _, existing in pairs(store) do
+            if type(existing) == "table" and existing.name == copyName then
+                taken = true
+                break
+            end
+        end
+        if not taken then
+            break
+        end
+        copyName = baseName .. " (copy " .. tostring(suffix) .. ")"
+        suffix = suffix + 1
+    end
+
+    local newId = UniqueId(copyName)
+    local clone = CopyTable(source)
+    clone.id = newId
+    clone.name = copyName
+    clone.updatedAt = Now()
+    clone.character = source.character or PlayerName()
+    store[newId] = clone
+    return clone, newId
+end
+
 function Loadouts.ImportFromArchetype(id)
     local loadout = Loadouts.Get(id)
     if not loadout then
@@ -638,17 +792,19 @@ function Loadouts.ImportFromArchetype(id)
     return true, #loadout.entries, source
 end
 
-function Loadouts.GroupEntries(entries, filters)
+function Loadouts.GroupEntries(entries, filters, searchText, loadout)
     local groups = {}
     local order = {}
     if type(entries) ~= "table" then
         return groups, order, 0
     end
 
+    local knownLoadout = type(loadout) == "table" and { knownSnapshot = loadout.knownSnapshot } or nil
     local total = 0
     for index = 1, #entries do
         local described = Loadouts.DescribeEntry(entries[index])
-        if described and EntryPassesFilters(entries[index], filters) then
+        if described and EntryPassesFilters(entries[index], filters)
+            and Loadouts.EntryMatchesSearch(entries[index], searchText, described) then
             total = total + 1
             local label = entries[index].classGroup or described.classGroup or "Other"
             if not groups[label] then
@@ -657,6 +813,9 @@ function Loadouts.GroupEntries(entries, filters)
             end
             described.tagLabel = TagLabel(entries[index].tags)
             described.raw = entries[index]
+            if knownLoadout then
+                described.known = Loadouts.IsEntryKnown(knownLoadout, entries[index])
+            end
             groups[label][#groups[label] + 1] = described
         end
     end
@@ -1093,7 +1252,7 @@ function Loadouts.DescribeEntry(row)
 end
 
 ------------------------------------------------------------------------
--- Share string (ASUITE1)
+-- Share string (ASUITE1 legacy + ASUITE2 with sections/equipment)
 ------------------------------------------------------------------------
 
 local function EscapeShareName(name)
@@ -1103,12 +1262,85 @@ local function EscapeShareName(name)
     return name:gsub(";", ","):gsub(":", ",")
 end
 
-function Loadouts.ExportString(id)
-    local loadout = Loadouts.Get(id)
-    if not loadout then
-        return nil, "not_found"
+local function EscapeShareField(text)
+    if type(text) ~= "string" then
+        return ""
     end
+    return text:gsub("\\", "\\\\"):gsub("§", "\\s"):gsub("|", "\\p")
+end
 
+local function UnescapeShareField(text)
+    if type(text) ~= "string" then
+        return ""
+    end
+    return text:gsub("\\p", "|"):gsub("\\s", "§"):gsub("\\\\", "\\")
+end
+
+local function EncodeEquipmentStubs(list)
+    local parts = {}
+    if type(list) ~= "table" then
+        return ""
+    end
+    for index = 1, #list do
+        local stub = list[index]
+        if type(stub) == "table" then
+            local typeKey = stub.type or stub.Type or ""
+            local comment = stub.comment or stub.Comment or ""
+            if typeKey ~= "" then
+                parts[#parts + 1] = EscapeShareField(typeKey) .. "," .. EscapeShareField(comment)
+            end
+        end
+    end
+    return table.concat(parts, ";")
+end
+
+local function DecodeEquipmentStubs(text)
+    local rows = {}
+    if type(text) ~= "string" or text == "" then
+        return rows
+    end
+    for token in text:gmatch("[^;]+") do
+        local typeKey, comment = token:match("^([^,]*),(.*)$")
+        if typeKey and typeKey ~= "" then
+            rows[#rows + 1] = {
+                type = UnescapeShareField(typeKey),
+                comment = UnescapeShareField(comment or ""),
+            }
+        end
+    end
+    return rows
+end
+
+local function EncodeSections(sections)
+    local parts = {}
+    if type(sections) ~= "table" then
+        return ""
+    end
+    for index = 1, #Loadouts.SECTION_ORDER do
+        local key = Loadouts.SECTION_ORDER[index]
+        local text = sections[key]
+        if type(text) == "string" and text ~= "" then
+            parts[#parts + 1] = key .. "=" .. EscapeShareField(text)
+        end
+    end
+    return table.concat(parts, "§")
+end
+
+local function DecodeSections(text)
+    local sections = EmptySections()
+    if type(text) ~= "string" or text == "" then
+        return sections
+    end
+    for chunk in text:gmatch("[^§]+") do
+        local key, value = chunk:match("^([^=]+)=(.*)$")
+        if key and sections[key] ~= nil then
+            sections[key] = UnescapeShareField(value or "")
+        end
+    end
+    return sections
+end
+
+local function EncodeShareEntries(loadout)
     local parts = {}
     local entries = type(loadout.entries) == "table" and loadout.entries or {}
     for index = 1, #entries do
@@ -1122,10 +1354,35 @@ function Loadouts.ExportString(id)
             end
         end
     end
+    return parts, #parts
+end
 
+function Loadouts.ExportString(id, format)
+    local loadout = Loadouts.Get(id)
+    if not loadout then
+        return nil, "not_found"
+    end
+
+    Loadouts.EnsureLoadoutShape(loadout)
+    local parts, count = EncodeShareEntries(loadout)
     local name = loadout.name or "build"
     local body = table.concat(parts, ";")
-    return SHARE_PREFIX .. "|" .. name .. "|" .. tostring(#parts) .. "|" .. body
+
+    if format == "ASUITE1" then
+        return SHARE_PREFIX .. "|" .. name .. "|" .. tostring(count) .. "|" .. body
+    end
+
+    local author = EscapeShareField(loadout.author or "")
+    local category = EscapeShareField(loadout.category or "")
+    local complexity = EscapeShareField(loadout.complexity or "")
+    local meta = author .. "§" .. category .. "§" .. complexity
+    local sections = EncodeSections(Loadouts.GetSections(loadout))
+    local armor = EncodeEquipmentStubs(loadout.equipment and loadout.equipment.armorTypes)
+    local weapons = EncodeEquipmentStubs(loadout.equipment and loadout.equipment.weaponTypes)
+    local equipment = armor .. "|" .. weapons
+
+    return SHARE_PREFIX_V2 .. "|" .. name .. "|" .. tostring(count) .. "|" .. body
+        .. "|" .. meta .. "|" .. sections .. "|" .. equipment
 end
 
 local function ParseShareEntry(token)
@@ -1154,6 +1411,21 @@ local function ParseShareEntry(token)
     return nil
 end
 
+local function ParseShareV2Fields(text)
+    local fields = {}
+    local start = 1
+    for index = 1, 6 do
+        local pipe = text:find("|", start, true)
+        if not pipe then
+            return nil
+        end
+        fields[index] = text:sub(start, pipe - 1)
+        start = pipe + 1
+    end
+    fields[7] = text:sub(start)
+    return fields
+end
+
 function Loadouts.ImportString(text, shared)
     if type(text) ~= "string" then
         return nil, "invalid"
@@ -1163,9 +1435,27 @@ function Loadouts.ImportString(text, shared)
         return nil, "empty"
     end
 
-    local prefix, name, countText, body = text:match("^([^|]+)|([^|]*)|(%d+)|(.*)$")
-    if prefix ~= SHARE_PREFIX then
+    local prefix = text:match("^([^|]+)|")
+    if prefix ~= SHARE_PREFIX and prefix ~= SHARE_PREFIX_V2 then
         return nil, "bad_prefix"
+    end
+
+    local isV2 = prefix == SHARE_PREFIX_V2
+    local name, countText, body, meta, sectionsText, equipmentText
+    if isV2 then
+        local fields = ParseShareV2Fields(text)
+        if not fields then
+            return nil, "invalid"
+        end
+        prefix = fields[1]
+        name = fields[2]
+        countText = fields[3]
+        body = fields[4]
+        meta = fields[5]
+        sectionsText = fields[6]
+        equipmentText = fields[7]
+    else
+        prefix, name, countText, body = text:match("^([^|]+)|([^|]*)|(%d+)|(.*)$")
     end
 
     name = name:match("^%s*(.-)%s*$")
@@ -1197,6 +1487,36 @@ function Loadouts.ImportString(text, shared)
         return nil, id
     end
     loadout.entries = entries
+
+    if isV2 then
+        if type(meta) == "string" and meta ~= "" then
+            local author, category, complexity = meta:match("^([^§]*)§([^§]*)§(.*)$")
+            if author and author ~= "" then
+                loadout.author = UnescapeShareField(author)
+            end
+            if category and category ~= "" then
+                loadout.category = UnescapeShareField(category)
+            end
+            if complexity and complexity ~= "" then
+                loadout.complexity = UnescapeShareField(complexity)
+            end
+        end
+        if type(sectionsText) == "string" and sectionsText ~= "" then
+            local sections = DecodeSections(sectionsText)
+            loadout.sections = sections
+            if sections.OVERVIEW ~= "" then
+                loadout.notes = sections.OVERVIEW
+            end
+        end
+        if type(equipmentText) == "string" and equipmentText ~= "" then
+            local armorText, weaponText = equipmentText:match("^([^|]*)|?(.*)$")
+            loadout.equipment = {
+                armorTypes = DecodeEquipmentStubs(armorText),
+                weaponTypes = DecodeEquipmentStubs(weaponText),
+            }
+        end
+    end
+
     loadout.updatedAt = Now()
     return loadout, id
 end

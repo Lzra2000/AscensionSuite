@@ -238,4 +238,9 @@ assert(Loadouts.Get(id).name == "Renamed via panel test", "rename persisted afte
 
 assert(spellRow._select ~= nil, "spell rows support selection highlight")
 
+local spellSearchBox = _G.AscensionSuiteLoadoutsPanelSpellSearch
+assert(spellSearchBox, "spell search box exists")
+assert(spellRow._remove ~= nil, "spell rows have remove button")
+assert(spellRow._knownBadge ~= nil, "spell rows have known badge")
+
 print("OK: AscensionSuite loadouts panel test passed")

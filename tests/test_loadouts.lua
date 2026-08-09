@@ -153,9 +153,12 @@ local ok, count = Loadouts.SaveFromWishlist(id, false, true)
 assert(ok and count == 2, "save snapshots wishlist")
 
 local exported = Loadouts.ExportString(id)
-assert(exported:match("^ASUITE1|"), "export uses ASUITE1 prefix")
+assert(exported:match("^ASUITE2|"), "export uses ASUITE2 prefix")
 assert(exported:find("Storm kit"), "export carries name")
 assert(exported:find("Ability:1133:"), "export carries resolved entry")
+
+local exportedV1 = Loadouts.ExportString(id, "ASUITE1")
+assert(exportedV1:match("^ASUITE1|"), "legacy ASUITE1 export still available")
 
 Wishlist.Clear()
 assert(Wishlist.Count() == 0, "cleared")
@@ -203,8 +206,11 @@ exportLoadout.entries = {
     { spellId = 133, name = "Fireball" },
 }
 local exportText = Loadouts.ExportString(exportId)
-assert(exportText:match("^ASUITE1|"), "export keeps prefix")
+assert(exportText:match("^ASUITE2|"), "export keeps ASUITE2 prefix")
 assert(exportText:find("Ability:1133:"), "spell-only row resolves before export")
+
+local exportV1 = Loadouts.ExportString(exportId, "ASUITE1")
+assert(exportV1:match("^ASUITE1|"), "explicit ASUITE1 export keeps prefix")
 
 local legacyImported = Loadouts.ImportString("ASUITE1|legacy|1|8264:Gavel of Wrath", true)
 assert(legacyImported and #legacyImported.entries == 1, "legacy spellId:name imports")
@@ -341,5 +347,64 @@ assert(desired[Key(1133, "Ability")] == nil, "client Desired cleared")
 local renameOk = Loadouts.Rename(addId, "Renamed build")
 assert(renameOk, "Rename succeeds")
 assert(Loadouts.Get(addId).name == "Renamed build", "Rename updates name")
+
+------------------------------------------------------------------------
+-- Remove entry, duplicate, search, known badge, ASUITE2 round-trip
+------------------------------------------------------------------------
+
+local removeLoadout, removeId = Loadouts.Create("Remove test", "", false)
+Loadouts.AddById(removeId, 133)
+Loadouts.AddById(removeId, 116)
+removeLoadout = Loadouts.Get(removeId)
+assert(#removeLoadout.entries == 2, "two entries seeded")
+wildcard = true
+desired["1133/Ability"] = true
+local removeRow = removeLoadout.entries[1]
+local removeOk = Loadouts.RemoveEntry(removeId, removeRow)
+assert(removeOk, "RemoveEntry succeeds")
+assert(#Loadouts.Get(removeId).entries == 1, "one entry left after remove")
+assert(desired["1133/Ability"] == true, "RemoveEntry does not touch Ascension Desired")
+
+local dupSource, dupSourceId = Loadouts.Create("Original kit", "overview text", false)
+dupSource.author = "Tester"
+dupSource.category = "PvE"
+dupSource.complexity = "Expert"
+dupSource.sections.ROTATION = "press buttons"
+dupSource.equipment = {
+    armorTypes = { { type = "ITEM_SUBCLASS_ARMOR_PLATE", comment = "tanky" } },
+    weaponTypes = {},
+}
+dupSource.entries = {
+    { entryId = 1133, entryType = "Ability", spellId = 133, name = "Fireball", tags = { core = true } },
+}
+dupSource.knownSnapshot = { { id = 1133, type = "Ability", spellId = 133, name = "Fireball" } }
+
+local dupClone, dupId = Loadouts.Duplicate(dupSourceId)
+assert(dupClone and dupId, "Duplicate creates new loadout")
+assert(dupClone.name == "Original kit (copy)", "duplicate gets copy suffix")
+assert(dupClone.author == "Tester", "author copied")
+assert(dupClone.sections.ROTATION == "press buttons", "sections copied")
+assert(#dupClone.entries == 1, "entries copied")
+assert(#dupClone.equipment.armorTypes == 1, "equipment copied")
+assert(#dupClone.knownSnapshot == 1, "known snapshot copied")
+
+assert(Loadouts.EntryMatchesSearch(dupClone.entries[1], "fire"), "search matches name")
+assert(Loadouts.EntryMatchesSearch(dupClone.entries[1], "1133"), "search matches entry id")
+assert(not Loadouts.EntryMatchesSearch(dupClone.entries[1], "frost"), "search filters non-matches")
+assert(Loadouts.IsEntryKnown(dupClone, dupClone.entries[1]), "known snapshot marks entry")
+
+local v2Export = Loadouts.ExportString(dupSourceId)
+assert(v2Export:match("^ASUITE2|"), "ASUITE2 export prefix")
+assert(v2Export:find("ROTATION=press buttons"), "ASUITE2 carries section text")
+assert(v2Export:find("ITEM_SUBCLASS_ARMOR_PLATE"), "ASUITE2 carries equipment stub")
+
+local v2Imported, v2ImportId = Loadouts.ImportString(v2Export, true)
+assert(v2Imported and v2ImportId, "ASUITE2 import succeeds")
+assert(v2Imported.sections.ROTATION == "press buttons", "ASUITE2 restores section")
+assert(#v2Imported.equipment.armorTypes == 1, "ASUITE2 restores equipment")
+assert(v2Imported.category == "PvE", "ASUITE2 restores category")
+
+local v1Imported = Loadouts.ImportString(exportedV1, true)
+assert(v1Imported and #v1Imported.entries == 2, "ASUITE1 import still works")
 
 print("OK: AscensionSuite loadouts test passed")
