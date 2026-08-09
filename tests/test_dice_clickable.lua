@@ -56,10 +56,21 @@ local frameStrata
 local frameLevel
 local rollButtonEnabled = false
 local rollButtonVisible = false
+local rollButtonMouseEnabled = true
+local scrollCountMouseEnabled = true
 local updateRollButtonCalls = 0
 local iconShown = false
 local nameFrameShown = false
 local internalID = nil
+local diceMouseOver = false
+local rollButtonMouseOver = false
+local scrollCountMouseOver = false
+local highlightShown = false
+local tooltipHidden = false
+local onEnterCalls = 0
+local onLeaveCalls = 0
+local rollButtonOnEnterCalls = 0
+local scrollCountOnEnterCalls = 0
 
 local function ResetDiceVisuals()
     iconShown = false
@@ -67,21 +78,54 @@ local function ResetDiceVisuals()
     internalID = nil
     rollButtonVisible = false
     rollButtonEnabled = false
+    rollButtonMouseEnabled = true
+    scrollCountMouseEnabled = true
     updateRollButtonCalls = 0
     frameStrata = "MEDIUM"
     frameLevel = 1
     diceShown = true
+    diceMouseOver = false
+    rollButtonMouseOver = false
+    scrollCountMouseOver = false
+    highlightShown = false
+    tooltipHidden = false
+    onEnterCalls = 0
+    onLeaveCalls = 0
+    rollButtonOnEnterCalls = 0
+    scrollCountOnEnterCalls = 0
 end
+
+_G.GameTooltip = {
+    Hide = function()
+        tooltipHidden = true
+    end,
+}
 
 _G.WildCardDice = {
     isRapidRolling = false,
     pendingReveal = nil,
     IsShown = function() return diceShown end,
+    IsMouseOver = function() return diceMouseOver end,
     IsMouseEnabled = function() return mouseEnabled end,
     EnableMouse = function(_, enabled) mouseEnabled = enabled == true end,
     RegisterOnClick = function()
         registerCalls = registerCalls + 1
         mouseEnabled = true
+    end,
+    OnEnter = function()
+        onEnterCalls = onEnterCalls + 1
+        highlightShown = true
+    end,
+    OnLeave = function()
+        onLeaveCalls = onLeaveCalls + 1
+        highlightShown = false
+        tooltipHidden = true
+    end,
+    RollButtonOnEnter = function()
+        rollButtonOnEnterCalls = rollButtonOnEnterCalls + 1
+    end,
+    ScrollCountOnEnter = function()
+        scrollCountOnEnterCalls = scrollCountOnEnterCalls + 1
     end,
     GetAlpha = function() return diceAlpha end,
     SetAlpha = function(_, alpha) diceAlpha = alpha end,
@@ -95,6 +139,10 @@ _G.WildCardDice = {
         updateRollButtonCalls = updateRollButtonCalls + 1
         rollButtonEnabled = true
     end,
+    Highlight = {
+        Hide = function() highlightShown = false end,
+        Show = function() highlightShown = true end,
+    },
     Icon = {
         IsShown = function() return iconShown end,
     },
@@ -104,9 +152,17 @@ _G.WildCardDice = {
     RollButton = {
         IsVisible = function() return rollButtonVisible end,
         IsEnabled = function() return rollButtonEnabled end,
+        IsMouseOver = function() return rollButtonMouseOver end,
+        IsMouseEnabled = function() return rollButtonMouseEnabled end,
+        EnableMouse = function(_, enabled) rollButtonMouseEnabled = enabled == true end,
         Enable = function() rollButtonEnabled = true end,
         Disable = function() rollButtonEnabled = false end,
         SetFrameLevel = Noop,
+        ScrollCount = {
+            IsMouseOver = function() return scrollCountMouseOver end,
+            IsMouseEnabled = function() return scrollCountMouseEnabled end,
+            EnableMouse = function(_, enabled) scrollCountMouseEnabled = enabled == true end,
+        },
     },
     Core = {
         State = {
@@ -280,5 +336,65 @@ diceShown = true
 assert(API.EnsureDiceClickable() == true, "mid-reveal clears click stealer")
 assert(mouseEnabled == false, "mid-reveal mouse disabled")
 assert(frameStrata == "MEDIUM", "mid-reveal strata restored")
+assert(onLeaveCalls >= 1 or tooltipHidden == true, "mid-reveal hover artifacts cleared")
+
+-- ClearDiceHoverArtifacts hides tooltip and highlight.
+ResetDiceVisuals()
+highlightShown = true
+tooltipHidden = false
+assert(API.ClearDiceHoverArtifacts() == true, "hover artifacts cleared")
+assert(highlightShown == false, "highlight hidden")
+assert(tooltipHidden == true, "tooltip hidden")
+
+-- SanitizeDiceHover calls OnLeave when cursor is elsewhere.
+ResetDiceVisuals()
+highlightShown = true
+onLeaveCalls = 0
+assert(API.SanitizeDiceHover() == true, "sanitize runs")
+assert(onLeaveCalls == 1, "OnLeave when not mouseover")
+assert(highlightShown == false, "highlight cleared via OnLeave")
+
+-- SanitizeDiceHover re-fires OnEnter when cursor is over the die.
+ResetDiceVisuals()
+diceMouseOver = true
+onEnterCalls = 0
+assert(API.SanitizeDiceHover() == true, "sanitize over dice")
+assert(onEnterCalls == 1, "OnEnter when mouseover dice")
+assert(highlightShown == true, "highlight shown via OnEnter")
+
+-- SanitizeDiceHover re-fires RollButtonOnEnter when cursor is over Unlearn bar.
+ResetDiceVisuals()
+rollButtonVisible = true
+rollButtonMouseOver = true
+rollButtonOnEnterCalls = 0
+assert(API.SanitizeDiceHover() == true, "sanitize over roll button")
+assert(rollButtonOnEnterCalls == 1, "RollButtonOnEnter when mouseover roll button")
+
+-- EnsureDiceClickable sanitizes hover after mouse restore.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "DECISION_PENDING" end
+internalID = 55
+iconShown = true
+rollButtonVisible = true
+mouseEnabled = false
+diceMouseOver = true
+onEnterCalls = 0
+registerCalls = 0
+healed = API.EnsureDiceClickable()
+assert(healed == true, "DECISION_PENDING heal includes hover sanitize")
+assert(onEnterCalls >= 1, "EnsureDiceClickable re-fires OnEnter when mouseover")
+
+-- RollButton mouse restored for interactive decision die.
+ResetDiceVisuals()
+_G.WildCardDice.Core.GetState = function() return "DECISION_PENDING" end
+internalID = 66
+iconShown = true
+rollButtonVisible = true
+rollButtonMouseEnabled = false
+scrollCountMouseEnabled = false
+mouseEnabled = false
+API.EnsureDiceClickable()
+assert(rollButtonMouseEnabled == true, "RollButton mouse restored")
+assert(scrollCountMouseEnabled == true, "ScrollCount mouse restored")
 
 print("OK: AscensionSuite dice clickable test passed")

@@ -3,6 +3,24 @@
 All notable changes to AscensionSuite are documented here.
 Each shipped version is a `### <version> (<date>) -- <summary>` block, newest first.
 
+### 0.4.14 (2026-08-09) -- Wild Card dice hover/tooltip reset
+
+#### Fixed
+- **Wild Card dice hover / tooltip stuck after recovery** — `EnsureDiceClickable`,
+  `ClearDiceClickStealer`, and Instant Dice Skip could toggle `EnableMouse` or raise
+  strata without firing Ascension's native `OnEnter` / `OnLeave`, leaving the purple
+  highlight or `GameTooltip` visible while the cursor was elsewhere (or tooltips missing
+  while hovering). Suite now sanitizes hover after every mouse/strata recovery and
+  clears tooltip/highlight when disabling non-interactive click stealers.
+- **Unlearn & Roll bar (RollButton)** — when a post-reveal decision die is
+  interactive, Suite restores `RollButton` / `ScrollCount` mouse and re-fires native
+  hover handlers without auto-clicking Unlearn (`0.4.10` rule).
+
+#### Added
+- `AscensionAPI.ClearDiceHoverArtifacts`, `AscensionAPI.SanitizeDiceHover`.
+- `tests/test_dice_clickable.lua` coverage for hover reset helpers and RollButton
+  mouse restoration.
+
 ### 0.4.13 (2026-08-09) -- Wild Card dice no longer steals clicks
 
 #### Fixed
