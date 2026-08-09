@@ -25,6 +25,9 @@ local DEFAULTS = {
     desiredProfiles = {},
     loadouts = {},
     logbook = {},
+    prefs = {
+        loadoutsSelectedId = nil,
+    },
 }
 
 local function CopyTable(source)
@@ -72,6 +75,14 @@ local function EnsureDefaults(db)
 
     if type(db.logbook) ~= "table" then
         db.logbook = {}
+    end
+
+    if type(db.prefs) ~= "table" then
+        db.prefs = CopyTable(DEFAULTS.prefs)
+    else
+        if db.prefs.loadoutsSelectedId == nil then
+            db.prefs.loadoutsSelectedId = DEFAULTS.prefs.loadoutsSelectedId
+        end
     end
 
     -- Migrate v2 marks/profiles into wishlist spell ids only (best-effort).

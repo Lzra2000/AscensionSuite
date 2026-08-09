@@ -20,6 +20,12 @@ local ROOT = RepoRoot()
 AscensionSuite = {}
 AscensionSuiteDB = {}
 
+function UnitName(unit)
+    if unit == "player" then
+        return "Tester"
+    end
+end
+
 local wildcard = false
 
 local ENTRIES = {
@@ -406,5 +412,48 @@ assert(v2Imported.category == "PvE", "ASUITE2 restores category")
 
 local v1Imported = Loadouts.ImportString(exportedV1, true)
 assert(v1Imported and #v1Imported.entries == 2, "ASUITE1 import still works")
+
+------------------------------------------------------------------------
+-- Selection memory, scope toggle, Clear Desired, tag cycle
+------------------------------------------------------------------------
+
+local memoryLoadout, memoryId = Loadouts.Create("Memory test", "", false)
+assert(Loadouts.SetSelectedId(memoryId), "SetSelectedId succeeds")
+assert(Loadouts.GetSelectedId() == memoryId, "GetSelectedId returns saved id")
+
+memoryLoadout = Loadouts.Get(memoryId)
+memoryLoadout.character = "shared"
+local scopeOk, scopeCharacter = Loadouts.ToggleCharacter(memoryId)
+assert(scopeOk and scopeCharacter == "Tester", "ToggleCharacter switches to character name")
+scopeOk, scopeCharacter = Loadouts.ToggleCharacter(memoryId)
+assert(scopeOk and scopeCharacter == "shared", "ToggleCharacter switches back to shared")
+
+wildcard = true
+desired = {}
+Loadouts.AddById(memoryId, 133)
+Loadouts.AddById(memoryId, 116)
+memoryLoadout = Loadouts.Get(memoryId)
+memoryLoadout.entries[1].tags = { core = true }
+memoryLoadout.entries[2].tags = { optimal = true }
+local tagRow = memoryLoadout.entries[1]
+API.AddDesiredID(1133, "Ability")
+API.AddDesiredID(1116, "Talent")
+
+local clearOk, clearResult = Loadouts.ClearFilteredDesired(memoryId, { core = true, optimal = false, empowering = false, synergistic = false })
+assert(clearOk and clearResult.cleared == 1, "ClearFilteredDesired clears only filtered Desired marks")
+assert(desired["1133/Ability"] == nil, "fireball Desired cleared")
+assert(desired["1116/Talent"] == true, "optimal row untouched when filtered out")
+
+tagRow.tags = { core = false, optimal = false, empowering = false, synergistic = false }
+local tagOk, tagLabel = Loadouts.CycleEntryTag(memoryId, tagRow)
+assert(tagOk and tagLabel == "Core", "first cycle lands on Core")
+tagOk, tagLabel = Loadouts.CycleEntryTag(memoryId, tagRow)
+assert(tagOk and tagLabel == "Optimal", "second cycle lands on Optimal")
+tagOk, tagLabel = Loadouts.CycleEntryTag(memoryId, tagRow)
+assert(tagOk and tagLabel == "Empowering", "third cycle lands on Empowering")
+tagOk, tagLabel = Loadouts.CycleEntryTag(memoryId, tagRow)
+assert(tagOk and tagLabel == "Synergistic", "fourth cycle lands on Synergistic")
+tagOk, tagLabel = Loadouts.CycleEntryTag(memoryId, tagRow)
+assert(tagOk and tagLabel == "Utility", "fifth cycle clears to Utility")
 
 print("OK: AscensionSuite loadouts test passed")

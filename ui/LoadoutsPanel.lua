@@ -57,6 +57,13 @@ local function ScrollOffset(scroll)
     return 0
 end
 
+local function IsAltKeyDown()
+    if type(_G.IsAltKeyDown) == "function" then
+        return _G.IsAltKeyDown() == true
+    end
+    return false
+end
+
 local function CheckButtonIsOn(check)
     if type(check) ~= "table" or type(check.GetChecked) ~= "function" then
         return false
@@ -133,6 +140,18 @@ local function PersistActiveSection()
     end
     if W.notesEdit.GetText then
         Loadouts.SetSectionText(selectedId, activeSection, W.notesEdit:GetText())
+    end
+end
+
+local function PersistSelection()
+    local Loadouts = GetLoadouts()
+    if not Loadouts or not Loadouts.SetSelectedId then
+        return
+    end
+    if selectedId then
+        Loadouts.SetSelectedId(selectedId)
+    else
+        Loadouts.SetSelectedId(nil)
     end
 end
 
@@ -291,6 +310,7 @@ local function ShowSpellRowTooltip(row)
     if described and described.known then
         GameTooltip:AddLine("Known when this build was captured", 0.38, 0.82, 0.53)
     end
+    GameTooltip:AddLine("Alt+click or tag cycles Core/Optimal/…", 0.6, 0.6, 0.6)
     GameTooltip:AddLine("x removes from this build (Ascension Desired untouched)", 0.6, 0.6, 0.6)
     GameTooltip:AddLine("Left-click selects this row", 0.6, 0.6, 0.6)
     GameTooltip:Show()
@@ -352,9 +372,29 @@ local function OnSpellRowToggleDesired(row)
     SelectSpellRow(row)
 end
 
+local function OnSpellRowCycleTag(row)
+    local Loadouts = GetLoadouts()
+    local raw = row._raw
+    if not Loadouts or not selectedId or not raw then
+        return
+    end
+
+    local ok, label, reason = Loadouts.CycleEntryTag(selectedId, raw)
+    if not ok then
+        SetStatus("Could not cycle tag — " .. tostring(reason or "error") .. ".", false)
+        return
+    end
+
+    SelectSpellRow(row, string.format("Tag is now %s.", label or "Utility"))
+end
+
 local function OnSpellRowClick(row, button)
     if button == "RightButton" then
         OnSpellRowToggleDesired(row)
+        return
+    end
+    if button == "LeftButton" and IsAltKeyDown() then
+        OnSpellRowCycleTag(row)
         return
     end
     SelectSpellRow(row, "Selected " .. (row._name or "entry") .. ".")
@@ -366,6 +406,7 @@ local function UpdateHeader(loadout)
         if W.authorChip then W.authorChip:SetText("") end
         if W.categoryChip then W.categoryChip:Hide() end
         if W.complexityChip then W.complexityChip:Hide() end
+        if W.characterChip then W.characterChip:Hide() end
         return
     end
 
@@ -397,6 +438,11 @@ local function UpdateHeader(loadout)
             W.complexityChip:Show()
         end
     end
+    if W.characterChip then
+        local character = loadout.character or "shared"
+        W.characterChip:SetText(string.format("Scope %s", character))
+        W.characterChip:Show()
+    end
 end
 
 local function UpdateAutoStatus(loadout)
@@ -414,14 +460,18 @@ local function UpdateAutoStatus(loadout)
         desired = Loadouts and Loadouts.CountDesiredInLoadout(loadout) or 0
     end
     local assists = AscensionSuite.Database and AscensionSuite.Database.GetAssists and AscensionSuite.Database.GetAssists() or {}
+    local AutoRoller = AscensionSuite.AutoRoller
+    local running = AutoRoller and AutoRoller.IsRunning and AutoRoller.IsRunning()
     local tail = ""
-    if assists.autoRoll == true then
+    if running then
+        tail = "Auto-Roll running"
+    elseif assists.autoRoll == true then
         tail = "missing will be rolled (Wildcard + assists on)"
     else
         tail = "enable Auto-Roll on Assists to roll missing entries"
     end
     SetAutoStatus(string.format("%d spells ready \194\183 Desired %d of %d \194\183 %s",
-        total, desired, total, tail), total > 0)
+        total, desired, total, tail), running or total > 0)
 end
 
 local function FillEquipmentRow(row, described)
@@ -598,10 +648,31 @@ function LoadoutsPanel.Refresh(note, good)
     end
 
     local list = Loadouts.List()
+    if not selectedId and Loadouts.GetSelectedId then
+        selectedId = Loadouts.GetSelectedId()
+    end
     if not selectedId and #list > 0 then
         selectedId = list[1].id
     elseif selectedId and not Loadouts.Get(selectedId) then
-        selectedId = #list > 0 and list[1].id or nil
+        selectedId = (#list > 0 and list[1].id) or nil
+    end
+    PersistSelection()
+
+    local hasBuilds = #list > 0
+    if W.emptyPanel then
+        if hasBuilds then
+            W.emptyPanel:Hide()
+            if W.buildShell then
+                W.buildShell:Show()
+            end
+        else
+            W.emptyPanel:Show()
+            if W.buildShell then
+                W.buildShell:Hide()
+            end
+            selectedId = nil
+            PersistSelection()
+        end
     end
 
     if type(_G.FauxScrollFrame_Update) == "function" and W.scrollFrame then
@@ -637,6 +708,7 @@ H.SelectLoadout = function(id)
     PersistActiveSection()
     selectedId = id
     selectedSpellKey = nil
+    PersistSelection()
     LoadoutsPanel.Refresh()
 end
 
@@ -813,6 +885,63 @@ H.OnCycleComplexity = function()
     LoadoutsPanel.Refresh()
 end
 
+H.OnToggleCharacter = function()
+    local Loadouts = GetLoadouts()
+    if not Loadouts or not selectedId then
+        SetStatus("Select a build first.", false)
+        return
+    end
+    local ok, character = Loadouts.ToggleCharacter(selectedId)
+    if not ok then
+        SetStatus("Could not change scope — " .. tostring(character or "error") .. ".", false)
+        return
+    end
+    LoadoutsPanel.Refresh(string.format("Build scope is now %s.", character or "shared"), true)
+end
+
+H.OnClearFilteredDesired = function()
+    local Loadouts = GetLoadouts()
+    if not Loadouts or not selectedId then
+        SetStatus("Select a build first.", false)
+        return
+    end
+    local ok, result = Loadouts.ClearFilteredDesired(selectedId, spellFilters)
+    if not ok then
+        if result == "not_wildcard" then
+            SetStatus("Clear Desired needs Wildcard mode.", false)
+        else
+            SetStatus("Could not clear Desired — " .. tostring(result or "error") .. ".", false)
+        end
+        return
+    end
+
+    local MainWindow = AscensionSuite.MainWindow
+    if MainWindow and MainWindow.RefreshWishlist then
+        MainWindow.RefreshWishlist()
+    end
+
+    local note = string.format("Cleared %d Desired mark(s) from %d filtered spell(s)",
+        result.cleared or 0, result.scanned or 0)
+    if (result.notMarked or 0) > 0 then
+        note = note .. string.format(", %d were not marked", result.notMarked)
+    end
+    if type(result.refuses) == "table" and #result.refuses > 0 then
+        local detail = Loadouts.FormatRefuseSummary(result.refuses)
+        if detail then
+            note = note .. ", refused: " .. detail
+        end
+    end
+    LoadoutsPanel.Refresh(note .. ".", (result.cleared or 0) > 0)
+end
+
+H.OnStopAutoRoll = function()
+    local AutoRoller = AscensionSuite.AutoRoller
+    if AutoRoller and AutoRoller.Stop then
+        AutoRoller.Stop("user_stop")
+    end
+    LoadoutsPanel.Refresh("Auto-Roll stopped.", nil)
+end
+
 H.OnStartAutoRoll = function()
     local DB = AscensionSuite.Database
     local assists = DB and DB.GetAssists and DB.GetAssists() or {}
@@ -930,6 +1059,7 @@ H.OnNewBuild = function()
     end
     selectedId = id
     activeSection = "SPELLS_AND_TALENTS"
+    PersistSelection()
     LoadoutsPanel.Refresh("Created a new build.", true)
 end
 
@@ -947,6 +1077,7 @@ H.OnDuplicateBuild = function()
     end
     selectedId = newId
     selectedSpellKey = nil
+    PersistSelection()
     LoadoutsPanel.Refresh(string.format("Duplicated \"%s\" as \"%s\".", sourceName, clone.name or "copy"), true)
 end
 
@@ -963,6 +1094,7 @@ H.OnDeleteBuild = function()
         return
     end
     selectedId = nil
+    PersistSelection()
     LoadoutsPanel.Refresh(string.format("Deleted \"%s\".", name or "build"), true)
 end
 
@@ -999,6 +1131,7 @@ H.OnImportShare = function()
         return
     end
     selectedId = id
+    PersistSelection()
     LoadoutsPanel.Refresh(string.format("Imported \"%s\" (%d entries).", loadout.name, #(loadout.entries or {})), true)
 end
 
@@ -1117,6 +1250,15 @@ local function CreateSpellRow(parent, index)
     tagLabel:SetWidth(64)
     tagLabel:SetJustifyH("RIGHT")
     row._tagLabel = tagLabel
+
+    local tagButton = CreateFrame("Button", FRAME_NAME .. "SpellRow" .. index .. "Tag", spell)
+    tagButton:SetPoint("LEFT", tagLabel, "LEFT", -4, 0)
+    tagButton:SetPoint("RIGHT", tagLabel, "RIGHT", 4, 0)
+    tagButton:SetHeight(18)
+    tagButton:SetScript("OnClick", function()
+        OnSpellRowCycleTag(row)
+    end)
+    row._tagButton = tagButton
 
     local nameLabel = spell:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     nameLabel:SetPoint("LEFT", icon, "RIGHT", 8, 0)
@@ -1291,6 +1433,40 @@ local function BuildPanel(parent, width)
     W.buildShell:SetBackdropColor(0.035, 0.03, 0.02, 0.95)
     W.buildShell:SetBackdropBorderColor(0.45, 0.38, 0.20, 1)
 
+    W.emptyPanel = CreateFrame("Frame", nil, W.panel)
+    W.emptyPanel:SetPoint("TOPLEFT", W.listFrame, "TOPRIGHT", 8, 0)
+    W.emptyPanel:SetWidth(shellWidth)
+    W.emptyPanel:SetHeight(430)
+    W.emptyPanel:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    W.emptyPanel:SetBackdropColor(0.035, 0.03, 0.02, 0.95)
+    W.emptyPanel:SetBackdropBorderColor(0.45, 0.38, 0.20, 1)
+    W.emptyPanel:Hide()
+
+    local emptyTitle = W.emptyPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    emptyTitle:SetPoint("TOP", 0, -48)
+    emptyTitle:SetTextColor(1, 0.82, 0.2, 1)
+    emptyTitle:SetText("No saved builds yet")
+
+    local emptyHint = W.emptyPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    emptyHint:SetPoint("TOP", emptyTitle, "BOTTOM", 0, -10)
+    emptyHint:SetWidth(shellWidth - 48)
+    emptyHint:SetJustifyH("CENTER")
+    emptyHint:SetText("Create a build or import an archetype to automate Desired and Auto-Roll.")
+
+    local emptyNewButton = CreateFrame("Button", nil, W.emptyPanel, "UIPanelButtonTemplate")
+    emptyNewButton:SetWidth(72)
+    emptyNewButton:SetHeight(24)
+    emptyNewButton:SetPoint("TOP", emptyHint, "BOTTOM", 0, -14)
+    emptyNewButton:SetText("New build")
+    emptyNewButton:SetScript("OnClick", function() H.OnNewBuild() end)
+
     W.sectionSidebar = CreateFrame("Frame", nil, W.buildShell)
     W.sectionSidebar:SetWidth(SIDEBAR_WIDTH)
     W.sectionSidebar:SetPoint("TOPLEFT", 4, -4)
@@ -1375,6 +1551,15 @@ local function BuildPanel(parent, width)
     complexityButton:SetHeight(22)
     complexityButton:SetScript("OnClick", function() H.OnCycleComplexity() end)
 
+    W.characterChip = meta:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    W.characterChip:SetPoint("LEFT", W.complexityChip, "RIGHT", 8, 0)
+
+    local characterButton = CreateFrame("Button", nil, meta)
+    characterButton:SetPoint("LEFT", W.characterChip, "LEFT", -4, 0)
+    characterButton:SetPoint("RIGHT", W.characterChip, "RIGHT", 4, 0)
+    characterButton:SetHeight(22)
+    characterButton:SetScript("OnClick", function() H.OnToggleCharacter() end)
+
     local resetButton = CreateFrame("Button", nil, meta, "UIPanelButtonTemplate")
     resetButton:SetWidth(54)
     resetButton:SetHeight(22)
@@ -1399,7 +1584,7 @@ local function BuildPanel(parent, width)
     local autoBar = CreateFrame("Frame", nil, W.mainColumn)
     autoBar:SetPoint("TOPLEFT", meta, "BOTTOMLEFT", 0, -4)
     autoBar:SetPoint("TOPRIGHT", meta, "BOTTOMRIGHT", 0, -4)
-    autoBar:SetHeight(52)
+    autoBar:SetHeight(68)
     autoBar:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1423,17 +1608,31 @@ local function BuildPanel(parent, width)
     applyButton:SetText("Apply \226\134\146 Desired")
     applyButton:SetScript("OnClick", function() H.OnApplyDesired() end)
 
+    local clearDesiredButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
+    clearDesiredButton:SetWidth(108)
+    clearDesiredButton:SetHeight(22)
+    clearDesiredButton:SetPoint("LEFT", applyButton, "RIGHT", 6, 0)
+    clearDesiredButton:SetText("Clear Desired")
+    clearDesiredButton:SetScript("OnClick", function() H.OnClearFilteredDesired() end)
+
     local rollButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
     rollButton:SetWidth(100)
     rollButton:SetHeight(22)
-    rollButton:SetPoint("LEFT", applyButton, "RIGHT", 6, 0)
+    rollButton:SetPoint("LEFT", clearDesiredButton, "RIGHT", 6, 0)
     rollButton:SetText("Start Auto-Roll")
     rollButton:SetScript("OnClick", function() H.OnStartAutoRoll() end)
+
+    local stopRollButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
+    stopRollButton:SetWidth(54)
+    stopRollButton:SetHeight(22)
+    stopRollButton:SetPoint("LEFT", rollButton, "RIGHT", 6, 0)
+    stopRollButton:SetText("Stop")
+    stopRollButton:SetScript("OnClick", function() H.OnStopAutoRoll() end)
 
     local syncButton = CreateFrame("Button", nil, autoBar, "UIPanelButtonTemplate")
     syncButton:SetWidth(108)
     syncButton:SetHeight(22)
-    syncButton:SetPoint("LEFT", rollButton, "RIGHT", 6, 0)
+    syncButton:SetPoint("TOPLEFT", applyButton, "BOTTOMLEFT", 0, -6)
     syncButton:SetText("Sync from Rapid")
     syncButton:SetScript("OnClick", function() H.OnSyncRapid() end)
 
@@ -1452,7 +1651,7 @@ local function BuildPanel(parent, width)
     captureButton:SetScript("OnClick", function() H.OnCaptureKnown() end)
 
     W.autoStatusLabel = autoBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    W.autoStatusLabel:SetPoint("TOPLEFT", applyButton, "BOTTOMLEFT", 0, -4)
+    W.autoStatusLabel:SetPoint("TOPLEFT", syncButton, "BOTTOMLEFT", 0, -4)
     W.autoStatusLabel:SetPoint("RIGHT", autoBar, "RIGHT", -8, 0)
     W.autoStatusLabel:SetJustifyH("LEFT")
 
